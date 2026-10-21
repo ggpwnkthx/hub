@@ -6,9 +6,19 @@
  * decisions per second, on the shape of the production: one principal
  * with a hundred grants, the decisions of a workspace and of a route.
  *
+ * The measurement runs the statement of the production: the repository
+ * of the decisions is the one of the service, and the deadline of the
+ * deployment is the one of the service. A measurement of a copy of the
+ * statement is a measurement of the copy.
+ *
  *   HUB_DATABASE_URL=postgres://… bun run scripts/load.ts --requests 20000 --concurrency 100
  */
-import { createDatabase, MIGRATIONS_DIRECTORY, runMigrations } from '../src/platform/postgres'
+import {
+  createDatabase,
+  DecisionRepository,
+  MIGRATIONS_DIRECTORY,
+  runMigrations,
+} from '../src/platform/postgres'
 import { createLogger } from '../src/observability'
 
 /** The number of requests of the run. */
@@ -17,6 +27,10 @@ const requests = Number(readOption('requests') ?? '20000')
 const concurrency = Number(readOption('concurrency') ?? '100')
 /** The number of grants of the principal of the measurement. */
 const grants = Number(readOption('grants') ?? '100')
+/** The deadline of a decision, in milliseconds. */
+const timeoutMs = Number(readOption('timeout') ?? '2000')
+/** True when the measurement is the one of the decision of a tenant. */
+const scoped = process.argv.includes('--scoped')
 
 /** Reads an option of the command line: `--name=value` or `--name value`. */
 function readOption(name: string): string | undefined {
@@ -78,33 +92,28 @@ async function main(): Promise<void> {
       `select id from users where external_subject = 'the-subject-of-the-load' limit 1`
     )
     const subjectId = subject[0]?.id ?? ''
+    const tenant = await database.query<{ id: string }>(
+      `select id from tenants where slug = 'load' limit 1`
+    )
+    const tenantId = tenant[0]?.id ?? null
 
-    const statement = `select
-        true as principal_exists,
-        u.status = 'active' as principal_active,
-        t.enabled as tenant_enabled,
-        (g.id is not null and (g.expires_at is null or g.expires_at > now())) as live_grant,
-        (g.id is not null and g.expires_at is not null and g.expires_at <= now()) as expired_grant,
-        t.slug as tenant_slug
-      from users u
-      join tenants t on t.id = u.tenant_id
-      left join lateral (
-        select g.id, g.expires_at
-        from grants g
-        join permissions p on p.id = g.permission_id
-        where g.user_id = u.id
-          and g.revoked_at is null
-          and p.enabled
-          and (g.workspace_id is null or g.workspace_id = $2)
-          and (g.route_id is null or g.route_id = $3)
-        order by (g.expires_at is null or g.expires_at > now()) desc
-        limit 1
-      ) g on true
-      where u.id = $1`
+    // The repository of the service: the statement of the production and
+    // the deadline of the deployment.
+    const repository = new DecisionRepository(database, timeoutMs)
+    // The scope of a tenant is a transaction: the scope of the statement
+    // is local to it. The measurement of the scoped decision is the one
+    // of the deployments whose gateway holds the credentials of a tenant.
+    const request = {
+      subject: subjectId,
+      workspaceId: 'workspace-1',
+      routeId: 'workspace-api',
+      roles: [],
+      tenantId: scoped ? tenantId : null,
+    }
 
     // The warm-up: the first calls pay for the caches of the server.
     for (let index = 0; index < 100; index += 1) {
-      await database.query(statement, [subjectId, 'workspace-1', 'workspace-api'])
+      await repository.decide(request)
     }
 
     const durations: number[] = []
@@ -114,7 +123,7 @@ async function main(): Promise<void> {
     const worker = async (): Promise<void> => {
       while (completed < requests) {
         const begin = performance.now()
-        await database.query(statement, [subjectId, 'workspace-1', 'workspace-api'])
+        await repository.decide(request)
         durations.push(performance.now() - begin)
         completed += 1
       }
@@ -129,6 +138,7 @@ async function main(): Promise<void> {
           level: 'info',
           msg: 'the capacity of the decision',
           environment: url.startsWith('pglite://') ? 'pglite' : 'postgres',
+          scope: scoped ? 'tenant' : 'platform',
           requests,
           concurrency,
           grants,

@@ -62,12 +62,27 @@ export interface StoreSettings {
 export interface AdminSettings {
   /** The bearer token of the eight administrative endpoints. */
   token?: string
+  /**
+   * The token that the current one replaced.
+   *
+   * It is accepted until the deployment removes it: a rotation of the
+   * token of the administration is a rolling change and not a
+   * simultaneous one.
+   */
+  previousToken?: string
 }
 
 /** The settings of the decision contract of the gateway. */
 export interface AccessSettings {
   /** The bearer token the gateway presents on `POST /v1/decisions`. */
   token?: string
+  /**
+   * The token that the current one replaced.
+   *
+   * It is accepted until the deployment removes it: a rotation of the
+   * token is a rolling change and not a simultaneous one.
+   */
+  previousToken?: string
   /**
    * The credentials of the access context contract.
    *
@@ -201,7 +216,9 @@ const EnvSchema = z.object({
   HUB_ALLOW_MEMORY_STATE: boolEnv(),
 
   HUB_ADMIN_TOKEN: z.string().optional(),
+  HUB_PREVIOUS_ADMIN_TOKEN: z.string().optional(),
   HUB_ACCESS_TOKEN: z.string().optional(),
+  HUB_PREVIOUS_ACCESS_TOKEN: z.string().optional(),
   HUB_ACCESS_CONTEXT_TOKENS: z.string().optional(),
   HUB_METRICS_TOKEN: z.string().optional(),
 
@@ -409,9 +426,11 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
     },
     admin: {
       token: parsed.HUB_ADMIN_TOKEN,
+      previousToken: parsed.HUB_PREVIOUS_ADMIN_TOKEN,
     },
     access: {
       token: parsed.HUB_ACCESS_TOKEN,
+      previousToken: parsed.HUB_PREVIOUS_ACCESS_TOKEN,
       contextTokens: parsed.HUB_ACCESS_CONTEXT_TOKENS,
     },
     metrics: {

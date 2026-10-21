@@ -101,4 +101,13 @@ export interface DatabaseOptions {
   path?: string
   /** The schema the tables live in, when the driver is the server. */
   schema?: string
+  /**
+   * The deadline of the statements of the server, in milliseconds.
+   *
+   * The deadline is the one of the server: it is set when the connection
+   * is opened, and it is the deadline of every statement of that
+   * connection. A statement that takes too long is stopped by PostgreSQL
+   * and the connection is given back to the pool at once.
+   */
+  statementTimeoutMs?: number
 }

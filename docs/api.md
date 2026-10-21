@@ -288,7 +288,7 @@ curl -sS -X POST https://hub.example.com/v1/admin/tenants \
 | `idpAlgorithms` | Optional. Default `["RS256"]`. |
 | `emailDomain` | Optional. Unique when it is set. |
 | `clientId` | Required. The client id of the gateway of the tenant at Hub. Unique across the tenants. |
-| `clientSecret` | Required. Encrypted at rest, never returned. |
+| `clientSecret` | Required. Encrypted at rest, never returned. A secret that replaces another one is kept for 24 hours, and both are accepted until the window is over (the rotation of a secret). |
 | `autoProvision` | Optional. Default `false`. |
 | `sharedClient` | Optional. Default `false`. |
 | `default` | Optional. Default `false`. At most one tenant is the default. |
@@ -529,8 +529,6 @@ cannot name a principal that does not exist.
   "createdAt": "2026-01-08T10:20:00.000Z"
 }
 ```
-
----
 
 ## The session in eight calls
 

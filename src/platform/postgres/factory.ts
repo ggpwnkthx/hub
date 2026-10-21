@@ -25,5 +25,9 @@ export async function createDatabase(options: DatabaseOptions): Promise<Database
     throw new Error('the url of the PostgreSQL server is missing')
   }
   const { createPostgresDatabase } = await import('./postgres')
-  return createPostgresDatabase({ url: options.url, schema: options.schema })
+  return createPostgresDatabase({
+    url: options.url,
+    schema: options.schema,
+    statementTimeoutMs: options.statementTimeoutMs,
+  })
 }

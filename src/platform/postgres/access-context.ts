@@ -57,7 +57,7 @@ const ACCESS_CONTEXT_SQL = `with principal as (
            and exists (
              select 1 from groups gr
               where gr.id = g.group_id
-                and (select user_id from principal) = any(gr.members)
+                and gr.members @> array[(select user_id from principal)]
            )
          )
        )

@@ -81,6 +81,8 @@ describe('the schema of Hub', () => {
       '0002_list_indexes.sql',
       '0003_tenant_isolation.sql',
       '0004_groups.sql',
+      '0005_group_members_index.sql',
+      '0006_secret_rotation.sql',
     ])
 
     const second = await runMigrations({
@@ -94,13 +96,16 @@ describe('the schema of Hub', () => {
       '0002_list_indexes.sql',
       '0003_tenant_isolation.sql',
       '0004_groups.sql',
+      '0005_group_members_index.sql',
+      '0006_secret_rotation.sql',
     ])
   })
 
   test('the five tables are the only tables of the domain', async () => {
     const rows = await database.query<{ table_name: string }>(
       `select table_name from information_schema.tables
-       where table_schema = 'public' and table_name not in ('${MIGRATIONS_TABLE}')
+       where table_schema = 'public'
+         and table_name not in ('${MIGRATIONS_TABLE}')
        order by table_name`
     )
     expect(rows.map((row) => row.table_name)).toEqual([

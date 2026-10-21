@@ -176,6 +176,8 @@ export interface AdministrationDependencies {
   grants: GrantRepository
   /** The bearer token of the administration. */
   token?: string
+  /** The token that the current one replaced, during a rotation. */
+  previousToken?: string
   /** The public url of Hub. */
   publicUrl: string
   /**
@@ -364,6 +366,7 @@ export function createAdministrationService(
     grants: grantStore,
     groups: groupStore,
     token: dependencies.token,
+    previousToken: dependencies.previousToken,
     publicUrl: dependencies.publicUrl,
   })
 }

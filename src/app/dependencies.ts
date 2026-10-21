@@ -57,8 +57,24 @@ export interface TenantPort {
   findByClientId: (
     clientId: string
   ) => Promise<{ id: string; slug: string; clientId: string; sharedClient: boolean } | null>
-  /** The secret of the gateway of a tenant, in clear. */
-  gatewaySecret: (tenantId: string) => Promise<string | null>
+  /**
+   * The secrets of the gateway of a tenant, in clear.
+   *
+   * There are two of them during a rotation: the one that is in use and
+   * the one it replaced, which is accepted until the end of the window of
+   * the rotation.
+   */
+  gatewaySecrets: (tenantId: string) => Promise<GatewaySecrets>
+}
+
+/** The secrets of the gateway of a tenant, in clear. */
+export interface GatewaySecrets {
+  /** The secret that is in use. */
+  current: string | null
+  /** The secret that the current one replaced, when it is still accepted. */
+  previous: string | null
+  /** The moment the previous secret stops being accepted. */
+  previousUntil: Date | null
 }
 
 /**
@@ -95,6 +111,8 @@ export interface HubDependencies {
   provider: ProviderService
   /** The bearer token the gateway presents on the decisions. */
   accessToken?: string
+  /** The token that the current one replaced, during a rotation. */
+  previousAccessToken?: string
   /** The observer of the service. */
   observer: Observer
   /** The bearer token that guards the metrics endpoint. */

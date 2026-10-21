@@ -354,8 +354,23 @@ again. Change the value and roll the deployment.
 
 ### The tokens of the service (`HUB_ADMIN_TOKEN`, `HUB_ACCESS_TOKEN`)
 
-Change the value and roll the deployment. The gateway is configured with
-the same value (spec §12.2): change it on both sides, the gateway first.
+The rotation is a **rolling** change: the value that is in use and the
+value it replaced are both accepted, and the value that is replaced is
+removed at the end (spec §4.3.1).
+
+1. Put the current value in `HUB_PREVIOUS_ADMIN_TOKEN` and in
+   `HUB_PREVIOUS_ACCESS_TOKEN`, and roll the deployment. Nothing changes:
+   the two variables are accepted.
+2. Change the value of `HUB_ADMIN_TOKEN` and of `HUB_ACCESS_TOKEN`, and
+   roll the deployment. **The gateway is configured with the same value
+   (spec §12.2): change it on the gateway first.**
+3. Remove the two `HUB_PREVIOUS_*` variables, and roll the deployment
+   again. The old values are refused from that moment.
+
+The window between the second step and the third is the window of the
+rotation. It is the time it takes to change the environment of every
+gateway of the deployment, and it is not a window in which a call is
+refused.
 
 ---
 
@@ -431,6 +446,11 @@ under it. A number that is not measured is not published here.
 HUB_DATABASE_URL=postgres://… bun run scripts/load.ts --requests 20000 --concurrency 100
 ```
 
+The script measures the **statement of the production**: it calls the
+repository of the decisions of the service, with the deadline of the
+deployment. The measurement runs on every build of the CI, against the
+PostgreSQL of the job, and its numbers are in the log of the build.
+
 ### The targets
 
 | Measurement | Target | Shape |
@@ -445,8 +465,33 @@ HUB_DATABASE_URL=postgres://… bun run scripts/load.ts --requests 20000 --concu
 
 ### What was measured
 
-On the embedded PostgreSQL of a development machine (one connection, so
-the requests are serialized by it), with 1 000 requests and a principal
+**Against a PostgreSQL server.** PostgreSQL 15 over the loopback of a
+development machine of sixteen cores, with a load average of nine at the
+time of the measurement, five thousand requests, twenty in flight, and a
+principal that holds a hundred grants. The numbers are the median of
+three runs:
+
+| Measurement | The decision of the platform | The decision of a tenant |
+| --- | --- | --- |
+| The `p50` | 1.94 ms | 2.82 ms |
+| The `p95` | 3.44 ms | 5.08 ms |
+| The `p99` | 5.32 ms | 6.88 ms |
+| The decisions per second | 9 060 | 6 321 |
+
+The two columns are the two paths of §8.8: the **decision of the
+platform** is the bearer token of the deployment, the one of the gateway
+of the reference, and the **decision of a tenant** is the credentials of
+a tenant, whose scope is a transaction because the scope of a statement
+is local to it. The second path costs a transaction and it is a third
+slower.
+
+The targets of the table above are met on this machine, on a machine
+that was busy. The numbers of a deployment are measured by the same
+script, against the server of the deployment, and they are published here
+when they are measured.
+
+**On the embedded PostgreSQL of a development machine** (one connection,
+so the requests are serialized by it), with 1 000 requests and a principal
 that holds a hundred grants:
 
 | Measurement | Value |
@@ -477,8 +522,7 @@ decision does not scan the table of the policy.
 
 The numbers of a deployment are **not** the numbers of this document: the
 embedded database of a development machine is not a PostgreSQL server, and
-the process of the runner of the CI is not the hardware of a deployment.
-The numbers of a deployment are measured by the same script, against the
+the process of the runner of the CI is not the hardware of a deployment.The numbers of a deployment are measured by the same script, against the
 server of the deployment, and they are published here when they are
 measured.
 
@@ -491,7 +535,9 @@ cutover of the first tenant ([release.md](release.md) §4).
 
 | Knob | Effect | Limit |
 | --- | --- | --- |
-| `HUB_DECISION_TIMEOUT_MS` | The ceiling of a decision | 2 000 ms |
+| `HUB_DECISION_TIMEOUT_MS` | The ceiling of a decision, and the deadline of the statements of the pool | 2 000 ms |
+| `HUB_PREVIOUS_ADMIN_TOKEN` | The token that the current one replaced, during a rotation | — |
+| `HUB_PREVIOUS_ACCESS_TOKEN` | The token that the current one replaced, during a rotation | — |
 | The size of the pool | The concurrency of the database | 10 per replica |
 | The cache of the JWKS of the provider | The calls to the provider of a tenant | 10 minutes |
 | The cache of the discovery of the provider | The calls to the discovery of a tenant | 10 minutes |

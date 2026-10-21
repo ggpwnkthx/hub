@@ -69,6 +69,16 @@ jobs:
         env:
           HUB_TEST_DATABASE_URL: postgres://hub:hub@localhost:5432/hub
 
+      - name: the capacity of the decision, against the server of the tests
+        # The numbers of the capacity are the ones of the statement of the
+        # production, measured against a PostgreSQL server and not against
+        # the embedded one of a development machine.
+        run: |
+          bun run scripts/load.ts --requests 5000 --concurrency 20
+          bun run scripts/load.ts --requests 5000 --concurrency 20 --scoped
+        env:
+          HUB_DATABASE_URL: postgres://hub:hub@localhost:5432/hub
+
   compatibility:
     name: the gateway of the reference, unchanged, against Hub
     runs-on: ubuntu-latest

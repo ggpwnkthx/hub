@@ -5,6 +5,10 @@
  * principal, the tenant, the grants and the permissions. It is not
  * cached: the table is the truth and the query is cheap.
  *
+ * The deadline of the decision is the deadline of the connection of the
+ * pool: the server stops the statement that takes too long, and the
+ * connection is given back to the pool at once (spec §8.3).
+ *
  * The statement returns the facts of the rule; the domain turns them into
  * the answer of the protocol.
  */
@@ -22,10 +26,24 @@ export class TimeoutError extends Error {
 }
 
 /**
+ * The grace between the deadline of the server and the deadline of the
+ * process.
+ *
+ * The server stops the statement at its own deadline: the process waits a
+ * little longer, so the failure it reports is the one of the server (the
+ * statement was cancelled) and not a race between the two deadlines.
+ */
+export const TIMEOUT_GRACE_MS = 250
+
+/**
  * Runs a statement with a deadline.
  *
  * A statement that does not answer in time is a failure: the decision
  * becomes a denial and the gateway fails closed.
+ *
+ * The deadline of the statement is the one of the server (see
+ * `withStatement`): this deadline is the backstop of the process, and it
+ * is longer than the one of the server by the grace.
  */
 export async function withTimeout<T>(action: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -33,7 +51,7 @@ export async function withTimeout<T>(action: Promise<T>, timeoutMs: number): Pro
     return await Promise.race([
       action,
       new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new TimeoutError(timeoutMs)), timeoutMs)
+        timer = setTimeout(() => reject(new TimeoutError(timeoutMs)), timeoutMs + TIMEOUT_GRACE_MS)
         timer.unref?.()
       }),
     ])
@@ -92,7 +110,7 @@ const DECISION_SQL = `select
        from grants g
        join permissions p on p.id = g.permission_id
        join groups gr on gr.id = g.group_id
-       where u.id = any(gr.members)
+       where gr.members @> array[u.id]
          and g.revoked_at is null
          and p.enabled
          and (g.workspace_id is null or g.workspace_id = $2)

@@ -8,6 +8,7 @@
 
 import { Pool, type PoolClient } from 'pg'
 import { normalizeError, type Database, type MigrationLock, type SqlClient } from './database'
+import { MIGRATION_STATEMENT_TIMEOUT_MS } from './migrations'
 
 /** The key of the advisory lock of the migrations. */
 export const MIGRATION_LOCK_KEY = 8_675_309
@@ -128,6 +129,11 @@ class PostgresDatabase implements Database {
     // the migration runs on that session, and the session is given back
     // when the lock is released.
     const client = await this.pool.connect()
+    // The deadline of the connection is the deadline of the service: a
+    // migration builds an index, and an index on a table that has rows
+    // takes more time than a decision. The connection of the migrations
+    // raises its own deadline.
+    await client.query(`set statement_timeout = ${MIGRATION_STATEMENT_TIMEOUT_MS}`)
     await client.query('select pg_advisory_lock($1)', [MIGRATION_LOCK_KEY])
     this.locked = client
     return {

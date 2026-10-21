@@ -66,8 +66,20 @@ export async function tokenHandler(
   if (!tenant) {
     return refusal('invalid_client', 'the client is not registered', 401)
   }
-  const expected = await dependencies.tenants.gatewaySecret(tenant.id)
-  if (!expected || !clientSecret || !sameSecret(clientSecret, expected)) {
+  // The secret of a gateway is accepted in two forms during a rotation:
+  // the one that is in use and the one it replaced, which is accepted
+  // until the end of the window of the rotation (spec §4.3).
+  const secrets = await dependencies.tenants.gatewaySecrets(tenant.id)
+  const previousAccepted =
+    secrets.previous !== null &&
+    secrets.previousUntil !== null &&
+    secrets.previousUntil.getTime() > Date.now()
+  const accepted =
+    clientSecret !== '' &&
+    secrets.current !== null &&
+    (sameSecret(clientSecret, secrets.current) ||
+      (previousAccepted && secrets.previous !== null && sameSecret(clientSecret, secrets.previous)))
+  if (!accepted) {
     return refusal('invalid_client', 'the client is not authenticated', 401)
   }
 

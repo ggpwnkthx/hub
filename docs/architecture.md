@@ -159,8 +159,8 @@ architecture:
 | Kind | Where | What it proves |
 | --- | --- | --- |
 | Unit | `src/domains/*/*.test.ts` | The policy of one domain, without the network and without the database. |
-| Contract | `test/contract/` | The endpoints over a socket, with the fixtures around. |
-| Integration | `test/integration/` | The decisions against a real PostgreSQL, the isolation, the migrations, the rotation. |
+| Contract | `test/contract/` | The endpoints over a socket, with the fixtures around: the login, the decision, the administration, the rotation of the secrets. |
+| Integration | `test/integration/` | The decisions against a real PostgreSQL, the isolation, the migrations, the deadline of a statement, the rule of the decision against a policy that is built at random. |
 | Compatibility | `test/compatibility/` | **The gateway of the reference, unchanged, against Hub.** |
 | Architecture | `test/architecture/` | The import boundaries and the absence of the deferred features. |
 

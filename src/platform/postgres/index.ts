@@ -17,7 +17,13 @@ export {
 } from './database'
 export { createDatabase } from './factory'
 export type { Migration, MigrationResult } from './migrations'
-export { MIGRATIONS_DIRECTORY, MIGRATIONS_TABLE, readMigrations, runMigrations } from './migrations'
+export {
+  MIGRATION_STATEMENT_TIMEOUT_MS,
+  MIGRATIONS_DIRECTORY,
+  MIGRATIONS_TABLE,
+  readMigrations,
+  runMigrations,
+} from './migrations'
 export type { DecisionFacts, DecisionRequest } from '../../domains/authorization'
 export { AccessContextRepository } from './access-context'
 export { DecisionRepository, TimeoutError, withTimeout } from './decisions'
@@ -43,7 +49,7 @@ export {
   type DatabaseRole,
 } from './scope'
 export type { NewTenant, TenantRow, TenantSummary, TenantUpdate } from './tenants'
-export { TenantRepository } from './tenants'
+export { SECRET_ROTATION_WINDOW_MS, TenantRepository, type GatewaySecrets } from './tenants'
 export type { NewUser, PrincipalStatus, UserRow, UserUpdate } from './users'
 export { UserRepository } from './users'
 export type { TraceOptions } from './trace'

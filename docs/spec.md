@@ -163,6 +163,8 @@ tenant and the registration of the gateway of the tenant.
 | `idp_algorithms` | `text[]` | The algorithms a token of the provider may be signed with. Default `['RS256']`. |
 | `client_id` | `text` | The client id of the **gateway** of the tenant at Hub. Unique across the tenants. |
 | `client_secret` | `bytea` | The secret of the gateway of the tenant, encrypted at rest (§4.3). |
+| `previous_client_secret` | `bytea` | The secret that the current one replaced, encrypted at rest. `null` when there was no rotation. |
+| `previous_client_secret_until` | `timestamptz` | The moment the previous secret stops being accepted. `null` when there was no rotation. |
 | `shared_client` | `boolean` | Default `false`. Whether the gateway of this tenant may log in principals of other tenants (§5.2). |
 | `created_at`, `updated_at` | `timestamptz` | |
 
@@ -259,6 +261,12 @@ so a grant can carry the tenant of its group in a foreign key (§3.4).
 The membership is **replaced** by the call of the administration (§9.9):
 the members of the list are the members of the group, and the principals
 that are not in the list are not in the group any more.
+
+The membership is indexed: the question that the decision asks is "which
+groups hold this principal", and the predicate that answers it is a
+containment (`groups.members @> array[principal]`), which a **GIN index**
+serves. Without it, every decision that reads a grant of a group walks
+the groups of the tenant and reads every member list of them (§8.5).
 
 ### 3.6 The diagram
 
@@ -360,7 +368,9 @@ readable list with the values of a development machine is in `.env.example`.
 | `HUB_REDIS_URL` | The shared store of the authorization codes. Required when more than one replica runs. |
 | `HUB_ALLOW_MEMORY_STATE` | Replaces the shared store with the memory of the process. A single-node deployment only. |
 | `HUB_ADMIN_TOKEN` | The bearer token of the eight administrative endpoints. |
+| `HUB_PREVIOUS_ADMIN_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it (§4.3.1). |
 | `HUB_ACCESS_TOKEN` | The bearer token the gateway presents on `POST /v1/decisions`. |
+| `HUB_PREVIOUS_ACCESS_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it (§4.3.1). |
 | `HUB_ACCESS_CONTEXT_TOKENS` | The credentials of the access context contract (§8bis): a JSON object whose keys are bearer tokens and whose values are the tenants every token may ask about. A `null` value is a credential of the platform. |
 | `HUB_STATE_SECRET` | Signs and encrypts the state of a login (§5.3). 32 bytes at least. The same value on every replica. |
 | `HUB_SECRET_ENCRYPTION_KEY` | Encrypts the client secrets at rest (§4.3). 32 bytes at least. |
@@ -369,7 +379,7 @@ readable list with the values of a development machine is in `.env.example`.
 | `HUB_PREVIOUS_SIGNING_KEY` | The private key of the previous rotation, in PEM. It stays published in the JWKS until the last token it signed has expired (§4.2). |
 | `HUB_PREVIOUS_SIGNING_KID` | The identifier of the previous key in the JWKS. |
 | `HUB_IDP_TIMEOUT_MS` | How long Hub waits for the provider of a tenant. Default `5000`. |
-| `HUB_DECISION_TIMEOUT_MS` | How long a decision may take before it is a denial. Default `2000`. |
+| `HUB_DECISION_TIMEOUT_MS` | How long a decision may take before it is a denial. Default `2000`. It is also the deadline of the statements of the pool (§8.3). |
 | `HUB_CLOCK_SKEW_SECONDS` | The tolerance of the clock on the tokens of a provider. Default `60`. |
 | `HUB_METRICS_TOKEN` | The bearer token of the metrics endpoint. Without it the endpoint is not served. |
 | `HUB_LOG_LEVEL` | `debug`, `info`, `warn` or `error`. Default `info`. |
@@ -419,6 +429,43 @@ the format is a version and not a migration of the column:
 
 A service without `HUB_SECRET_ENCRYPTION_KEY` does not store the client
 secrets in clear: it refuses to write a tenant and says so.
+
+### 4.3.1 The rotation of a secret
+
+A secret that a client presents is rotated without a window in which the
+client and Hub disagree.
+
+**The secret of the gateway of a tenant.** The call of the administration
+that changes the secret of a tenant keeps the secret it replaces for
+**24 hours**. Both secrets are accepted until the window is over: the
+gateway is changed first, the tenant is changed second, and the old
+secret is dropped by the deployment that owns it. The window is the
+rotation, not a second credential.
+
+A call that presents the secret that is already in use is **not** a
+rotation: it does not close the window of the rotation that is in
+flight. An unrelated change of a tenant does not shorten the window of
+the secret of its gateway.
+
+**The token of the decisions and the token of the administration.** They
+are read from the environment, and the environment holds the one that is
+in use and, during a rotation, the one it replaced:
+
+| Variable | What it holds |
+| --- | --- |
+| `HUB_ACCESS_TOKEN` | The token that the gateway presents on `POST /v1/decisions`. |
+| `HUB_PREVIOUS_ACCESS_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it. |
+| `HUB_ADMIN_TOKEN` | The token of the eight administrative endpoints. |
+| `HUB_PREVIOUS_ADMIN_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it. |
+
+A rotation is therefore a rolling change: the previous value is put in
+the environment of the replicas, the new value replaces it, and the
+previous value is removed. The rotation of the token of the decisions is
+a change of the environment of every gateway at the same time, and the
+window is what makes it a rolling one.
+
+The comparison of the two tokens is in constant time, like the
+comparison of one.
 
 ### 4.4 What a production deployment needs
 
@@ -826,6 +873,19 @@ token.
 The query is a single statement over five tables, with the indexes of
 §8.5.
 
+**The deadline of the statement is the deadline of the server.** The
+statement runs with the `statement_timeout` of the connection of the
+pool, which is the tightest deadline of the service
+(`HUB_DECISION_TIMEOUT_MS`, two seconds by default). A statement that
+takes too long is stopped by PostgreSQL, the transaction is rolled back
+and the connection is given back to the pool at once. A deadline that
+lives only in the memory of the process would let a statement keep a
+connection of the pool for the whole window of the timeout of the pool.
+
+The deadline of the process is the backstop of the deadline of the
+server: it is longer by a quarter of a second, and it answers `503`
+(the gateway fails closed) when the server did not answer at all.
+
 ### 8.4 The roles of the request
 
 The `roles` of the request are **context, not policy**. The gateway
@@ -852,6 +912,7 @@ the two.
 | `users (id)` | The primary key: the subject of the request. |
 | `grants (user_id) where revoked_at is null` | The grants of the principal. |
 | `grants (group_id) where revoked_at is null` | The grants of the groups of the principal. |
+| `groups` (GIN on `members`) | The groups that hold the principal: the containment `members @> array[principal]`. |
 | `permissions (id)` | The primary key. |
 
 The query of §8.3 stops at the first grant that satisfies it.
@@ -1067,7 +1128,9 @@ The bodies of the requests and of the answers are in [api.md](api.md).
 
 - Every endpoint is under `/v1/admin` and requires
   `Authorization: Bearer $HUB_ADMIN_TOKEN`. A missing or wrong token →
-  `401 unauthorized`. The comparison is in constant time.
+  `401 unauthorized`. The comparison is in constant time. The token that
+  the current one replaced is accepted as well, until the deployment
+  removes it (§4.3.1).
 - The bodies are JSON, at most 64 KiB. A body that is larger → `413`.
 - The answers are JSON. The errors are
   `{"error": "<code>", "message": "<text>"}`.
@@ -1081,7 +1144,6 @@ The bodies of the requests and of the answers are in [api.md](api.md).
   `limit` above the maximum or an `offset` that is negative →
   `400 invalid_request`. The answer carries the `total` of the rows that
   match the filter, so the operator knows how many pages there are.
-
 The error codes: `unauthorized`, `invalid_request`, `not_found`,
 `conflict`, `forbidden`, `too_many_requests`.
 
@@ -1328,8 +1390,8 @@ A rule that has no test is a rule that is not implemented.
 | Kind | Where | What it proves |
 | --- | --- | --- |
 | Unit | `src/domains/*/*.test.ts` | The validation of the token of a provider, the mapping, the rule of the decision, the resolution of the tenant. |
-| Contract | `test/contract/` | The whole flow against the fixtures of Hub: the login of a browser, the exchange of the code, the decision, the eight administrative endpoints. |
-| Integration | `test/integration/` | The decisions against a real PostgreSQL and a real Redis, the isolation of the tenants, the migrations. |
+| Contract | `test/contract/` | The whole flow against the fixtures of Hub: the login of a browser, the exchange of the code, the decision, the eight administrative endpoints, the rotation of the secrets. |
+| Integration | `test/integration/` | The decisions against a real PostgreSQL and a real Redis, the isolation of the tenants, the migrations, the deadline of a statement, the rule of the decision against a policy that is built at random. |
 | Compatibility | `test/compatibility/` | **The gateway, unchanged, against Hub.** The fixtures of the Shuttle reference are replaced by Hub, and the contract suite of the gateway is run against it. |
 | Architecture | `test/architecture/` | The import boundaries of Hub, and the absence of the deferred features. |
 
@@ -1418,3 +1480,4 @@ a change of one of them is a change of this document first.
 | 2 | Is the `roles` claim of the token the right list? | It is the list of the keys of the live grants of the principal, sorted, without duplicates and capped at sixty-four entries. The count of the roles that were left out is in the log. | §7.3 |
 | 3 | Does a grant need a scope on the path of the request? | No. The decision contract does not carry one and the contract does not change: a grant is a workspace and a route, which is the granularity the gateway knows. | §8.3 |
 | 4 | Is the expiry of a grant worth it? | Yes: it is in the model because a temporary access is a real thing, and it costs one comparison in the statement of the decision. | §3.4, §8.3 |
+| 5 | How is a secret rotated? | The secret of the gateway of a tenant is kept for 24 hours when it is replaced, and the tokens of the environment are read from two variables during a rotation. The rotation is a rolling change and never a window in which the client and the service disagree (§4.3.1). |

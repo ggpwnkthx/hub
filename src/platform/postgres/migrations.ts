@@ -18,6 +18,16 @@ import type { Database } from './database'
 /** The table that holds the migrations that were applied. */
 export const MIGRATIONS_TABLE = 'hub_schema_migrations'
 
+/**
+ * The deadline of the statements of a migration.
+ *
+ * A migration builds an index, and an index on a table that has rows
+ * takes more time than a decision: the connection of the migrations
+ * raises its own deadline. The deadline of the pool is the deadline of
+ * the service, and the service does not wait ten minutes for a decision.
+ */
+export const MIGRATION_STATEMENT_TIMEOUT_MS = 600_000
+
 /** The directory the migrations of the schema are read from. */
 export const MIGRATIONS_DIRECTORY = fileURLToPath(new URL('./migrations/', import.meta.url))
 

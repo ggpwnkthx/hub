@@ -115,8 +115,18 @@ async function readCredentials(
     if (!clientId || !clientSecret) return null
     const tenant = await dependencies.tenants.findByClientId(clientId)
     if (!tenant) return null
-    const expected = await dependencies.tenants.gatewaySecret(tenant.id)
-    if (!expected || !sameSecret(clientSecret, expected)) return null
+    const secrets = await dependencies.tenants.gatewaySecrets(tenant.id)
+    if (!secrets.current) return null
+    // The secret that a rotation replaced is accepted until the end of
+    // the window of the rotation (spec §4.3).
+    const previousAccepted =
+      secrets.previous !== null &&
+      secrets.previousUntil !== null &&
+      secrets.previousUntil.getTime() > Date.now()
+    const accepted =
+      sameSecret(clientSecret, secrets.current) ||
+      (previousAccepted && secrets.previous !== null && sameSecret(clientSecret, secrets.previous))
+    if (!accepted) return null
     // A tenant with a shared client may ask about the principals of the
     // other tenants (spec §5.2): its decisions are not scoped.
     return {
@@ -125,11 +135,18 @@ async function readCredentials(
     }
   }
 
-  // The bearer token of the deployment: the scheme of the reference.
+  // The bearer token of the deployment: the scheme of the reference. The
+  // token that a rotation replaced is accepted as well, so that the
+  // rotation is a rolling change and not a simultaneous one.
   const bearer = /^Bearer\s+(.+)$/i.exec(value)
   const presented = bearer?.[1]?.trim() ?? ''
   const expectedToken = dependencies.accessToken
-  if (!expectedToken || !presented || !sameSecret(presented, expectedToken)) return null
+  const previousToken = dependencies.previousAccessToken
+  const accepted =
+    presented !== '' &&
+    ((expectedToken !== undefined && sameSecret(presented, expectedToken)) ||
+      (previousToken !== undefined && sameSecret(presented, previousToken)))
+  if (!accepted) return null
   return { tenantId: null, tenantSlug: 'every-tenant' }
 }
 

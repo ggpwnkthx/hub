@@ -207,7 +207,7 @@ export class GrantRepository {
       `select ${COLUMNS} from grants join tenants on tenants.id = grants.tenant_id
        join permissions on permissions.id = grants.permission_id
        left join groups on groups.id = grants.group_id
-       where (grants.user_id = $1 or (grants.group_id is not null and $1 = any(groups.members)))
+       where (grants.user_id = $1 or (grants.group_id is not null and groups.members @> array[$1::uuid]))
          and grants.revoked_at is null
          and (grants.expires_at is null or grants.expires_at > now())
        order by grants.created_at`,
@@ -227,7 +227,7 @@ export class GrantRepository {
       `select distinct permissions.key
        from grants join permissions on permissions.id = grants.permission_id
        left join groups on groups.id = grants.group_id
-       where (grants.user_id = $1 or (grants.group_id is not null and $1 = any(groups.members)))
+       where (grants.user_id = $1 or (grants.group_id is not null and groups.members @> array[$1::uuid]))
          and grants.revoked_at is null
          and (grants.expires_at is null or grants.expires_at > now())
          and permissions.enabled

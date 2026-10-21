@@ -97,6 +97,11 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     driver: settings.database.driver,
     url: settings.database.url,
     path: settings.database.path,
+    // The deadline of the statements of the service is the one of the
+    // tightest deadline of the service: it is the deadline of the
+    // decision. The server stops the statement that takes too long and
+    // the connection of the pool is given back at once.
+    statementTimeoutMs: settings.timeouts.decisionTimeoutMs,
   })
 
   // The schema is applied before the listener accepts: Hub does not start
@@ -405,14 +410,15 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
             }
           : null
       },
-      gatewaySecret: async (tenantId: string) =>
-        await repositories.tenants.readGatewaySecret(tenantId),
+      gatewaySecrets: async (tenantId: string) =>
+        await repositories.tenants.readGatewaySecrets(tenantId),
     },
     cookieSecure: settings.production,
     // The decision of the gateway: one statement over the tables of the
     // policy, with the deadline of the deployment.
     decisions: new DecisionRepository(traced, settings.timeouts.decisionTimeoutMs),
     accessToken: settings.access.token,
+    previousAccessToken: settings.access.previousToken,
     // The access context contract: the same tables of the policy, read
     // with the complete set of the keys of the grants.
     accessContexts: new AccessContextRepository(traced),
@@ -427,6 +433,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
       permissions: repositories.permissions,
       grants: repositories.grants,
       token: settings.admin.token,
+      previousToken: settings.admin.previousToken,
       publicUrl: settings.public.publicUrl,
       // The registration of a tenant changed: its client of the provider
       // is dropped, so that the next login builds a new one (spec §6.6).

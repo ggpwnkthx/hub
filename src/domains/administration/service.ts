@@ -46,6 +46,14 @@ export interface AdministrationOptions {
   grants: GrantStore
   /** The bearer token of the administration. */
   token?: string
+  /**
+   * The token that the current one replaced.
+   *
+   * It is accepted until the deployment removes it: a rotation of the
+   * token of the administration is then a rolling change and not a
+   * simultaneous one (spec §4.3).
+   */
+  previousToken?: string
   /** The public url of Hub, for the default callback of a tenant. */
   publicUrl: string
   /** The limiter of the failed authentications. */
@@ -147,9 +155,13 @@ export class AdministrationService {
    * The token is compared in constant time. A failure is counted: a burst
    * of them is refused with `429`, so the token cannot be guessed by
    * hammering the endpoint.
+   *
+   * Two tokens are accepted during a rotation: the one of the deployment
+   * and the one it replaced.
    */
   authenticate(header: string | undefined, address: string): void {
     const expected = this.options.token
+    const previous = this.options.previousToken
     const match = /^Bearer\s+(.+)$/i.exec((header ?? '').trim())
     const presented = match?.[1]?.trim() ?? ''
 
@@ -165,7 +177,11 @@ export class AdministrationService {
 
     // A deployment without a token has no administrative surface: every
     // call is refused.
-    if (!expected || !presented || !sameSecret(presented, expected)) {
+    const accepted =
+      presented !== '' &&
+      ((expected !== undefined && sameSecret(presented, expected)) ||
+        (previous !== undefined && sameSecret(presented, previous)))
+    if (!accepted) {
       const failure = this.limiter.fail(address)
       if (!failure.allowed) {
         throw new AdministrationError(
@@ -536,8 +552,7 @@ export class AdministrationService {
    * The catalogue of the platform is reused, the permission of the tenant
    * is reused, the permission of another tenant is refused and the
    * permission that does not exist is created in the scope of the tenant.
-   */
-  private async resolvePermission(tenantId: string, key: string): Promise<Permission> {
+   */ private async resolvePermission(tenantId: string, key: string): Promise<Permission> {
     const catalogue = await this.options.permissions.findCataloguePermission(key)
     if (catalogue) return catalogue
 

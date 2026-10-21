@@ -68,10 +68,11 @@ export interface AccessContextAnswer {
  *
  * A principal may use a workspace on a route when it exists, when it is
  * active, when its tenant is enabled and when at least one live grant
- * applies to it. The keys of the answer are the keys of **all** the
- * grants that apply, whatever the workspace and the route of the grant
- * are: a consumer decides what the keys mean, Hub decides which ones are
- * held.
+ * applies to it. The keys of the answer are the keys of the grants that
+ * apply to the request: the grants of the principal and the grants of
+ * its groups, whose workspace and route scope match the request or is
+ * unrestricted. A consumer decides what the keys mean, Hub decides
+ * which ones are held.
  */
 export function evaluateAccessContext(facts: AccessContextFacts, now: Date): AccessContextAnswer {
   const keys = [...new Set(facts.permissionKeys)].sort()

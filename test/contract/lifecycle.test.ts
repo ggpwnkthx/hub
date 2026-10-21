@@ -35,7 +35,7 @@ async function startHub(env: Record<string, string>): Promise<{
 describe('the lifecycle of the process of Hub', () => {
   test('a signal drains the process and the process exits', async () => {
     const { proc, base } = await startHub({
-      HUB_DATABASE_URL: 'postgres://localhost:5432/hub',
+      HUB_DATABASE_URL: 'pglite://memory://',
       HUB_HOST: '127.0.0.1',
       HUB_PORT: String(port),
       HUB_ENVIRONMENT: 'development',

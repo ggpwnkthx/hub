@@ -13,7 +13,7 @@ import { VERSION } from './runtime/version'
 async function main(): Promise<void> {
   // The environment is read in one place, and it is validated as a whole.
   const settings = readEnv()
-  const runtime = createRuntime(settings)
+  const runtime = await createRuntime(settings)
 
   runtime.logger.info('the listener started', {
     version: VERSION,

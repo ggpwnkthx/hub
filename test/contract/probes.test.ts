@@ -7,12 +7,12 @@ let runtime: HubRuntime
 /** The base url of the runtime. */
 let base: string
 
-beforeAll(() => {
-  runtime = createRuntime(
+beforeAll(async () => {
+  runtime = await createRuntime(
     readEnv({
-      HUB_DATABASE_URL: 'postgres://localhost:5432/hub',
       HUB_HOST: '127.0.0.1',
       HUB_PORT: '0',
+      HUB_DATABASE_URL: 'pglite://memory://',
     })
   )
   base = `http://127.0.0.1:${runtime.listener.port}`
@@ -33,10 +33,23 @@ describe('the probes of Hub', () => {
     })
   })
 
-  test('the readiness is not ready while the database is not connected', async () => {
+  test('the readiness is ready when the database answers', async () => {
     const response = await fetch(`${base}/readyz`)
-    expect(response.status).toBe(503)
-    expect(await response.json()).toEqual({ status: 'not-ready' })
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ status: 'ready' })
+  })
+
+  test('the readiness is not ready when the database is down', async () => {
+    await runtime.database.close()
+    try {
+      const response = await fetch(`${base}/readyz`)
+      expect(response.status).toBe(503)
+      expect(await response.json()).toEqual({ status: 'not-ready' })
+    } finally {
+      // The database is closed for the rest of the file: the other probes
+      // do not need it.
+      await runtime.database.close().catch(() => undefined)
+    }
   })
 
   test('the readiness is draining while the service drains', async () => {

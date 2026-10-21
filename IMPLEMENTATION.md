@@ -155,6 +155,20 @@ encrypted at rest.
 | HUB-014 | The repositories of the four tables: one method per rule, no SQL in the application layer. | L |
 | HUB-015 | The trace of the queries: the duration of every statement, the number of the rows, a warning above a threshold. | S |
 
+**State**: HUB-010, HUB-011 and HUB-012 are done. HUB-013, HUB-014 and
+HUB-015 are open, and the milestone is not closed: the secrets at rest,
+the repositories and the trace of the queries are missing.
+
+**The decisions of the milestone**
+
+| Question | Decision | Where |
+| --- | --- | --- |
+| Which database does a development machine run? | The embedded PostgreSQL of the process (`pglite`), by default. It is the same PostgreSQL as the one of a deployment, so the migrations are the same. | spec §3.7, `src/platform/postgres/` |
+| When is the database of a deployment a server? | When the environment is a production one. The embedded database lives in one process and the replicas share their tables. | spec §3.7, `src/runtime/env.ts` |
+| How does the runner know what the schema is? | A table of the infrastructure, `hub_schema_migrations`, that holds the name of the applied migrations. It is not a table of the domain model. | spec §3.6, `src/platform/postgres/migrations.ts` |
+| Which client of PostgreSQL? | `pg` for the server and `pglite` for the embedded one, behind one port. `bun:sql` is not available in the runtime of the release (1.4.3), so the driver of the server is a dependency. | `src/platform/postgres/` |
+| Where does the embedded database of a development machine live? | In `./.hub/pglite`, so the tenants and the principals survive the restarts of the process. `pglite://memory://` keeps it in the memory. | spec §3.7, `src/runtime/env.ts` |
+
 **Exit criteria**
 
 - The migration applies on an empty database, is idempotent, and two
@@ -469,6 +483,8 @@ the coverage, and it is reviewed at the end of every milestone.
 | §2.1 (7) | The reason never reaches a caller | `compatibility/gateway.test.ts` |
 | §2.1 (8) | The contract of the gateway does not change | `compatibility/gateway.test.ts` |
 | §3.1–3.4 | The constraints of the four tables | `integration/schema.test.ts` |
+| §3.6 | The migrations and the schema of the database | `integration/schema.test.ts` |
+| §3.7 | The database of a development machine | `runtime/env.test.ts`, `integration/schema.test.ts` |
 | §4 | The environment is validated as a whole | `runtime/env.test.ts` |
 | §11.1 | The probes | `contract/probes.test.ts` |
 | §11.3 | No secret reaches a log line | `observability/logging.test.ts` |
@@ -523,7 +539,7 @@ gateway (`services/fixture-guard.ts`).
 | `contract` | `bun test test/contract`. |
 | `architecture` | `bun test test/architecture` and the checker. |
 | `compatibility` | `bun test test/compatibility` — the gateway and Hub. |
-| `integration` | `bun test test/integration` — with PostgreSQL and Redis as services of the workflow. |
+| `integration` | `bun test test/integration` — on the embedded PostgreSQL by default, on the PostgreSQL of the workflow when `HUB_TEST_DATABASE_URL` names one. |
 | `image` | The build of the image, the scan, the SBOM. |
 
 The `compatibility` job is the one that may never be skipped: a red
@@ -710,7 +726,7 @@ ticket. "It should be fine" is not an answer.
 
 ### 11.3 The data
 
-- [ ] The four tables are the only tables, and the schema of the
+- [ ] The four tables are the only domain tables, and the schema of the
       production is the schema of the migrations.
 - [ ] The backup is automatic, the restore is rehearsed, and the time of
       the recovery is written down.

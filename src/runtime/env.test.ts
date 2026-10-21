@@ -47,8 +47,24 @@ describe('the environment of Hub', () => {
     ).toBe('https://www.hub.example.com')
   })
 
-  test('the database is required', () => {
-    expect(() => readEnv({})).toThrow(/HUB_DATABASE_URL/)
+  test('the database of a development machine is the embedded one', () => {
+    const settings = readEnv({})
+    expect(settings.database.driver).toBe('pglite')
+    expect(settings.database.path).toBe('./.hub/pglite')
+    expect(settings.database.url).toBeUndefined()
+  })
+
+  test('the url of the database names the driver', () => {
+    expect(
+      readEnv({ HUB_DATABASE_URL: 'postgres://hub:hub@localhost:5432/hub' }).database.driver
+    ).toBe('postgres')
+    expect(
+      readEnv({ HUB_DATABASE_URL: 'postgres://hub:hub@localhost:5432/hub' }).database.url
+    ).toBe('postgres://hub:hub@localhost:5432/hub')
+    expect(readEnv({ HUB_DATABASE_URL: 'pglite://memory://' }).database.driver).toBe('pglite')
+    expect(readEnv({ HUB_DATABASE_URL: 'pglite://memory://' }).database.path).toBe('memory://')
+    expect(readEnv({ HUB_DATABASE_URL: 'pglite://' }).database.path).toBe('./.hub/pglite')
+    expect(() => readEnv({ HUB_DATABASE_URL: 'mysql://localhost' })).toThrow(/HUB_DATABASE_URL/)
   })
 
   test('a malformed value stops the service', () => {
@@ -108,6 +124,12 @@ describe('the environment of Hub', () => {
 
   test('a production deployment without the shared store is refused', () => {
     expect(() => readEnv({ ...PRODUCTION, HUB_REDIS_URL: undefined })).toThrow(/HUB_REDIS_URL/)
+  })
+
+  test('a production deployment does not run on the embedded database', () => {
+    expect(() => readEnv({ ...PRODUCTION, HUB_DATABASE_URL: 'pglite://memory://' })).toThrow(
+      /HUB_DATABASE_URL/
+    )
   })
 
   test('a secret that is too short is refused', () => {

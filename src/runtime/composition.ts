@@ -11,6 +11,12 @@ import { createHubApp, createHubHandler } from '../app/app'
 import type { HubDependencies } from '../app/dependencies'
 import { createLogger, type Logger } from '../observability'
 import { startListener, type StartedListener } from '../platform/bun/listener'
+import {
+  createDatabase,
+  MIGRATIONS_DIRECTORY,
+  runMigrations,
+  type Database,
+} from '../platform/postgres'
 import type { RuntimeSettings } from './env'
 import { drain as drainRuntime } from './lifecycle'
 import { VERSION } from './version'
@@ -21,6 +27,8 @@ export interface HubRuntime {
   settings: RuntimeSettings
   /** The logger of the service. */
   logger: Logger
+  /** The database of the four tables. */
+  database: Database
   /** The listener of the service. */
   listener: StartedListener
   /** True while the service is draining. */
@@ -39,10 +47,28 @@ export interface HubRuntime {
  * The dependencies of the domains are assembled here and nowhere else: a
  * domain never builds a client and never reads the environment.
  */
-export function createRuntime(settings: RuntimeSettings): HubRuntime {
+export async function createRuntime(settings: RuntimeSettings): Promise<HubRuntime> {
   const logger = createLogger({
     level: settings.observability.logLevel,
     bindings: { service: 'hub' },
+  })
+
+  // The database of the four tables. A deployment talks to a PostgreSQL
+  // server and a development machine runs the embedded PostgreSQL of the
+  // process: both are PostgreSQL and the migrations are the same.
+  const database = await createDatabase({
+    driver: settings.database.driver,
+    url: settings.database.url,
+    path: settings.database.path,
+  })
+
+  // The schema is applied before the listener accepts: Hub does not start
+  // against a schema it does not understand.
+  const migrations = await runMigrations({ database, directory: MIGRATIONS_DIRECTORY, logger })
+  logger.info('the schema is up to date', {
+    driver: database.driver,
+    applied: migrations.applied.length,
+    known: migrations.applied.length + migrations.alreadyApplied.length,
   })
 
   // The service stops accepting new work when it drains.
@@ -51,12 +77,17 @@ export function createRuntime(settings: RuntimeSettings): HubRuntime {
   const dependencies: HubDependencies = {
     version: VERSION,
     logger,
-    // The readiness of Hub is the health of its dependencies. The database
-    // is not connected yet: the client of PostgreSQL and the migrations
-    // arrive with the milestone of the database, and the readiness probe
-    // answers 503 until then.
+    // The readiness of Hub is the health of its dependencies: the database
+    // has to answer and the migrations have to be applied.
     probe: {
-      ready: async () => false,
+      ready: async () => {
+        try {
+          await database.query('select 1')
+          return true
+        } catch {
+          return false
+        }
+      },
     },
     isDraining: () => state.draining,
   }
@@ -70,13 +101,13 @@ export function createRuntime(settings: RuntimeSettings): HubRuntime {
   })
 
   const closeResources = async (): Promise<void> => {
-    // The clients and the stores of the service are closed here, when the
-    // database and the shared store are connected.
+    await database.close()
   }
 
   return {
     settings,
     logger,
+    database,
     listener,
     setDraining: (draining: boolean) => {
       state.draining = draining

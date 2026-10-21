@@ -45,8 +45,15 @@ and drains on a signal.
 
 ```bash
 bun install
-HUB_DATABASE_URL=postgres://hub:hub@localhost:5432/hub bun run src/main.ts
+bun run src/main.ts
 ```
+
+Without a database in the environment, a development machine runs the
+**embedded PostgreSQL** of the process (`pglite`) in `./.hub/pglite`: the
+same PostgreSQL as the one of a deployment, so the migrations of the
+production are the migrations of the development. `HUB_DATABASE_URL`
+names a server (`postgres://…`) or another embedded database
+(`pglite://<path>`); a production environment must name a server.
 
 The environment is read in `src/runtime/env.ts` and validated as a whole:
 a value that cannot be understood stops the process and the message names
@@ -56,6 +63,13 @@ the variable. The variables are in [SPEC.md](SPEC.md) §4.
 | --- | --- |
 | `GET /healthz` | `200 {"status":"ok","service":"hub","version":"0.1.0"}` |
 | `GET /readyz` | `200` when the database answers, `503 {"status":"draining"}` during a drain, `503 {"status":"not-ready"}` otherwise |
+
+The tests run on the embedded PostgreSQL too:
+
+```bash
+bun test
+HUB_TEST_DATABASE_URL=postgres://hub:hub@localhost:5432/hub bun test test/integration
+```
 
 The image is built with `docker build -f Dockerfile .`: it runs as a user
 that is not root and the base image is pinned by digest.

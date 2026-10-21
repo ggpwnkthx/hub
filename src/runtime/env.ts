@@ -36,8 +36,12 @@ export interface PublicSettings {
 
 /** The settings of the database of the four tables. */
 export interface DatabaseSettings {
-  /** The url of the PostgreSQL of Hub. */
-  url: string
+  /** The driver of the database. */
+  driver: 'postgres' | 'pglite'
+  /** The url of the PostgreSQL server, when the driver is the server. */
+  url?: string
+  /** The directory of the embedded database, when the driver is embedded. */
+  path?: string
 }
 
 /** The settings of the shared store of the authorization codes. */
@@ -123,6 +127,15 @@ export function developmentIssuer(port: number): string {
 
 /** The smallest size of a secret, in bytes. */
 export const MINIMUM_SECRET_BYTES = 32
+
+/**
+ * The directory of the embedded database of a development machine.
+ *
+ * The database of the development stack lives in the working directory, so
+ * the tenants and the principals of a development machine survive the
+ * restarts of the process.
+ */
+export const DEFAULT_EMBEDDED_DATABASE_PATH = './.hub/pglite'
 
 /** An integer of the environment. */
 function intEnv(defaultValue: number, options: { min?: number; max?: number } = {}) {
@@ -237,9 +250,36 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
   const production = parsed.HUB_ENVIRONMENT === 'production'
   const problems: string[] = []
 
-  // The database of the four tables: there is no Hub without it.
-  if (!parsed.HUB_DATABASE_URL) {
-    problems.push('HUB_DATABASE_URL must be set: it names the PostgreSQL of the four tables of Hub')
+  // The database of the four tables. A deployment talks to a PostgreSQL
+  // server: the replicas share their tables. A development machine runs
+  // the embedded PostgreSQL of the process when nothing is named.
+  const rawDatabase = parsed.HUB_DATABASE_URL?.trim()
+  let driver: 'postgres' | 'pglite' = 'pglite'
+  let databaseUrl: string | undefined
+  let databasePath: string | undefined
+  if (!rawDatabase) {
+    if (production) {
+      problems.push(
+        'HUB_DATABASE_URL must be set in a production environment: it names the PostgreSQL of the four tables of Hub'
+      )
+    } else {
+      databasePath = DEFAULT_EMBEDDED_DATABASE_PATH
+    }
+  } else if (/^postgres(ql)?:\/\//i.test(rawDatabase)) {
+    driver = 'postgres'
+    databaseUrl = rawDatabase
+  } else if (/^pglite:\/\//i.test(rawDatabase)) {
+    driver = 'pglite'
+    databasePath = rawDatabase.slice('pglite://'.length) || DEFAULT_EMBEDDED_DATABASE_PATH
+  } else {
+    problems.push(
+      'HUB_DATABASE_URL must name a PostgreSQL server (postgres://...) or the embedded database of a development machine (pglite://...)'
+    )
+  }
+  if (production && driver === 'pglite') {
+    problems.push(
+      'HUB_DATABASE_URL must name a PostgreSQL server in a production environment: the embedded database lives in one process and the replicas of a deployment share their tables'
+    )
   }
 
   // The urls the browser and the gateway use. A value that is not a url is
@@ -335,7 +375,9 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
       publicUrl: publicUrl!,
     },
     database: {
-      url: parsed.HUB_DATABASE_URL!,
+      driver,
+      url: databaseUrl,
+      path: databasePath,
     },
     store: {
       url: parsed.HUB_REDIS_URL,

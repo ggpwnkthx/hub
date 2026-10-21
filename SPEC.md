@@ -262,6 +262,39 @@ The four tables are created by the first migration. There is no second
 table "for later": a feature that needs one is a feature that is deferred
 until a customer pays for it (§13).
 
+The bookkeeping of the migrations lives in a table of the infrastructure,
+`hub_schema_migrations`. It holds the name of the migrations that were
+applied and nothing else: it is not a table of the domain model and it
+carries no data of the platform. It exists because the runner has to know
+what the schema of the database is: a database that holds a migration this
+version of Hub does not know is a schema Hub does not understand, and the
+process refuses to start against it.
+
+### 3.7 The database of a development machine
+
+The database of Hub is PostgreSQL. The driver is named by
+`HUB_DATABASE_URL`:
+
+| The value                             | The database                                     |
+| ------------------------------------- | ------------------------------------------------ |
+| `postgres://…` or `postgresql://…`    | A PostgreSQL server.                             |
+| `pglite://<path>`                     | The embedded PostgreSQL of the process, in `<path>`. |
+| Nothing, in a development environment | The embedded PostgreSQL of the process, in `./.hub/pglite`. |
+
+The embedded PostgreSQL is `pglite`: PostgreSQL compiled to WebAssembly,
+running in the process of Hub. It is the same PostgreSQL as the one of a
+deployment, so a development machine applies the migrations of the
+production and nothing has to be translated between the two.
+
+A **production** environment must name a PostgreSQL server: the embedded
+database lives in one process and the replicas of a deployment share their
+tables. A production environment that names the embedded database is
+refused at the start.
+
+The tests run on the embedded database by default. A workflow that has a
+server names it in `HUB_TEST_DATABASE_URL` and the same tests run against
+it.
+
 ---
 
 ## 4. The environment
@@ -277,7 +310,7 @@ exception is the level of the log, which falls back to `info`.
 | `HUB_PORT`                  | The port of the listener. Default `8081`.                                                                                                                                                                                                                                         |
 | `HUB_ISSUER`                | The public issuer url of Hub. It is the `iss` of every token it issues and the issuer the gateway is configured with. It must be the url the browser and the gateway use: the discovery document of a different issuer is refused by the gateway (§6 of the spec of the gateway). |
 | `HUB_PUBLIC_URL`            | The public url of Hub, when it differs from the issuer. Default: the issuer.                                                                                                                                                                                                      |
-| `HUB_DATABASE_URL`          | The PostgreSQL of the four tables. Required.                                                                                                                                                                                                                                      |
+| `HUB_DATABASE_URL`          | The PostgreSQL of the four tables. A PostgreSQL server of a deployment, the embedded PostgreSQL of a development machine (§3.7). Required in a production environment.                                                                                                                             |
 | `HUB_REDIS_URL`             | The shared store of the authorization codes. Required when more than one replica runs.                                                                                                                                                                                            |
 | `HUB_ALLOW_MEMORY_STATE`    | Replaces the shared store with the memory of the process. The gateway has the same escape hatch, for the same reason.                                                                                                                                                             |
 | `HUB_ADMIN_TOKEN`           | The bearer token of the five administrative endpoints. Required in production.                                                                                                                                                                                                    |
@@ -332,7 +365,7 @@ down.
 
 | Variable                  | Why it is required                                                              |
 | ------------------------- | ------------------------------------------------------------------------------- |
-| `HUB_DATABASE_URL`        | The four tables live there. It is required in every environment.                 |
+| `HUB_DATABASE_URL`        | The four tables live there. It is required in a production environment; a development machine runs the embedded PostgreSQL of the process (§3.7). |
 | `HUB_ISSUER`              | It is the `iss` of every token Hub issues and the issuer the gateway is configured with. |
 | `HUB_REDIS_URL`           | The authorization codes have to be shared by the replicas, unless `HUB_ALLOW_MEMORY_STATE=true` names a deployment of a single node. |
 | `HUB_ADMIN_TOKEN`         | It is the bearer token of the five administrative endpoints.                     |

@@ -673,21 +673,18 @@ compatibility job is a red build, whatever the rest says.
 
 ---
 
-## 7. The design decisions that are still open
+## 7. The design decisions that were open
 
-They are in spec §17. They are listed here with the milestone that has to
-settle them, because a decision that is not settled blocks a task.
+They are in spec §17, where they are now settled. A question that is
+settled during a milestone is written in the spec first, with the
+evidence, and the spec is changed in the same commit as the code.
 
-| Question | Settled in | The default meanwhile |
+| Question | Settled in | The answer |
 | --- | --- | --- |
-| The shared client | M5 (HUB-050) | It is refused. A login is resolved by the client id only. |
-| The list of the `roles` claim | M4 (HUB-043) | The keys of every live grant, sorted, capped at 64. |
+| The shared client | M5 (HUB-050) | It is refused by default. When it is enabled, the parameter of the tenant and the hint of the e-mail can move a login to another tenant, and nothing else can. |
+| The list of the `roles` claim | M4 (HUB-043) | The keys of every live grant, sorted, without duplicates, capped at 64. |
 | A scope on the path of the request | M3 (HUB-031) | There is none. A grant is a workspace and a route. |
-| The expiry of a grant | M1 (HUB-011) | The column exists and is read by the rule. |
-
-A question that is settled during a milestone is written in the spec
-first, with the evidence, and the spec is changed in the same commit as
-the code.
+| The expiry of a grant | M1 (HUB-011) | The column exists and it is read by the statement of the decision. |
 
 ---
 

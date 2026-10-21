@@ -1324,14 +1324,17 @@ test is not implemented.
 
 ---
 
-## 17. The open questions
+## 17. The settled questions
 
+The questions that were open when this document was written, and the
+answer that the implementation gives them. The answers are the contract:
+a change of one of them is a change of this document first.
 
-| #   | Question                                              | Why it is open                                                                                                                                                |
-| --- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | May the shared client be enabled at all?              | It moves the tenant of a login to a hint that the caller controls. It is refused by default and it is the only way to serve several tenants from one gateway. |
-| 2   | Is the `roles` claim of the token the right list?     | It is a snapshot and it is published for the upstreams. A deployment with many grants per principal will want a different list.                               |
-| 3   | Does a grant need a scope on the path of the request? | The decision contract does not carry one, and the contract does not change. A grant is a workspace and a route, which is the granularity the gateway knows.   |
-| 4   | Is the expiry of a grant worth it?                    | It is in the model because a temporary access is a real thing, and it costs one comparison in the query.                                                      |
+| #   | Question                                              | The answer                                                                                                          | Where it lives |
+| --- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------- |
+| 1   | May the shared client be enabled at all?              | It is refused by default: `shared_client` is `false` unless the operator says so. When it is enabled, the parameter of the tenant and the hint of the e-mail can move a login to another tenant, and nothing else can. | §3.1, §5.2 |
+| 2   | Is the `roles` claim of the token the right list?     | It is the list of the keys of the live grants of the principal, sorted, without duplicates and capped at sixty-four entries. The count of the roles that were left out is in the log. | §7.3 |
+| 3   | Does a grant need a scope on the path of the request? | No. The decision contract does not carry one and the contract does not change: a grant is a workspace and a route, which is the granularity the gateway knows. | §8.3 |
+| 4   | Is the expiry of a grant worth it?                    | Yes: it is in the model because a temporary access is a real thing, and it costs one comparison in the statement of the decision. | §3.4, §8.3 |
 
 

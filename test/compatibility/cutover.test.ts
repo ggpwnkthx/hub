@@ -8,7 +8,7 @@ import { readEnv } from '../../src/runtime/env'
 import { startProviderFixture, type ProviderFixture } from '../fixtures/provider'
 
 /**
- * The rehearsal of the cutover of a tenant (docs/cutover.md).
+ * The rehearsal of the cutover of a tenant (docs/release.md §4).
  *
  * The rehearsal is the cutover, played against the gateway of the
  * reference, unchanged. It follows the phases of the runbook:

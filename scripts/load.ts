@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The capacity of the decision (spec §10 of the guide).
+ * The capacity of the decision (docs/operations.md, "The capacity").
  *
  * The script measures the latency of the decision and the number of
  * decisions per second, on the shape of the production: one principal

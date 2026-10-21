@@ -70,7 +70,7 @@ describe('the trace of the queries', () => {
     expect(lines[0]?.level).toBe('warn')
   })
 
-  test('the threshold of the trace is the one of the guide', () => {
+  test('the threshold of the trace is the one of the operations', () => {
     expect(SLOW_QUERY_MS).toBe(50)
   })
 

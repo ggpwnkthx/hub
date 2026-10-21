@@ -1,0 +1,505 @@
+# Hub — HTTP API
+
+Every endpoint of Hub, its request, its answer and its errors. The rules
+behind them are in [spec.md](spec.md); this document is the reference of
+the wire format.
+
+The bodies are JSON. The errors are `{"error": "<code>", "message":
+"<text>"}`, except the token endpoint, which speaks OAuth: `{"error":
+"<code>", "error_description": "<text>"}`.
+
+Every answer carries the header `x-request-id`. It is the identifier of
+the request in the logs of the service; a client that sends a valid
+`x-request-id` gets its own back.
+
+---
+
+## The probes
+
+| Endpoint | Answer |
+| --- | --- |
+| `GET /healthz` | `200 {"status":"ok","service":"hub","version":"0.1.0"}` — as long as the process is alive. |
+| `GET /readyz` | `200 {"status":"ready"}` when the database answers and the migrations are applied; `503 {"status":"draining"}` during a drain; `503 {"status":"not-ready"}` otherwise. |
+| `GET /metrics` | Prometheus text. `404` when `HUB_METRICS_TOKEN` is unset, `401` when the bearer token does not match. |
+
+```bash
+curl -sS https://hub.example.com/healthz
+curl -sS https://hub.example.com/readyz
+curl -sS https://hub.example.com/metrics -H "authorization: Bearer $HUB_METRICS_TOKEN"
+```
+
+---
+
+## The OpenID Connect provider
+
+### `GET /oauth/authorize`
+
+The authorization endpoint. The gateway sends the browser here.
+
+| Parameter | Rule |
+| --- | --- |
+| `client_id` | Required. Names the tenant (§5.2 of the spec). |
+| `redirect_uri` | Required. Must be the one registered for the tenant. |
+| `response_type` | Required. `code`. |
+| `scope` | Optional. `openid profile email groups`. |
+| `state` | Optional. Returned to the gateway. |
+| `nonce` | Optional. Bound to the token that is issued. |
+| `code_challenge`, `code_challenge_method` | Optional. `S256`. |
+| `tenant` | Only when the client of the tenant is `shared_client`. |
+| `login_hint` | Optional. An e-mail, used only when the client is shared. |
+
+The answer is a `302` to the provider of the tenant, or a refusal:
+`400 invalid_request` (no tenant, bad parameters), `403 tenant_disabled`.
+
+### `GET /oauth/tenant/callback`
+
+The callback of Hub at the provider of a tenant. The provider sends the
+browser here with `code` and `state`.
+
+The answer is a `302` to the `redirect_uri` of the request, with the code
+of Hub and the `state` of the gateway. The refusals are the ones of
+§5.6 of the spec: `400 login_state_invalid`, `400 invalid_request`,
+`403 identity_rejected`, `403 identity_unknown`, `403 principal_disabled`,
+`403 provider_error`, `403 tenant_disabled`, `502 upstream_unavailable`.
+An unexpected failure is `500 internal_error`, and it never carries the
+error of a dependency.
+
+### `POST /oauth/token`
+
+The exchange of the code for the tokens. The client authenticates with
+`client_secret_basic`.
+
+```
+POST /oauth/token
+Authorization: Basic {client_id}:{client_secret}
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=authorization_code&code=…&redirect_uri=…&code_verifier=…
+```
+
+| Field | Rule |
+| --- | --- |
+| `grant_type` | Required. `authorization_code`. |
+| `code` | Required. The code of the login. Single use, 60 seconds. |
+| `redirect_uri` | Required. The same one as in the authorization request. |
+| `code_verifier` | Required when the request carried a `code_challenge`. |
+
+```json
+{
+  "access_token": "eyJ…",
+  "token_type": "Bearer",
+  "expires_in": 300,
+  "id_token": "eyJ…"
+}
+```
+
+There is no refresh token (spec §7.2). The refusals: `401 invalid_client`
+(missing, unreadable or wrong credentials), `400 invalid_request` (grant
+type, missing code or redirect uri), `400 invalid_grant` (the code is
+unknown, expired, already used, or bound to another client, redirect uri
+or challenge).
+
+### `GET /.well-known/openid-configuration`
+
+The discovery document. The fields are in §7.5 of the spec.
+
+### `GET /oauth/jwks`
+
+The public keys of Hub, in the JWKS format. During a rotation, the JWKS
+carries the current key and the previous one, until the last token it
+signed has expired.
+
+### `GET /oauth/userinfo`
+
+The claims of the principal of a bearer token: `sub`, `email`, `name` and
+`roles`.
+
+```bash
+curl -sS https://hub.example.com/oauth/userinfo -H "authorization: Bearer $ACCESS_TOKEN"
+```
+
+`401` when the token is expired, signed with another key, or belongs to
+another audience.
+
+---
+
+## The decision contract
+
+### `POST /v1/decisions`
+
+The contract the gateway already speaks. It is not changed by Hub.
+
+```
+POST /v1/decisions
+Authorization: Bearer {HUB_ACCESS_TOKEN}
+Content-Type: application/json
+
+{"subject":"…","workspaceId":"…","routeId":"…","roles":["…"]}
+```
+
+| Field | Rule |
+| --- | --- |
+| `subject` | Required. The id of the principal. |
+| `workspaceId` | Optional. Absent → the empty string. |
+| `routeId` | Optional. Absent → the empty string. |
+| `roles` | Optional. Absent → an empty list. The roles are **context**, never the policy (spec §8.4). |
+
+```json
+{"allow": true, "reason": "allowed"}
+{"allow": false, "reason": "the principal does not have the role of the workspace"}
+```
+
+The status is `200` for a decision, allow or deny. The refusals: `401
+unauthorized` (missing or wrong credential), `400 bad_request` (the body
+is not JSON, or the subject is not a string), `503 service_unavailable`
+(the database is down, or the decision took longer than
+`HUB_DECISION_TIMEOUT_MS`). All three are denials for the gateway, which
+fails closed.
+
+The credentials are the two schemes of §8.8 of the spec: the bearer token
+of the deployment (every principal of the platform) or the credentials of
+a tenant (its own principals only).
+
+---
+
+## The administration
+
+Eight endpoints, all under `/v1/admin`, all requiring
+`Authorization: Bearer $HUB_ADMIN_TOKEN`. The rules they share — the
+limits, the pagination, the error codes, the audit — are in §9.1 of the
+spec.
+
+### `POST /v1/admin/tenants`
+
+Creates a tenant, or updates the tenant of that slug (an upsert).
+
+```bash
+curl -sS -X POST https://hub.example.com/v1/admin/tenants \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{
+        "slug": "acme",
+        "displayName": "Acme Inc",
+        "issuer": "https://login.acme.example",
+        "idpClientId": "hub-acme",
+        "idpClientSecret": "the-secret-of-the-provider",
+        "idpRedirectUri": "https://hub.example.com/oauth/tenant/callback",
+        "emailDomain": "acme.example",
+        "clientId": "shuttle-acme",
+        "clientSecret": "the-secret-of-the-gateway",
+        "autoProvision": false,
+        "sharedClient": false,
+        "default": false,
+        "enabled": true
+      }'
+```
+
+| Field | Rule |
+| --- | --- |
+| `slug` | Required. `[a-z0-9-]{2,63}`. The key of the row. |
+| `displayName` | Required. |
+| `issuer` | Required. The issuer of the provider of the tenant. |
+| `idpClientId` | Required. |
+| `idpClientSecret` | Required. Encrypted at rest, never returned. |
+| `idpRedirectUri` | Optional. Default `https://{HUB_PUBLIC_URL}/oauth/tenant/callback`. |
+| `idpScopes` | Optional. Default `["openid","email","profile"]`. |
+| `idpAlgorithms` | Optional. Default `["RS256"]`. |
+| `emailDomain` | Optional. Unique when it is set. |
+| `clientId` | Required. The client id of the gateway of the tenant at Hub. Unique across the tenants. |
+| `clientSecret` | Required. Encrypted at rest, never returned. |
+| `autoProvision` | Optional. Default `false`. |
+| `sharedClient` | Optional. Default `false`. |
+| `default` | Optional. Default `false`. At most one tenant is the default. |
+| `enabled` | Optional. Default `true`. |
+
+`201` when the tenant was created, `200` when it was updated. `409
+conflict` when the client id belongs to another tenant, or when a second
+tenant would become the default.
+
+```json
+{
+  "id": "6f0f…", "slug": "acme", "displayName": "Acme Inc",
+  "issuer": "https://login.acme.example", "emailDomain": "acme.example",
+  "clientId": "shuttle-acme", "autoProvision": false, "sharedClient": false,
+  "default": false, "enabled": true,
+  "createdAt": "2026-01-08T10:00:00.000Z"
+}
+```
+
+### `GET /v1/admin/tenants`
+
+The list of the tenants, with their counts.
+
+```bash
+curl -sS https://hub.example.com/v1/admin/tenants \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+```
+
+```json
+{
+  "tenants": [
+    {
+      "id": "6f0f…", "slug": "acme", "displayName": "Acme Inc",
+      "issuer": "https://login.acme.example", "emailDomain": "acme.example",
+      "clientId": "shuttle-acme", "autoProvision": false, "sharedClient": false,
+      "default": false, "enabled": true,
+      "userCount": 42, "grantCount": 57,
+      "createdAt": "2026-01-08T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+### `POST /v1/admin/users`
+
+Creates a principal, or updates the principal of that `(tenant,
+externalSubject)` pair (an upsert). This is the endpoint that registers a
+caller before its first login, and the one that disables a caller.
+
+```bash
+curl -sS -X POST https://hub.example.com/v1/admin/users \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{
+        "tenant": "acme",
+        "externalSubject": "00u1a2b3c4d5",
+        "email": "alice@acme.example",
+        "displayName": "Alice",
+        "status": "active"
+      }'
+```
+
+| Field | Rule |
+| --- | --- |
+| `tenant` | Required. The slug of the tenant. |
+| `externalSubject` | Required. The `sub` of the provider of the tenant. |
+| `email` | Optional. The e-mail to publish in the token until the provider says otherwise. |
+| `displayName` | Optional. |
+| `status` | Optional. `active` or `disabled`. Default `active`. |
+
+`201` when the principal was created, `200` when it was updated. `404
+not_found` when the tenant is unknown.
+
+```json
+{
+  "id": "b1c2…", "tenant": "acme", "externalSubject": "00u1a2b3c4d5",
+  "email": "alice@acme.example", "displayName": "Alice", "status": "active",
+  "lastLoginAt": null, "createdAt": "2026-01-08T10:05:00.000Z"
+}
+```
+
+### `GET /v1/admin/users`
+
+The list of the principals.
+
+```bash
+curl -sS "https://hub.example.com/v1/admin/users?tenant=acme&limit=50" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+```
+
+| Parameter | Rule |
+| --- | --- |
+| `tenant` | Optional. The slug of a tenant. Absent → every tenant. |
+| `status` | Optional. `active` or `disabled`. |
+| `email` | Optional. The exact e-mail of the principal. |
+| `limit` | Optional. Default `50`, maximum `200`. |
+| `offset` | Optional. Default `0`. |
+
+```json
+{
+  "principals": [
+    {
+      "id": "b1c2…", "tenant": "acme", "externalSubject": "00u1a2b3c4d5",
+      "email": "alice@acme.example", "displayName": "Alice", "status": "active",
+      "lastLoginAt": "2026-01-08T10:05:00.000Z",
+      "createdAt": "2026-01-08T10:00:00.000Z"
+    }
+  ],
+  "total": 42, "limit": 50, "offset": 0
+}
+```
+
+The order is the newest first (`created_at desc, id desc`), and it is
+stable: two pages never show the same row twice and never skip one. The
+list never carries a secret.
+
+### `PUT /v1/admin/grants`
+
+Creates a grant, or updates the grant of that `(tenant, user, permission,
+workspace, route)` tuple.
+
+```bash
+curl -sS -X PUT https://hub.example.com/v1/admin/grants \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{
+        "tenant": "acme",
+        "userId": "b1c2…",
+        "permission": "workspace.read",
+        "workspaceId": "11111111-1111-4111-8111-111111111111",
+        "routeId": "workspace-api",
+        "expiresAt": null
+      }'
+```
+
+| Field | Rule |
+| --- | --- |
+| `tenant` | Required. The slug of the tenant. |
+| `userId` | The id of the principal. Exactly one of `userId` and `group` is required. |
+| `group` | The key of the group of the grant. Exactly one of `userId` and `group` is required. |
+| `permission` | Required. The key of the permission. The row is **created on demand** when it does not exist, in the scope of the tenant. |
+| `workspaceId` | Optional. `null` (the default) is every workspace of the tenant. |
+| `routeId` | Optional. `null` (the default) is every route. |
+| `expiresAt` | Optional. `null` (the default) is a grant that does not expire. An ISO 8601 moment. |
+| `grantedBy` | Optional. Who grants it, for the audit log. |
+
+```json
+{
+  "id": "d3e4…", "tenant": "acme", "userId": "b1c2…",
+  "permission": "workspace.read",
+  "workspaceId": "11111111-1111-4111-8111-111111111111",
+  "routeId": "workspace-api", "expiresAt": null, "revokedAt": null,
+  "createdAt": "2026-01-08T10:06:00.000Z"
+}
+```
+
+### `DELETE /v1/admin/grants/{id}`
+
+Revokes a grant. The row is kept and stamped with `revoked_at`.
+
+```bash
+curl -sS -X DELETE https://hub.example.com/v1/admin/grants/d3e4… \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" -i
+```
+
+```
+HTTP/1.1 204 No Content
+```
+
+The call is **idempotent**: a grant that is already revoked answers `204`
+as well. `404 not_found` when the id does not exist.
+
+### `GET /v1/admin/grants`
+
+The list of the grants.
+
+```bash
+curl -sS "https://hub.example.com/v1/admin/grants?tenant=acme&live=true" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+```
+
+| Parameter | Rule |
+| --- | --- |
+| `tenant` | Optional. The slug of a tenant. Absent → every tenant. |
+| `userId` | Optional. The id of a principal. |
+| `live` | Optional. `true` → the grants that are not revoked and not expired. `false` → the others. Absent → every grant. |
+| `limit` | Optional. Default `50`, maximum `200`. |
+| `offset` | Optional. Default `0`. |
+
+```json
+{
+  "grants": [
+    {
+      "id": "d3e4…", "tenant": "acme", "userId": "b1c2…",
+      "permission": "workspace.read",
+      "workspaceId": "11111111-1111-4111-8111-111111111111",
+      "routeId": "workspace-api", "expiresAt": null, "revokedAt": null,
+      "grantedBy": "ops@example.com",
+      "createdAt": "2026-01-08T10:10:00.000Z"
+    }
+  ],
+  "total": 57, "limit": 50, "offset": 0
+}
+```
+
+### `POST /v1/admin/groups`
+
+Creates a group, or changes the group of that key (an upsert). The call
+**replaces** the membership of the group.
+
+```bash
+curl -sS -X POST https://hub.example.com/v1/admin/groups \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{
+        "tenant": "acme",
+        "key": "team-platform",
+        "displayName": "The platform team",
+        "members": ["00u1a2b3c4d5", "00u9z8y7x6w5"]
+      }'
+```
+
+| Field | Rule |
+| --- | --- |
+| `tenant` | Required. The slug of the tenant. |
+| `key` | Required. `[a-z0-9][a-z0-9._-]{0,63}`. |
+| `displayName` | Optional. |
+| `members` | Optional. The **external subjects** of the principals of the group. |
+
+A member that is not a principal of the tenant → `404 not_found`: a group
+cannot name a principal that does not exist.
+
+```json
+{
+  "id": "e5f6…", "tenant": "acme", "key": "team-platform",
+  "displayName": "The platform team",
+  "members": ["00u1a2b3c4d5", "00u9z8y7x6w5"],
+  "createdAt": "2026-01-08T10:20:00.000Z"
+}
+```
+
+---
+
+## The session in eight calls
+
+The whole life of a tenant, from the registration to the revocation.
+
+```bash
+export HUB=https://hub.example.com
+export HUB_ADMIN_TOKEN=…
+
+# 1. the tenant and the registration of its gateway
+curl -sS -X POST $HUB/v1/admin/tenants \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"slug":"acme","displayName":"Acme Inc","issuer":"https://login.acme.example",
+       "idpClientId":"hub-acme","idpClientSecret":"…","clientId":"shuttle-acme",
+       "clientSecret":"…","emailDomain":"acme.example"}'
+
+# 2. the tenants, with their counts
+curl -sS $HUB/v1/admin/tenants -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+
+# 3. the principals of the tenant
+curl -sS "$HUB/v1/admin/users?tenant=acme" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+
+# 4. the principal of the external identity
+curl -sS -X POST $HUB/v1/admin/users \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"tenant":"acme","externalSubject":"00u1a2b3c4d5","email":"alice@acme.example"}'
+
+# 5. the grant: the permission on the workspace, on the route
+curl -sS -X PUT $HUB/v1/admin/grants \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"tenant":"acme","userId":"b1c2…","permission":"workspace.read",
+       "workspaceId":"11111111-1111-4111-8111-111111111111","routeId":"workspace-api"}'
+
+# 6. the grants of the tenant
+curl -sS "$HUB/v1/admin/grants?tenant=acme" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+
+# 7. the group and its membership: a grant of the group holds for every member
+curl -sS -X POST $HUB/v1/admin/groups \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"tenant":"acme","key":"team-platform","displayName":"The platform team",
+       "members":["00u1a2b3c4d5"]}'
+
+# 8. the revocation, when the access has to end
+curl -sS -X DELETE $HUB/v1/admin/grants/d3e4… -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+```
+
+The same sequence, run against a deployment, is
+`scripts/admin-smoke.ts`:
+
+```bash
+HUB_URL=$HUB HUB_ADMIN_TOKEN=$HUB_ADMIN_TOKEN bun run scripts/admin-smoke.ts
+```

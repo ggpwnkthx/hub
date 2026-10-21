@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The shadow comparison (the guide of the build, §8.3).
+ * The shadow comparison (docs/release.md §3).
  *
  * The tool asks Hub and the access service that is in production the
  * same decisions, and it reports the answers that differ. It reads the

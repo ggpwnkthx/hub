@@ -421,6 +421,25 @@ are exercised by the same fixture with two issuers.
 | HUB-071 | The comparison in shadow: a tool that asks Hub and the fixture of the access service the same decision and reports the differences. It is run before the cutover. | M |
 | HUB-072 | The runbook of the cutover (§12 of this guide). | M |
 
+**State**: the three tasks are done and the milestone is closed.
+
+**The evidence of the milestone**
+
+| Assertion of the specification | Result |
+| --- | --- |
+| §14.1 (1) A browser logs in at the provider of the tenant and comes back with a session | The gateway, unchanged, opens the browser at Hub, Hub brokers the login at the provider of the tenant and the gateway gets its session. |
+| §14.1 (2) The gateway writes `x-shuttle-user`, `x-shuttle-email` and `x-shuttle-roles` | The upstream of the test receives the three headers with the values of the principal. |
+| §14.1 (3) A request with a grant is forwarded, a request without one is `403 workspace_forbidden` | The decision of Hub denies the principal that has no grant and the gateway fails closed. |
+| §14.1 (4) A grant that is revoked is refused within the TTL of the cache | The cache of the gateway is at zero in the test: the revocation is immediate. |
+| §14.1 (5) The metrics of the gateway count the denial as `missing_role` | The reason of Hub carries the word *role* and the gateway counts it as `missing_role`. |
+
+**The decisions of the milestone**
+
+| Question | Decision | Where |
+| --- | --- | --- |
+| How is the gateway run against Hub? | As a process of the reference, with its own configuration: the tree of the reference is read-only and it is never modified. The CI checks that the tree is the one of `shuttle.ref`. | `test/compatibility/gateway.test.ts`, `.github/workflows/ci.yml` |
+| How is the principal that has no grant tested? | The fixture of the provider authenticates the callers as another subject: the fixture is the only thing that changes. | `test/fixtures/provider.ts` |
+
 **Exit criteria**
 
 - The contract suite of the gateway passes with Hub in place of the two
@@ -556,6 +575,7 @@ the coverage, and it is reviewed at the end of every milestone.
 | §2.1 (6) | No secret is returned or logged | `contract/administration.test.ts`, `observability.test.ts` |
 | §2.1 (7) | The reason never reaches a caller | `compatibility/gateway.test.ts` |
 | §2.1 (8) | The contract of the gateway does not change | `compatibility/gateway.test.ts` |
+| §14.1 | The five assertions of the compatibility | `compatibility/gateway.test.ts` |
 | §3.1–3.4 | The constraints of the four tables | `integration/schema.test.ts` |
 | §3.6 | The migrations and the schema of the database | `integration/schema.test.ts` |
 | §3.7 | The database of a development machine | `runtime/env.test.ts`, `integration/schema.test.ts` |

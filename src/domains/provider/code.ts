@@ -28,6 +28,8 @@ export interface CodeRecord {
   audience: string
   /** The scopes of the login. */
   scopes: string[]
+  /** The nonce of the login, when there was one. */
+  nonce?: string
   /** The moment the code was created, in milliseconds. */
   createdAt: number
 }

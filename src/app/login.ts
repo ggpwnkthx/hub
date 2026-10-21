@@ -153,6 +153,7 @@ export async function callbackHandler(
       tenant: completed.principal.tenantSlug,
       audience: completed.tenant.clientId,
       scopes: completed.scopes,
+      nonce: completed.nonce,
     })
     const url = new URL(completed.redirectUri)
     url.searchParams.set('code', code)

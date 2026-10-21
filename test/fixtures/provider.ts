@@ -54,6 +54,8 @@ export interface ProviderFixture {
   clientSecret: string
   /** The subject of the caller. */
   subject: string
+  /** Authenticates the next callers as another subject. */
+  authenticateAs: (subject: string) => void
   /** Stops the fixture. */
   stop: () => Promise<void>
   /** The number of calls to the token endpoint. */
@@ -62,7 +64,7 @@ export interface ProviderFixture {
 
 /** Starts the fixture of a provider. */
 export async function startProviderFixture(options: FixtureOptions = {}): Promise<ProviderFixture> {
-  const subject = options.subject ?? 'the-subject-of-the-caller'
+  let subject = options.subject ?? 'the-subject-of-the-caller'
   const email = options.email ?? 'alice@acme.example'
   const name = options.name ?? 'Alice'
   const clientId = 'hub-acme'
@@ -162,6 +164,9 @@ export async function startProviderFixture(options: FixtureOptions = {}): Promis
   })
 
   return {
+    authenticateAs: (value: string) => {
+      subject = value
+    },
     url: `http://127.0.0.1:${server.port}`,
     issuer: `http://127.0.0.1:${server.port}`,
     clientId,

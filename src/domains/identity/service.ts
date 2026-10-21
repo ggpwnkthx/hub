@@ -90,6 +90,8 @@ export interface CompletedLogin {
   codeChallenge?: string
   /** The state of the gateway, to be sent back with the code. */
   state: string
+  /** The nonce of the login, when there was one. */
+  nonce?: string
   /** The scopes of the request. */
   scopes: string[]
   /** True when the principal was created by this login. */
@@ -225,6 +227,7 @@ export class LoginService {
       redirectUri: state.redirectUri,
       ...(state.codeChallenge ? { codeChallenge: state.codeChallenge } : {}),
       state: state.state,
+      nonce: state.nonce,
       scopes: state.scopes,
       created: mapping.created,
     }

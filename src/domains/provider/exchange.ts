@@ -82,6 +82,7 @@ export class CodeService {
     tenant: string
     audience: string
     scopes: string[]
+    nonce?: string
   }): Promise<string> {
     const code = aCode()
     const record: CodeRecord = {
@@ -92,6 +93,7 @@ export class CodeService {
       tenant: options.tenant,
       audience: options.audience,
       scopes: options.scopes,
+      ...(options.nonce ? { nonce: options.nonce } : {}),
       createdAt: Date.now(),
     }
     await this.options.store.put(hashOf(code), record, CODE_TTL_SECONDS)
@@ -146,6 +148,7 @@ export class CodeService {
       email: principal.email,
       displayName: principal.displayName,
       scopes: record.scopes,
+      nonce: record.nonce,
     })
   }
 }

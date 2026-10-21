@@ -69,6 +69,40 @@ jobs:
         env:
           HUB_TEST_DATABASE_URL: postgres://hub:hub@localhost:5432/hub
 
+  compatibility:
+    name: the gateway of the reference, unchanged, against Hub
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: install
+        run: bun install --frozen-lockfile
+
+      - name: the reference of the gateway
+        run: |
+          git clone https://github.com/ggpwnkthx/shuttle.git ../shuttle
+          git -C ../shuttle checkout $(cat shuttle.ref)
+          cd ../shuttle
+          bun install --frozen-lockfile
+
+      - name: the compatibility suite
+        run: bun test test/compatibility
+
+      - name: the reference was not modified
+        run: |
+          # The gateway is read-only: a change in the tree of the reference
+          # fails the build.
+          if [ -n "$(git -C ../shuttle status --porcelain)" ]; then
+            echo "the tree of the reference was modified"
+            git -C ../shuttle status --porcelain
+            exit 1
+          fi
+          echo "the tree of the reference is the one of $(cat shuttle.ref)"
+
   image:
     name: the production image
     runs-on: ubuntu-latest

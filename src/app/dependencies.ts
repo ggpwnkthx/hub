@@ -39,6 +39,7 @@ export interface CodePort {
     tenant: string
     audience: string
     scopes: string[]
+    nonce?: string
   }) => Promise<string>
   /** Exchanges a code for the tokens. */
   exchange: (options: {

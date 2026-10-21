@@ -117,7 +117,9 @@ export interface RuntimeSettings {
 }
 
 /** The issuer of a development deployment. */
-export const DEVELOPMENT_ISSUER = 'http://localhost:8081'
+export function developmentIssuer(port: number): string {
+  return `http://localhost:${port}`
+}
 
 /** The smallest size of a secret, in bytes. */
 export const MINIMUM_SECRET_BYTES = 32
@@ -242,7 +244,7 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
 
   // The urls the browser and the gateway use. A value that is not a url is
   // a setting that looks active but is not.
-  const issuer = parsed.HUB_ISSUER ?? (production ? undefined : DEVELOPMENT_ISSUER)
+  const issuer = parsed.HUB_ISSUER ?? (production ? undefined : developmentIssuer(parsed.HUB_PORT))
   if (!issuer) {
     problems.push(
       'HUB_ISSUER must be set in a production environment: it is the issuer of the tokens of Hub and the one the gateway is configured with'

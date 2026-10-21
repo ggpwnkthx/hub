@@ -109,6 +109,23 @@ probes and is deployed like the gateway.
 | HUB-006 | The CI workflow: the type check, the lint, the unit tests, the architecture test, the build of the image. | S |
 | HUB-007 | The Dockerfile: the image of the gateway as a model, a non-root user, no build tools in the final image, the pinned base image by digest. | S |
 
+**State**: the seven tasks are done. The image is built by the CI workflow
+(the runner of the repository does not run a container engine), the
+readiness answers `503 not-ready` until the database is connected in M1 and
+the metrics endpoint is not part of this milestone: it arrives with the
+metrics of the decision (HUB-034).
+
+**The decisions of the milestone**
+
+| Question | Decision | Where |
+| --- | --- | --- |
+| Which variables stop a production deployment? | The nine of spec §4.4, and every problem of the environment is reported at once. The level of the log is the only value that falls back. | spec §4.4, `src/runtime/env.ts` |
+| What is the size of a secret? | 32 bytes, counted the way the secret is read: 64 hexadecimal characters or 44 base64 characters. | spec §4.4, `src/runtime/env.ts` |
+| Where is the environment read? | In `src/runtime/env.ts` only. The architecture checker refuses `process.env` anywhere else. | `scripts/architecture.ts` |
+| What is the deadline of the drain? | Five seconds, and it is not a variable: spec §11.4 fixes it. | `src/runtime/lifecycle.ts` |
+| What does the readiness answer while the database is absent? | `503 {"status":"not-ready"}`: the service is honest about what it cannot do. | spec §11.1, `src/app/endpoints.ts` |
+| May the four domains of Hub depend on each other? | No. They are independent and they share the four tables, which are read through the platform. | `scripts/architecture.ts` |
+
 **Exit criteria**
 
 - `bun run typecheck`, `bun run lint` and `bun test` pass in the CI.
@@ -204,6 +221,7 @@ secret in the table.
 | HUB-033 | The timeout of the decision: `HUB_DECISION_TIMEOUT_MS`, the cancellation of the query, the denial on the timeout. | M |
 | HUB-034 | The metrics of the decision: the counter, the histogram, the bounded label of the tenant (spec §11.2). | S |
 | HUB-035 | The log of the decision: the subject, the workspace, the route, the answer, the reason, the duration. | S |
+| HUB-036 | The endpoint of the metrics: the `404` without a token, the `401` with a wrong one, the Prometheus text (spec §5.1, §11.2). | S |
 
 **Exit criteria**
 
@@ -388,6 +406,7 @@ comes back with a principal.
 | HUB-033 | M3 | The timeout of the decision | M | HUB-031 |
 | HUB-034 | M3 | The metrics of the decision | S | HUB-031 |
 | HUB-035 | M3 | The log of the decision | S | HUB-031 |
+| HUB-036 | M3 | The endpoint of the metrics | S | HUB-034 |
 | HUB-040 | M4 | The signing key | M | HUB-002 |
 | HUB-041 | M4 | The JWKS and the discovery | M | HUB-040 |
 | HUB-042 | M4 | The issuance of the tokens | M | HUB-040, HUB-054 |
@@ -451,6 +470,10 @@ the coverage, and it is reviewed at the end of every milestone.
 | §2.1 (8) | The contract of the gateway does not change | `compatibility/gateway.test.ts` |
 | §3.1–3.4 | The constraints of the four tables | `integration/schema.test.ts` |
 | §4 | The environment is validated as a whole | `runtime/env.test.ts` |
+| §11.1 | The probes | `contract/probes.test.ts` |
+| §11.3 | No secret reaches a log line | `observability/logging.test.ts` |
+| §11.4 | The drain | `runtime/lifecycle.test.ts`, `contract/lifecycle.test.ts` |
+| §15 | The import boundaries of Hub | `architecture/imports.test.ts` |
 | §4.3 | The secrets are encrypted at rest | `integration/secrets.test.ts` |
 | §5.2 | The resolution of the tenant | `identity/tenant.test.ts` |
 | §5.3 | The state is single use | `identity/login-state.test.ts` |

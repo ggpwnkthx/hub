@@ -322,6 +322,34 @@ Changing `HUB_SECRET_ENCRYPTION_KEY` makes every stored secret
 unreadable. The migration is a re-encryption of the two columns, done by
 the operator, in one transaction.
 
+### 4.4 What a production deployment needs
+
+A production deployment (`HUB_ENVIRONMENT=production`) refuses to start
+when one of these is missing. Every problem of the environment is reported
+at once and the message names the variables that are missing: a deployment
+that fixes one variable and restarts to learn about the next one stays
+down.
+
+| Variable                  | Why it is required                                                              |
+| ------------------------- | ------------------------------------------------------------------------------- |
+| `HUB_DATABASE_URL`        | The four tables live there. It is required in every environment.                 |
+| `HUB_ISSUER`              | It is the `iss` of every token Hub issues and the issuer the gateway is configured with. |
+| `HUB_REDIS_URL`           | The authorization codes have to be shared by the replicas, unless `HUB_ALLOW_MEMORY_STATE=true` names a deployment of a single node. |
+| `HUB_ADMIN_TOKEN`         | It is the bearer token of the five administrative endpoints.                     |
+| `HUB_ACCESS_TOKEN`        | It is the bearer token the gateway presents on `POST /v1/decisions`.             |
+| `HUB_STATE_SECRET`        | It signs and encrypts the state of a login. At least 32 bytes.                  |
+| `HUB_SECRET_ENCRYPTION_KEY` | It encrypts the client secrets at rest. At least 32 bytes.                    |
+| `HUB_SIGNING_KEY`         | It is the private key Hub signs its tokens with, in PEM.                         |
+| `HUB_SIGNING_KID`         | It is the identifier of the key in the JWKS.                                     |
+
+A secret is at least 32 bytes long. A secret that is handed over as a hex
+string or as a base64 string is counted the way it is read: 32 bytes are 64
+hexadecimal characters and 44 base64 characters.
+
+The level of the log is the only value of the environment that does not
+stop the service: a typo in the level of a log must not keep a deployment
+down.
+
 ---
 
 ## 5. The login
@@ -1018,9 +1046,9 @@ other denial is `access_denied` (§6 of the spec of the gateway).
 `GET /healthz` answers `200 {"status":"ok","service":"hub","version":"0.1.0"}`
 as long as the process is alive.
 
-`GET /readyz` answers `200` when the database answers a trivial query and
-the migrations are applied, `503 {"status":"draining"}` during a drain and
-`503` otherwise.
+`GET /readyz` answers `200 {"status":"ready"}` when the database answers a
+trivial query and the migrations are applied, `503 {"status":"draining"}`
+during a drain and `503 {"status":"not-ready"}` otherwise.
 
 ### 11.2 The metrics
 

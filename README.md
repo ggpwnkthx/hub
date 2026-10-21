@@ -37,5 +37,25 @@ touched.
 ## The status
 
 The plan of the first release is in
-[IMPLEMENTATION.md](IMPLEMENTATION.md) §4. The service is not built yet:
-milestone M0 is the first one.
+[IMPLEMENTATION.md](IMPLEMENTATION.md) §4. The skeleton (milestone M0) is
+built: the process starts, validates its environment, answers the probes
+and drains on a signal.
+
+## Running it
+
+```bash
+bun install
+HUB_DATABASE_URL=postgres://hub:hub@localhost:5432/hub bun run src/main.ts
+```
+
+The environment is read in `src/runtime/env.ts` and validated as a whole:
+a value that cannot be understood stops the process and the message names
+the variable. The variables are in [SPEC.md](SPEC.md) §4.
+
+| Probe | What it answers |
+| --- | --- |
+| `GET /healthz` | `200 {"status":"ok","service":"hub","version":"0.1.0"}` |
+| `GET /readyz` | `200` when the database answers, `503 {"status":"draining"}` during a drain, `503 {"status":"not-ready"}` otherwise |
+
+The image is built with `docker build -f Dockerfile .`: it runs as a user
+that is not root and the base image is pinned by digest.

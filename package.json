@@ -1,0 +1,32 @@
+{
+  "name": "hub",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Hub: an OpenID Connect broker. It authenticates a caller against the provider of a tenant and answers the decisions of a gateway.",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "test": "bun test",
+    "test:unit": "bun test src",
+    "test:contract": "bun test test/contract",
+    "test:integration": "bun test test/integration",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "architecture": "bun run scripts/architecture.ts"
+  },
+  "dependencies": {
+    "hono": "4.13.13",
+    "pino": "10.4.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@types/bun": "1.4.3",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "bun": ">=1.4.3"
+  }
+}

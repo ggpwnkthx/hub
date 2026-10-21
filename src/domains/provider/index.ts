@@ -5,6 +5,10 @@
  * discovery document and the claims of the userinfo.
  */
 
+export type { CodeRecord, CodeStore } from './code'
+export { aCode, CODE_TTL_SECONDS, hashOf } from './code'
+export type { PrincipalLookup, PrincipalOfLogin, TokenIssuer } from './exchange'
+export { CodeService, ExchangeError } from './exchange'
 export {
   acceptedScopes,
   discoveryDocument,

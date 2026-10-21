@@ -345,6 +345,20 @@ comes back with a principal.
 | HUB-055 | The refusal pages of the login (spec §5.6): the provider unreachable, the token refused, the identity unknown, the principal disabled, the state invalid. | M |
 | HUB-056 | The multi-tenant fixture: two providers with two issuers, two tenants, two principals. The fixture of the Shuttle reference (`services/oidc-provider.ts`) is reused with a second issuer. | M |
 
+**State**: the seven tasks are done. The multi-tenant fixture is the one of
+the refusals and of the login: two providers, two issuers and two tenants
+are exercised by the same fixture with two issuers.
+
+**The decisions of the milestone**
+
+| Question | Decision | Where |
+| --- | --- | --- |
+| How is the state of the provider bound to the state cookie? | The state of the provider is derived from the fields of the cookie and from the secret of the deployment: it is bound to the cookie without being carried by it. | `src/domains/identity/service.ts` |
+| What does the state cookie carry? | The tenant, the client id, the redirect uri, the state of the gateway, the nonce, the verifier of the PKCE of the provider, the challenge of the PKCE of the gateway and the moment the login started. | `src/domains/identity/state.ts` |
+| Which provider does Hub talk to? | The one of the tenant, with the client id and the secret of the tenant. The url of the callback is the one of the registration of the tenant. | `src/runtime/composition.ts` |
+| Where does the client of the provider of a tenant live? | In the identity domain: it is the client of the provider of a tenant, not the provider of Hub. | `src/domains/identity/provider-client.ts` |
+| What does a provider that cannot be reached answer? | `502 upstream_unavailable`: the reason of the failure of the network never reaches the caller. | `src/domains/identity/provider-client.ts` |
+
 **Exit criteria**
 
 - A browser logs in at the provider of the tenant and reaches the
@@ -372,6 +386,17 @@ comes back with a principal.
 | HUB-061 | The token endpoint: the client authentication (`client_secret_basic`), the code, the redirect uri, the PKCE verifier against the challenge, the `invalid_grant`. | M |
 | HUB-062 | The answer of the token endpoint: the `id_token`, the `access_token`, the `expires_in`, the `token_type`. | M |
 | HUB-063 | The store of the codes: Redis, the failure of the store is an error and never a silent allowance. | M |
+
+**State**: the four tasks are done and the milestone is closed.
+
+**The decisions of the milestone**
+
+| Question | Decision | Where |
+| --- | --- | --- |
+| Where does the code live? | In the shared store, under a hash of itself: the store never holds a code that a reader could redeem. | `src/domains/provider/code.ts` |
+| How is the code single use? | The read and the delete are one operation (`GETDEL` in Redis): a code that is redeemed twice finds nothing. | `src/platform/redis/store.ts` |
+| How is the client of the token endpoint authenticated? | With `client_secret_basic` and a comparison in constant time; a client without a secret is refused. | `src/app/oauth.ts` |
+| What does the exchange refuse? | A code that is unknown, a code of another client, a code of another redirect uri and a verifier that does not match the challenge: `invalid_grant` in the four cases. | `src/domains/provider/exchange.ts` |
 
 **Exit criteria**
 
@@ -542,10 +567,13 @@ the coverage, and it is reviewed at the end of every milestone.
 | §15 | The import boundaries of Hub | `architecture/imports.test.ts` |
 | §4.3 | The secrets are encrypted at rest | `postgres/secrets.test.ts`, `integration/rotation.test.ts` |
 | §5.2 | The resolution of the tenant | `identity/tenant.test.ts` |
-| §5.3 | The state is single use | `identity/login-state.test.ts` |
-| §5.5 | The code is single use and bound | `provider/code.test.ts` |
+| §5.2 | The resolution of the tenant | `identity/identity.test.ts` |
+| §5.3 | The state of a login is encrypted and single use | `identity/identity.test.ts`, `contract/login.test.ts` |
+| §5.5 | The code is single use and bound | `contract/login.test.ts` |
+| §5.6 | The refusals of the login | `contract/refusals.test.ts` |
+| §6.1 | The validation of the token of un provider | `identity/identity.test.ts`, `contract/refusals.test.ts` |
 | §6.1 | The validation of the token of a provider | `identity/token-validation.test.ts` |
-| §6.4 | The auto-provisioning creates a principal without a grant | `identity/mapping.test.ts` |
+| §6.4 | The auto-provisioning creates a principal without a grant | `identity/identity.test.ts`, `contract/refusals.test.ts` |
 | §7.1, §7.3 | The claims of the token | `provider/provider.test.ts` |
 | §7.5 | The discovery document, the JWKS and the userinfo | `provider/provider.test.ts`, `contract/provider.test.ts` |
 | §8.1–8.3 | The contract and the rule of the decision | `contract/decisions.test.ts`, `authorization/decision.test.ts`, `app/decisions.test.ts` |

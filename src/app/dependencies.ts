@@ -8,8 +8,54 @@
 
 import type { AdministrationService } from '../domains/administration'
 import type { DecisionStore } from '../domains/authorization'
-import type { ProviderService } from '../domains/provider'
+import type { AuthorizationRequest, BegunLogin, CompletedLogin } from '../domains/identity'
+import type { ProviderService, TokenPair } from '../domains/provider'
 import type { Logger, Observer } from '../observability'
+
+/** The login of the callers, as the application sees it. */
+export interface LoginPort {
+  /** Starts a login. */
+  begin: (request: AuthorizationRequest) => Promise<BegunLogin>
+  /** Finishes a login. */
+  complete: (options: {
+    cookie: string | undefined
+    providerState: string
+    code: string
+  }) => Promise<CompletedLogin>
+  /** The redirect uri of the state of a login. */
+  redirectUriOf: (cookie: string | undefined) => Promise<string | null>
+  /** The state of the gateway of the state of a login. */
+  stateOf: (cookie: string | undefined) => Promise<string | null>
+}
+
+/** The codes of the logins, as the application sees them. */
+export interface CodePort {
+  /** Issues a code for a completed login. */
+  issue: (options: {
+    clientId: string
+    redirectUri: string
+    codeChallenge?: string
+    subject: string
+    tenant: string
+    audience: string
+    scopes: string[]
+  }) => Promise<string>
+  /** Exchanges a code for the tokens. */
+  exchange: (options: {
+    code: string
+    clientId: string
+    redirectUri: string
+    codeVerifier?: string
+  }) => Promise<TokenPair>
+}
+
+/** The tenants of the platform, as the application sees them. */
+export interface TenantPort {
+  /** The tenant of a client id of a gateway. */
+  findByClientId: (clientId: string) => Promise<{ id: string; clientId: string } | null>
+  /** The secret of the gateway of a tenant, in clear. */
+  gatewaySecret: (tenantId: string) => Promise<string | null>
+}
 
 /**
  * The probe of the readiness.
@@ -45,6 +91,14 @@ export interface HubDependencies {
   observer: Observer
   /** The bearer token that guards the metrics endpoint. */
   metricsToken?: string
+  /** The login of the callers. */
+  login: LoginPort
+  /** The codes of the logins. */
+  codes: CodePort
+  /** The tenants of the platform. */
+  tenants: TenantPort
+  /** The `Secure` attribute of the cookies of the login. */
+  cookieSecure: boolean
   /** The public url of Hub, for the default callback of a tenant. */
   publicUrl: string
   /** The address of the peer of a request: the address of the socket. */

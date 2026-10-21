@@ -8,7 +8,10 @@
  */
 
 import { createHubApp, createHubHandler } from '../app/app'
-import { ProviderService } from '../domains/provider'
+import { LoginService, ProviderClient, createStateCipher } from '../domains/identity'
+import { CodeService, ProviderService } from '../domains/provider'
+import { createFetchTransport } from '../platform/bun/http'
+import { createStoreClient, MemoryCodeStore, RedisCodeStore } from '../platform/redis/store'
 import type { HubDependencies } from '../app/dependencies'
 import { createAdministrationService } from './adapters'
 import { createLogger, MetricsStore, type Logger, type Observer } from '../observability'
@@ -126,6 +129,22 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
   // is built after the application: the holder is filled in below.
   const peer = { address: (_request: Request) => '0.0.0.0' }
 
+  // The store of the authorization codes. It is shared by the replicas of
+  // a deployment: a code that lives in the memory of one replica is
+  // unknown to the others.
+  const transport = createFetchTransport()
+  const storeClient = settings.store.url
+    ? await createStoreClient({
+        url: settings.store.url,
+        onError: (error) => {
+          logger.warn('the shared store is not reachable', { error })
+          observer.recordStoreError('redis')
+        },
+      })
+    : undefined
+  const codes = new MemoryCodeStore()
+  const codeStore = storeClient ? new RedisCodeStore(storeClient) : codes
+
   // The provider of the gateway: the keys, the discovery document and the
   // tokens of the principal.
   const provider = new ProviderService({
@@ -163,6 +182,154 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     logger.warn('the service cannot issue a token: it has no signing key')
   }
 
+  // The login of the callers: the tenant of the login, the state of the
+  // login, the provider of the tenant and the mapping of the identity.
+  const login = new LoginService({
+    tenants: {
+      findByClientId: async (clientId: string) => {
+        const tenant = await repositories.tenants.findByClientId(clientId)
+        if (!tenant) return null
+        return {
+          id: tenant.id,
+          slug: tenant.slug,
+          enabled: tenant.enabled,
+          sharedClient: tenant.sharedClient,
+          isDefault: tenant.isDefault,
+          autoProvision: tenant.autoProvision,
+          issuer: tenant.idpIssuer,
+          idpClientId: tenant.idpClientId,
+          idpRedirectUri: tenant.idpRedirectUri,
+          emailDomain: tenant.emailDomain,
+          clientId: tenant.clientId,
+          scopes: tenant.idpScopes,
+          algorithms: tenant.idpAlgorithms,
+        }
+      },
+      findBySlug: async (slug: string) => {
+        const tenant = await repositories.tenants.findBySlug(slug)
+        if (!tenant) return null
+        return {
+          id: tenant.id,
+          slug: tenant.slug,
+          enabled: tenant.enabled,
+          sharedClient: tenant.sharedClient,
+          isDefault: tenant.isDefault,
+          autoProvision: tenant.autoProvision,
+          issuer: tenant.idpIssuer,
+          idpClientId: tenant.idpClientId,
+          idpRedirectUri: tenant.idpRedirectUri,
+          emailDomain: tenant.emailDomain,
+          clientId: tenant.clientId,
+          scopes: tenant.idpScopes,
+          algorithms: tenant.idpAlgorithms,
+        }
+      },
+      findByEmailDomain: async (emailDomain: string) => {
+        const tenant = await repositories.tenants.findByEmailDomain(emailDomain)
+        if (!tenant) return null
+        return {
+          id: tenant.id,
+          slug: tenant.slug,
+          enabled: tenant.enabled,
+          sharedClient: tenant.sharedClient,
+          isDefault: tenant.isDefault,
+          autoProvision: tenant.autoProvision,
+          issuer: tenant.idpIssuer,
+          idpClientId: tenant.idpClientId,
+          idpRedirectUri: tenant.idpRedirectUri,
+          emailDomain: tenant.emailDomain,
+          clientId: tenant.clientId,
+          scopes: tenant.idpScopes,
+          algorithms: tenant.idpAlgorithms,
+        }
+      },
+      findDefault: async () => {
+        const tenant = await repositories.tenants.findDefault()
+        if (!tenant) return null
+        return {
+          id: tenant.id,
+          slug: tenant.slug,
+          enabled: tenant.enabled,
+          sharedClient: tenant.sharedClient,
+          isDefault: tenant.isDefault,
+          autoProvision: tenant.autoProvision,
+          issuer: tenant.idpIssuer,
+          idpClientId: tenant.idpClientId,
+          idpRedirectUri: tenant.idpRedirectUri,
+          emailDomain: tenant.emailDomain,
+          clientId: tenant.clientId,
+          scopes: tenant.idpScopes,
+          algorithms: tenant.idpAlgorithms,
+        }
+      },
+    },
+    principals: {
+      findByExternalSubject: async (tenantId: string, externalSubject: string) => {
+        const principal = await repositories.users.findByExternalSubject(tenantId, externalSubject)
+        if (!principal) return null
+        return {
+          id: principal.id,
+          tenantId: principal.tenantId,
+          tenantSlug: principal.tenantSlug,
+          externalSubject: principal.externalSubject,
+          email: principal.email,
+          displayName: principal.displayName,
+          status: principal.status,
+        }
+      },
+      create: async (principal) => {
+        const created = await repositories.users.create(principal)
+        return {
+          id: created.id,
+          tenantId: created.tenantId,
+          tenantSlug: created.tenantSlug,
+          externalSubject: created.externalSubject,
+          email: created.email,
+          displayName: created.displayName,
+          status: created.status,
+        }
+      },
+    },
+    state: createStateCipher(settings.secrets.stateSecret ?? 'the-state-of-the-development'),
+    clientOf: async (tenant) => {
+      const secret = await repositories.tenants.readProviderSecret(tenant.id)
+      return new ProviderClient({
+        issuer: tenant.issuer,
+        clientId: tenant.idpClientId,
+        clientSecret: secret ?? '',
+        redirectUri: tenant.idpRedirectUri,
+        scopes: tenant.scopes,
+        algorithms: tenant.algorithms,
+        transport,
+        cacheTtlMs: 600_000,
+      })
+    },
+    secret: settings.secrets.stateSecret ?? 'the-state-of-the-development',
+    clockSkewSeconds: settings.timeouts.clockSkewSeconds,
+    algorithmsOf: (tenant) => tenant.algorithms,
+  })
+
+  // The codes of the logins and their exchange.
+  const codeService = new CodeService({
+    store: codeStore,
+    principals: {
+      findById: async (id: string) => {
+        const principal = await repositories.users.findById(id)
+        if (!principal) return null
+        return {
+          id: principal.id,
+          email: principal.email,
+          displayName: principal.displayName,
+          tenantSlug: principal.tenantSlug,
+          status: principal.status,
+        }
+      },
+    },
+    tokens: {
+      issueTokens: async (subject) => await provider.issueTokens(subject),
+    },
+  })
+
   const dependencies: HubDependencies = {
     version: VERSION,
     logger,
@@ -184,6 +351,17 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     isDraining: () => state.draining,
     observer,
     provider,
+    login,
+    codes: codeService,
+    tenants: {
+      findByClientId: async (clientId: string) => {
+        const tenant = await repositories.tenants.findByClientId(clientId)
+        return tenant ? { id: tenant.id, clientId: tenant.clientId } : null
+      },
+      gatewaySecret: async (tenantId: string) =>
+        await repositories.tenants.readGatewaySecret(tenantId),
+    },
+    cookieSecure: settings.production,
     // The decision of the gateway: one statement over the tables of the
     // policy, with the deadline of the deployment.
     decisions: new DecisionRepository(traced, settings.timeouts.decisionTimeoutMs),
@@ -213,6 +391,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
   peer.address = listener.peerAddress
 
   const closeResources = async (): Promise<void> => {
+    await storeClient?.quit()
     await database.close()
   }
 

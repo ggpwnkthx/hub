@@ -17,6 +17,8 @@ import {
   tenantsHandler,
 } from './administration'
 import { decisionHandler } from './decisions'
+import { authorizeHandler, callbackHandler } from './login'
+import { tokenHandler } from './oauth'
 import { healthHandler, readyHandler } from './endpoints'
 import { metricsHandler } from './metrics'
 import { discoveryHandler, jwksHandler, userinfoHandler } from './provider'
@@ -99,6 +101,14 @@ export function createHubApp(dependencies: HubDependencies): Hono<HubEnv> {
   // The probes of the service.
   app.get('/healthz', (context) => healthHandler(context, dependencies))
   app.get('/readyz', async (context) => await readyHandler(context, dependencies))
+
+  // The login of the callers: the gateway sends the browser here and the
+  // provider of the tenant sends it back.
+  app.get('/oauth/authorize', async (context) => await authorizeHandler(context, dependencies))
+  app.get('/oauth/tenant/callback', async (context) => await callbackHandler(context, dependencies))
+
+  // The token endpoint of the gateway.
+  app.post('/oauth/token', async (context) => await tokenHandler(context, dependencies))
 
   // The provider of the gateway: the discovery document, the keys and the
   // claims of a principal.

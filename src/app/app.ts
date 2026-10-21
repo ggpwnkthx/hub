@@ -19,6 +19,7 @@ import {
 import { decisionHandler } from './decisions'
 import { healthHandler, readyHandler } from './endpoints'
 import { metricsHandler } from './metrics'
+import { discoveryHandler, jwksHandler, userinfoHandler } from './provider'
 import { jsonError } from './errors'
 import type { HubEnv, HubState } from './state'
 
@@ -98,6 +99,15 @@ export function createHubApp(dependencies: HubDependencies): Hono<HubEnv> {
   // The probes of the service.
   app.get('/healthz', (context) => healthHandler(context, dependencies))
   app.get('/readyz', async (context) => await readyHandler(context, dependencies))
+
+  // The provider of the gateway: the discovery document, the keys and the
+  // claims of a principal.
+  app.get(
+    '/.well-known/openid-configuration',
+    async (context) => await discoveryHandler(context, dependencies)
+  )
+  app.get('/oauth/jwks', async (context) => await jwksHandler(context, dependencies))
+  app.get('/oauth/userinfo', async (context) => await userinfoHandler(context, dependencies))
 
   // The decision contract of the gateway.
   app.post('/v1/decisions', async (context) => await decisionHandler(context, dependencies))

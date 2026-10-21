@@ -8,6 +8,7 @@
 
 import type { AdministrationService } from '../domains/administration'
 import type { DecisionStore } from '../domains/authorization'
+import type { ProviderService } from '../domains/provider'
 import type { Logger, Observer } from '../observability'
 
 /**
@@ -36,6 +37,8 @@ export interface HubDependencies {
   administration: AdministrationService
   /** The decision of the gateway. */
   decisions: DecisionStore
+  /** The provider of the gateway: the JWKS, the discovery and the tokens. */
+  provider: ProviderService
   /** The bearer token the gateway presents on the decisions. */
   accessToken?: string
   /** The observer of the service. */

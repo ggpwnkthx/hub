@@ -8,6 +8,7 @@
  */
 
 import { createHubApp, createHubHandler } from '../app/app'
+import { ProviderService } from '../domains/provider'
 import type { HubDependencies } from '../app/dependencies'
 import { createAdministrationService } from './adapters'
 import { createLogger, MetricsStore, type Logger, type Observer } from '../observability'
@@ -125,6 +126,43 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
   // is built after the application: the holder is filled in below.
   const peer = { address: (_request: Request) => '0.0.0.0' }
 
+  // The provider of the gateway: the keys, the discovery document and the
+  // tokens of the principal.
+  const provider = new ProviderService({
+    signingKey: settings.signing.key,
+    signingKid: settings.signing.kid,
+    previousSigningKey: settings.signing.previousKey,
+    previousSigningKid: settings.signing.previousKid,
+    issuer: settings.public.issuer,
+    publicUrl: settings.public.publicUrl,
+    roles: {
+      roleKeys: async (userId: string) => await repositories.grants.findLivePermissionKeys(userId),
+    },
+    principals: {
+      findById: async (id: string) => {
+        const principal = await repositories.users.findById(id)
+        if (!principal) return null
+        return {
+          id: principal.id,
+          email: principal.email,
+          displayName: principal.displayName,
+          status: principal.status,
+        }
+      },
+    },
+    audiences: {
+      isKnown: async (clientId: string) =>
+        (await repositories.tenants.findByClientId(clientId)) !== null,
+    },
+    onRolesDropped: (count, subject) => {
+      logger.warn('the roles of the token are capped', { subject, dropped: count })
+    },
+  })
+  await provider.load()
+  if (!provider.ready) {
+    logger.warn('the service cannot issue a token: it has no signing key')
+  }
+
   const dependencies: HubDependencies = {
     version: VERSION,
     logger,
@@ -145,6 +183,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     },
     isDraining: () => state.draining,
     observer,
+    provider,
     // The decision of the gateway: one statement over the tables of the
     // policy, with the deadline of the deployment.
     decisions: new DecisionRepository(traced, settings.timeouts.decisionTimeoutMs),

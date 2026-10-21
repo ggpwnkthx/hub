@@ -24,6 +24,7 @@ function dependencies(decide: () => Promise<DecisionFacts>): HubDependencies {
     probe: { ready: async () => true },
     isDraining: () => false,
     administration: {} as HubDependencies['administration'],
+    provider: {} as HubDependencies['provider'],
     decisions: { decide },
     accessToken: TOKEN,
     publicUrl: 'https://hub.example.com',

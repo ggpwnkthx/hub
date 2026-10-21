@@ -138,6 +138,26 @@ export class GrantRepository {
     return rows.map(toRow)
   }
 
+  /**
+   * The keys of the permissions of the live grants of a principal.
+   *
+   * They are the roles of the token (spec §7.3): not revoked, not
+   * expired, with an enabled permission.
+   */
+  async findLivePermissionKeys(userId: string): Promise<string[]> {
+    const rows = await this.db.query<{ key: string }>(
+      `select distinct permissions.key
+       from grants join permissions on permissions.id = grants.permission_id
+       where grants.user_id = $1
+         and grants.revoked_at is null
+         and (grants.expires_at is null or grants.expires_at > now())
+         and permissions.enabled
+       order by permissions.key`,
+      [userId]
+    )
+    return rows.map((row) => row.key)
+  }
+
   /** The grants of a tenant, the revoked ones included. */
   async findByTenant(tenantId: string): Promise<GrantRow[]> {
     const rows = await this.db.query<GrantRecord>(

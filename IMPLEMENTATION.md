@@ -304,6 +304,18 @@ down.
 | HUB-044 | The userinfo endpoint. | S |
 | HUB-045 | The fixture of a provider that signs with the wrong key, the wrong issuer, the wrong audience and a wrong nonce, for the tests of M5. | M |
 
+**State**: the six tasks are done and the milestone is closed. HUB-045 is
+the fixture of the broken provider: it is built with the milestone of the
+login, which is the one that uses it.
+
+**The decisions of the milestone**
+
+| Question | Decision | Where |
+| --- | --- | --- |
+| How is the rotation of the signing key done? | The previous key stays in the environment (`HUB_PREVIOUS_SIGNING_KEY`) and stays published in the JWKS; the tokens are signed with the current one. | spec §4.2, `src/domains/provider/keys.ts` |
+| Where do the claims of the userinfo come from? | From the principal row and from its live grants, not from the token: the userinfo is read at the moment of the call. | `src/domains/provider/service.ts` |
+| What does a deployment without a signing key do? | It starts and it says so: it cannot issue a token. The key is required in production (§4.4). | `src/runtime/composition.ts` |
+
 **Exit criteria**
 
 - The gateway, configured with the issuer of Hub, discovers Hub, reads
@@ -534,8 +546,8 @@ the coverage, and it is reviewed at the end of every milestone.
 | §5.5 | The code is single use and bound | `provider/code.test.ts` |
 | §6.1 | The validation of the token of a provider | `identity/token-validation.test.ts` |
 | §6.4 | The auto-provisioning creates a principal without a grant | `identity/mapping.test.ts` |
-| §7.1, §7.3 | The claims of the token | `provider/tokens.test.ts` |
-| §7.5 | The discovery document | `contract/discovery.test.ts` |
+| §7.1, §7.3 | The claims of the token | `provider/provider.test.ts` |
+| §7.5 | The discovery document, the JWKS and the userinfo | `provider/provider.test.ts`, `contract/provider.test.ts` |
 | §8.1–8.3 | The contract and the rule of the decision | `contract/decisions.test.ts`, `authorization/decision.test.ts`, `app/decisions.test.ts` |
 | §8.5 | The index of the decision | `scripts/explain-decision.ts` |
 | §8.7 | The reasons and the metric of the gateway | `authorization/decision.test.ts` |

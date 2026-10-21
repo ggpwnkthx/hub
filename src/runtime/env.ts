@@ -90,6 +90,10 @@ export interface SigningSettings {
   key?: string
   /** The identifier of the key in the JWKS. */
   kid?: string
+  /** The private key of the previous rotation, in PEM. */
+  previousKey?: string
+  /** The identifier of the previous key in the JWKS. */
+  previousKid?: string
 }
 
 /** The settings of the deadlines. */
@@ -196,6 +200,8 @@ const EnvSchema = z.object({
 
   HUB_SIGNING_KEY: z.string().optional(),
   HUB_SIGNING_KID: z.string().optional(),
+  HUB_PREVIOUS_SIGNING_KEY: z.string().optional(),
+  HUB_PREVIOUS_SIGNING_KID: z.string().optional(),
 
   HUB_IDP_TIMEOUT_MS: intEnv(5_000, { min: 1 }),
   HUB_DECISION_TIMEOUT_MS: intEnv(2_000, { min: 1 }),
@@ -407,6 +413,8 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
     signing: {
       key: parsed.HUB_SIGNING_KEY,
       kid: parsed.HUB_SIGNING_KID,
+      previousKey: parsed.HUB_PREVIOUS_SIGNING_KEY,
+      previousKid: parsed.HUB_PREVIOUS_SIGNING_KID,
     },
     timeouts: {
       idpTimeoutMs: parsed.HUB_IDP_TIMEOUT_MS,

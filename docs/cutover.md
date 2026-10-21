@@ -71,7 +71,7 @@ The phases and their gates are in [IMPLEMENTATION.md](../IMPLEMENTATION.md) §12
       environment of the target.
 - [ ] The shadow comparison answers zero difference for a day.
 - [ ] The compatibility suite is green.
-- [ ] The five calls of the session answer (`scripts/admin-smoke.ts`).
+- [ ] The eight calls of the session answer (`scripts/admin-smoke.ts`).
 - [ ] The signing key of Hub is the one of the environment of the target,
       and the gateway is configured with the same issuer.
 - [ ] The rollback of the configuration of the gateway is written down.

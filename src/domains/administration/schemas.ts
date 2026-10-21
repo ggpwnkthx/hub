@@ -44,16 +44,38 @@ export const PrincipalBody = z.object({
 })
 
 /** The body of the creation and of the change of a grant. */
-export const GrantBody = z.object({
+export const GrantBody = z
+  .object({
+    tenant: z.string().regex(SLUG_PATTERN, 'the tenant is the slug of a tenant of the platform'),
+    userId: z.string().uuid('the principal is an id').nullable().optional(),
+    group: z
+      .string()
+      .regex(PERMISSION_PATTERN, 'the group is [a-z0-9] and is 64 characters long at most')
+      .nullable()
+      .optional(),
+    permission: z
+      .string()
+      .regex(PERMISSION_PATTERN, 'the permission is [a-z0-9] and is 64 characters long at most'),
+    workspaceId: z.string().min(1).nullable().optional(),
+    routeId: z.string().min(1).nullable().optional(),
+    expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
+    grantedBy: z.string().min(1).nullable().optional(),
+  })
+  .refine((body) => (body.userId ?? null) !== (body.group ?? null), {
+    message: 'the grant names a principal or a group, and not both',
+  })
+
+/** The body of the creation and of the change of a group. */
+export const GroupBody = z.object({
   tenant: z.string().regex(SLUG_PATTERN, 'the tenant is the slug of a tenant of the platform'),
-  userId: z.string().uuid('the principal is an id'),
-  permission: z
+  key: z
     .string()
-    .regex(PERMISSION_PATTERN, 'the permission is [a-z0-9] and is 64 characters long at most'),
-  workspaceId: z.string().min(1).nullable().optional(),
-  routeId: z.string().min(1).nullable().optional(),
-  expiresAt: z.string().datetime({ offset: true }).nullable().optional(),
-  grantedBy: z.string().min(1).nullable().optional(),
+    .regex(
+      PERMISSION_PATTERN,
+      'the key of the group is [a-z0-9] and is 64 characters long at most'
+    ),
+  displayName: z.string().min(1).nullable().optional(),
+  members: z.array(z.string().min(1)).optional(),
 })
 
 /** The parsed body of a tenant. */
@@ -62,3 +84,5 @@ export type TenantInput = z.infer<typeof TenantBody>
 export type PrincipalInput = z.infer<typeof PrincipalBody>
 /** The parsed body of a grant. */
 export type GrantInput = z.infer<typeof GrantBody>
+/** The parsed body of a group. */
+export type GroupInput = z.infer<typeof GroupBody>

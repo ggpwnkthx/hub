@@ -22,6 +22,8 @@ export type { DecisionFacts, DecisionRequest } from '../../domains/authorization
 export { DecisionRepository, TimeoutError, withTimeout } from './decisions'
 export type { GrantRow, NewGrant } from './grants'
 export { GrantRepository } from './grants'
+export type { GroupRow, NewGroup } from './groups'
+export { GroupRepository } from './groups'
 export type { PermissionRow, NewPermission } from './permissions'
 export { PermissionRepository } from './permissions'
 export type { SecretCipher } from './secrets'
@@ -32,6 +34,13 @@ export {
   KEY_BYTES,
   SecretError,
 } from './secrets'
+export {
+  bypassesRowLevelSecurity,
+  roleOf,
+  TENANT_SCOPE_SETTING,
+  withTenantScope,
+  type DatabaseRole,
+} from './scope'
 export type { NewTenant, TenantRow, TenantSummary, TenantUpdate } from './tenants'
 export { TenantRepository } from './tenants'
 export type { NewUser, PrincipalStatus, UserRow, UserUpdate } from './users'

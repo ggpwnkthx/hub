@@ -5,10 +5,14 @@ import {
   AdministrationService,
   FailedAuthenticationLimiter,
   type Grant,
+  type GrantFilter,
   type GrantStore,
+  type Group,
+  type GroupStore,
   type Permission,
   type PermissionStore,
   type Principal,
+  type PrincipalFilter,
   type PrincipalStore,
   type Tenant,
   type TenantStore,
@@ -118,6 +122,25 @@ class FakePrincipals implements PrincipalStore {
     Object.assign(principal, changes)
     return principal
   }
+
+  async list(filter: PrincipalFilter) {
+    const matching = this.rows.filter((row) => {
+      if (filter.tenantId !== null) {
+        const tenant = TENANTS.rows.find((t) => t.id === filter.tenantId)
+        if (row.tenant !== tenant?.slug) return false
+      }
+      if (filter.status !== null && row.status !== filter.status) return false
+      if (filter.email !== null && row.email !== filter.email) return false
+      return true
+    })
+    const ordered = [...matching].reverse()
+    return {
+      principals: ordered.slice(filter.offset, filter.offset + filter.limit),
+      total: matching.length,
+      limit: filter.limit,
+      offset: filter.offset,
+    }
+  }
 }
 
 /** The storage of the permissions of the tests. */
@@ -159,7 +182,7 @@ class FakeGrants implements GrantStore {
 
   async findLive(
     tenantId: string,
-    userId: string,
+    subject: { userId: string | null; groupId: string | null },
     permissionId: string,
     workspaceId: string | null,
     routeId: string | null
@@ -168,7 +191,8 @@ class FakeGrants implements GrantStore {
       this.rows.find(
         (row) =>
           row.tenant === TENANTS.rows.find((t) => t.id === tenantId)?.slug &&
-          row.userId === userId &&
+          row.userId === subject.userId &&
+          row.group === (subject.groupId ?? null) &&
           row.permission === PERMISSIONS.rows.find((p) => p.id === permissionId)?.key &&
           row.workspaceId === workspaceId &&
           row.routeId === routeId &&
@@ -179,7 +203,8 @@ class FakeGrants implements GrantStore {
 
   async create(registration: {
     tenantId: string
-    userId: string
+    userId: string | null
+    groupId: string | null
     permissionId: string
     workspaceId: string | null
     routeId: string | null
@@ -188,15 +213,18 @@ class FakeGrants implements GrantStore {
   }): Promise<Grant> {
     const tenant = TENANTS.rows.find((row) => row.id === registration.tenantId)
     const permission = PERMISSIONS.rows.find((row) => row.id === registration.permissionId)
+    const group = GROUPS.rows.find((row) => row.id === registration.groupId)
     const grant: Grant = {
       id: `grant-${this.rows.length + 1}`,
       tenant: tenant?.slug ?? '',
       userId: registration.userId,
+      group: group?.key ?? null,
       permission: permission?.key ?? '',
       workspaceId: registration.workspaceId,
       routeId: registration.routeId,
       expiresAt: registration.expiresAt,
       revokedAt: null,
+      grantedBy: registration.grantedBy,
       createdAt: new Date('2026-01-08T10:06:00.000Z'),
     }
     this.rows.push(grant)
@@ -219,12 +247,76 @@ class FakeGrants implements GrantStore {
     grant.revokedAt = new Date('2026-01-08T11:00:00.000Z')
     return grant
   }
+
+  async list(filter: GrantFilter) {
+    const now = new Date('2026-01-08T12:00:00.000Z')
+    const matching = this.rows.filter((row) => {
+      if (filter.tenantId !== null) {
+        const tenant = TENANTS.rows.find((t) => t.id === filter.tenantId)
+        if (row.tenant !== tenant?.slug) return false
+      }
+      if (filter.userId !== null && row.userId !== filter.userId) return false
+      if (filter.live !== null) {
+        const live = row.revokedAt === null && (row.expiresAt === null || row.expiresAt > now)
+        if (live !== filter.live) return false
+      }
+      return true
+    })
+    const ordered = [...matching].reverse()
+    return {
+      grants: ordered.slice(filter.offset, filter.offset + filter.limit),
+      total: matching.length,
+      limit: filter.limit,
+      offset: filter.offset,
+    }
+  }
+}
+
+/** The storage of the groups of the tests. */
+class FakeGroups implements GroupStore {
+  readonly rows: Group[] = []
+
+  async findByKey(tenantId: string, key: string): Promise<Group | null> {
+    const tenant = TENANTS.rows.find((row) => row.id === tenantId)
+    return this.rows.find((row) => row.tenant === tenant?.slug && row.key === key) ?? null
+  }
+
+  async create(registration: {
+    tenantId: string
+    key: string
+    displayName?: string | null
+    memberIds: string[]
+  }): Promise<Group> {
+    const tenant = TENANTS.rows.find((row) => row.id === registration.tenantId)
+    const group: Group = {
+      id: `group-${this.rows.length + 1}`,
+      tenant: tenant?.slug ?? '',
+      key: registration.key,
+      displayName: registration.displayName ?? null,
+      members: registration.memberIds,
+      createdAt: new Date('2026-01-08T10:20:00.000Z'),
+    }
+    this.rows.push(group)
+    return group
+  }
+
+  async update(
+    id: string,
+    changes: { displayName?: string | null; memberIds?: string[] }
+  ): Promise<Group | null> {
+    const group = this.rows.find((row) => row.id === id)
+    if (!group) return null
+    if (changes.displayName !== undefined) group.displayName = changes.displayName
+    if (changes.memberIds !== undefined) group.members = changes.memberIds
+    return group
+  }
 }
 
 const TENANTS = new FakeTenants()
 const PRINCIPALS = new FakePrincipals()
 const PERMISSIONS = new FakePermissions()
 const GRANTS = new FakeGrants()
+const GROUPS = new FakeGroups()
 
 /** The service of the tests. */
 function service(options: { token?: string; limiter?: FailedAuthenticationLimiter } = {}) {
@@ -233,6 +325,7 @@ function service(options: { token?: string; limiter?: FailedAuthenticationLimite
     principals: PRINCIPALS,
     permissions: PERMISSIONS,
     grants: GRANTS,
+    groups: GROUPS,
     token: options.token ?? 'the-admin-token',
     publicUrl: 'https://hub.example.com',
     limiter: options.limiter,
@@ -487,5 +580,249 @@ describe('the grants of the administration', () => {
     await expect(administration.revokeGrant('grant-does-not-exist')).rejects.toThrow(
       /the grant does not exist/
     )
+  })
+})
+
+describe('the lists of the administration', () => {
+  test('the principals of a tenant are listed', async () => {
+    const administration = service()
+    const principal = await administration.upsertPrincipal({
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-a-list',
+      email: 'listed@acme.example',
+    })
+    const page = await administration.listPrincipals({ tenant: 'acme' })
+    expect(page.total).toBeGreaterThan(0)
+    expect(page.principals.some((row) => row.id === principal.principal.id)).toBe(true)
+    expect(page.limit).toBe(50)
+    expect(page.offset).toBe(0)
+  })
+
+  test('the list of the principals is filtered by the status and by the e-mail', async () => {
+    const administration = service()
+    const principal = await administration.upsertPrincipal({
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-a-filter',
+      email: 'filtered@acme.example',
+    })
+    await administration.upsertPrincipal({
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-a-disabled-one',
+      status: 'disabled',
+    })
+    const byStatus = await administration.listPrincipals({ tenant: 'acme', status: 'disabled' })
+    expect(byStatus.principals.every((row) => row.status === 'disabled')).toBe(true)
+    expect(byStatus.principals.some((row) => row.id === principal.principal.id)).toBe(false)
+
+    const byEmail = await administration.listPrincipals({
+      tenant: 'acme',
+      email: 'filtered@acme.example',
+    })
+    expect(byEmail.principals.map((row) => row.id)).toEqual([principal.principal.id])
+  })
+
+  test('the list of the principals is paginated', async () => {
+    const administration = service()
+    for (let index = 0; index < 3; index += 1) {
+      await administration.upsertPrincipal({
+        tenant: 'acme',
+        externalSubject: `the-subject-of-a-page-${index}`,
+      })
+    }
+    const first = await administration.listPrincipals({ tenant: 'acme', limit: '2', offset: '0' })
+    const second = await administration.listPrincipals({ tenant: 'acme', limit: '2', offset: '2' })
+    expect(first.principals).toHaveLength(2)
+    expect(first.total).toBe(second.total)
+    const ids = new Set([...first.principals, ...second.principals].map((row) => row.id))
+    expect(ids.size).toBe(first.principals.length + second.principals.length)
+  })
+
+  test('a limit that is not understood is refused', async () => {
+    const administration = service()
+    await expect(administration.listPrincipals({ limit: 'many' })).rejects.toThrow(
+      /limit must be a whole number/
+    )
+    await expect(administration.listPrincipals({ limit: '5000' })).rejects.toThrow(
+      /limit must be between 1 and 200/
+    )
+    await expect(administration.listPrincipals({ offset: '-1' })).rejects.toThrow(
+      /offset must be a whole number/
+    )
+    await expect(administration.listPrincipals({ status: 'paused' })).rejects.toThrow(
+      /status must be active or disabled/
+    )
+  })
+
+  test('a tenant that does not exist is a not found', async () => {
+    const administration = service()
+    await expect(administration.listPrincipals({ tenant: 'nowhere' })).rejects.toThrow(
+      /the tenant does not exist/
+    )
+    await expect(administration.listGrants({ tenant: 'nowhere' })).rejects.toThrow(
+      /the tenant does not exist/
+    )
+  })
+
+  test('the grants of a tenant are listed and they carry who granted them', async () => {
+    const administration = service()
+    const principal = await administration.upsertPrincipal({
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-a-listed-grant',
+    })
+    const grant = await administration.upsertGrant({
+      tenant: 'acme',
+      userId: principal.principal.id,
+      permission: 'workspace.list',
+      grantedBy: 'ops@acme.example',
+    })
+    const page = await administration.listGrants({ tenant: 'acme' })
+    const listed = page.grants.find((row) => row.id === grant.grant.id)
+    expect(listed?.grantedBy).toBe('ops@acme.example')
+    expect(page.total).toBeGreaterThan(0)
+  })
+
+  test('the list of the grants is filtered by the principal and by the life', async () => {
+    const administration = service()
+    const principal = await administration.upsertPrincipal({
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-the-live-grant',
+    })
+    await administration.upsertGrant({
+      tenant: 'acme',
+      userId: principal.principal.id,
+      permission: 'workspace.live',
+    })
+    const revoked = await administration.upsertGrant({
+      tenant: 'acme',
+      userId: principal.principal.id,
+      permission: 'workspace.dead',
+    })
+    await administration.revokeGrant(revoked.grant.id)
+
+    const live = await administration.listGrants({ tenant: 'acme', live: 'true' })
+    expect(live.grants.some((row) => row.id === revoked.grant.id)).toBe(false)
+
+    const dead = await administration.listGrants({ tenant: 'acme', live: 'false' })
+    expect(dead.grants.some((row) => row.id === revoked.grant.id)).toBe(true)
+
+    const byPrincipal = await administration.listGrants({
+      tenant: 'acme',
+      userId: principal.principal.id,
+    })
+    expect(byPrincipal.grants.every((row) => row.userId === principal.principal.id)).toBe(true)
+  })
+
+  test('a live filter that is not understood is refused', async () => {
+    const administration = service()
+    await expect(administration.listGrants({ live: 'maybe' })).rejects.toThrow(
+      /live must be true or false/
+    )
+  })
+})
+
+describe('the groups of the administration', () => {
+  test('a group is created with its members', async () => {
+    const administration = service()
+    const principal = await administration.upsertPrincipal({
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-a-member',
+    })
+    const result = await administration.upsertGroup({
+      tenant: 'acme',
+      key: 'team-platform',
+      displayName: 'The platform team',
+      members: ['the-subject-of-a-member'],
+    })
+    expect(result.created).toBe(true)
+    expect(result.group.key).toBe('team-platform')
+    expect(result.group.members).toEqual([principal.principal.id])
+    expect(result.audit.action).toBe('group.created')
+  })
+
+  test('the membership is replaced by the second call', async () => {
+    const administration = service()
+    await administration.upsertPrincipal({
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-the-first-member',
+    })
+    await administration.upsertPrincipal({
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-the-second-member',
+    })
+    await administration.upsertGroup({
+      tenant: 'acme',
+      key: 'team-replaced',
+      members: ['the-subject-of-the-first-member'],
+    })
+    const second = await administration.upsertGroup({
+      tenant: 'acme',
+      key: 'team-replaced',
+      members: ['the-subject-of-the-second-member'],
+    })
+    expect(second.created).toBe(false)
+    expect(second.group.members).toHaveLength(1)
+    expect(second.audit.action).toBe('group.updated')
+  })
+
+  test('a member that is not a principal is a not found', async () => {
+    const administration = service()
+    await expect(
+      administration.upsertGroup({
+        tenant: 'acme',
+        key: 'team-unknown',
+        members: ['the-subject-that-does-not-exist'],
+      })
+    ).rejects.toThrow(/does not exist in the tenant/)
+  })
+
+  test('a grant of a group is created for the group', async () => {
+    const administration = service()
+    await administration.upsertGroup({
+      tenant: 'acme',
+      key: 'team-with-a-grant',
+      members: [],
+    })
+    const grant = await administration.upsertGrant({
+      tenant: 'acme',
+      group: 'team-with-a-grant',
+      permission: 'workspace.group',
+    })
+    expect(grant.grant.group).toBe('team-with-a-grant')
+    expect(grant.grant.userId).toBeNull()
+    expect(grant.audit.action).toBe('grant.created')
+  })
+
+  test('a grant names a principal or a group, and not both', async () => {
+    const administration = service()
+    const principal = await administration.upsertPrincipal({
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-an-ambiguous-grant',
+    })
+    await administration.upsertGroup({ tenant: 'acme', key: 'team-ambiguous', members: [] })
+    await expect(
+      administration.upsertGrant({
+        tenant: 'acme',
+        userId: principal.principal.id,
+        group: 'team-ambiguous',
+        permission: 'workspace.ambiguous',
+      })
+    ).rejects.toThrow(/names a principal or a group/)
+    await expect(
+      administration.upsertGrant({
+        tenant: 'acme',
+        permission: 'workspace.ambiguous',
+      })
+    ).rejects.toThrow(/names a principal or a group/)
+  })
+
+  test('a grant of a group that does not exist is a not found', async () => {
+    const administration = service()
+    await expect(
+      administration.upsertGrant({
+        tenant: 'acme',
+        group: 'team-that-does-not-exist',
+        permission: 'workspace.nowhere',
+      })
+    ).rejects.toThrow(/the group does not exist/)
   })
 })

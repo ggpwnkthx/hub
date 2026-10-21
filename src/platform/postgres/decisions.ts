@@ -10,6 +10,7 @@
  */
 
 import type { DecisionFacts, DecisionRequest, DecisionStore } from '../../domains/authorization'
+import { withTenantScope } from './scope'
 import type { SqlClient } from './database'
 
 /** The failure of a statement that took too long. */
@@ -58,6 +59,11 @@ interface DecisionRecord {
  * specification (§8.5), the live ones first: a grant that is alive is the
  * reason of the permission, a grant that has expired is the second
  * reason.
+ *
+ * The fourth parameter is the tenant the decision is scoped to, or null
+ * for every tenant (spec §8.8): a gateway that authenticates itself with
+ * the credentials of a tenant does not see the principals of the other
+ * tenants.
  */
 const DECISION_SQL = `select
     true as principal_exists,
@@ -69,18 +75,38 @@ const DECISION_SQL = `select
   from users u
   join tenants t on t.id = u.tenant_id
   left join lateral (
-    select g.id, g.expires_at
-    from grants g
-    join permissions p on p.id = g.permission_id
-    where g.user_id = u.id
-      and g.revoked_at is null
-      and p.enabled
-      and (g.workspace_id is null or g.workspace_id = $2)
-      and (g.route_id is null or g.route_id = $3)
-    order by (g.expires_at is null or g.expires_at > now()) desc
+    select candidate.id, candidate.expires_at
+    from (
+      (select g.id, g.expires_at
+       from grants g
+       join permissions p on p.id = g.permission_id
+       where g.user_id = u.id
+         and g.revoked_at is null
+         and p.enabled
+         and (g.workspace_id is null or g.workspace_id = $2)
+         and (g.route_id is null or g.route_id = $3)
+       order by (g.expires_at is null or g.expires_at > now()) desc
+       limit 1)
+      union all
+      (select g.id, g.expires_at
+       from grants g
+       join permissions p on p.id = g.permission_id
+       join groups gr on gr.id = g.group_id
+       where u.id = any(gr.members)
+         and g.revoked_at is null
+         and p.enabled
+         and (g.workspace_id is null or g.workspace_id = $2)
+         and (g.route_id is null or g.route_id = $3)
+       order by (g.expires_at is null or g.expires_at > now()) desc
+       limit 1)
+    ) candidate
+    -- The two branches are candidates: the live one wins, and the expired
+    -- one is the reason of the refusal when there is no live one.
+    order by (candidate.expires_at is null or candidate.expires_at > now()) desc
     limit 1
   ) g on true
-  where u.id = $1`
+  where u.id = $1
+    and ($4::uuid is null or u.tenant_id = $4)`
 
 /** The storage of the decision. */
 export class DecisionRepository implements DecisionStore {
@@ -98,11 +124,17 @@ export class DecisionRepository implements DecisionStore {
    */
   async decide(request: DecisionRequest): Promise<DecisionFacts> {
     const rows = await withTimeout(
-      this.db.query<DecisionRecord>(DECISION_SQL, [
-        request.subject,
-        request.workspaceId,
-        request.routeId,
-      ]),
+      withTenantScope(
+        this.db,
+        request.tenantId ?? null,
+        async (client) =>
+          await client.query<DecisionRecord>(DECISION_SQL, [
+            request.subject,
+            request.workspaceId,
+            request.routeId,
+            request.tenantId ?? null,
+          ])
+      ),
       this.timeoutMs
     )
     const row = rows[0]

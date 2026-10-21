@@ -6,6 +6,7 @@
  * every tenant; a permission of a tenant belongs to that tenant only.
  */
 
+import { withTenantScope } from './scope'
 import type { SqlClient } from './database'
 
 /** The row of a permission. */
@@ -73,9 +74,14 @@ export class PermissionRepository {
 
   /** The permission of a tenant. */
   async findByTenantAndKey(tenantId: string, key: string): Promise<PermissionRow | null> {
-    const rows = await this.db.query<PermissionRecord>(
-      `select ${COLUMNS} from permissions where tenant_id = $1 and key = $2`,
-      [tenantId, key]
+    const rows = await withTenantScope(
+      this.db,
+      tenantId,
+      async (client) =>
+        await client.query<PermissionRecord>(
+          `select ${COLUMNS} from permissions where tenant_id = $1 and key = $2`,
+          [tenantId, key]
+        )
     )
     return rows[0] ? toRow(rows[0]) : null
   }

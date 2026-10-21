@@ -6,17 +6,44 @@ How a deployment of Hub is made, what it needs and how it is checked.
 
 | What | Why | The variable |
 | --- | --- | --- |
-| A PostgreSQL | The four tables of the platform. | `HUB_DATABASE_URL` |
+| A PostgreSQL | The five tables of the platform. | `HUB_DATABASE_URL` |
 | A Redis | The authorization codes of the logins, shared by the replicas. | `HUB_REDIS_URL` |
 | An issuer | The url the browser and the gateway use to reach Hub. | `HUB_ISSUER` |
 | A signing key | The key of the tokens of Hub, in PEM. | `HUB_SIGNING_KEY`, `HUB_SIGNING_KID` |
 | A secret of the state | It signs and encrypts the state of a login. | `HUB_STATE_SECRET` |
 | A key of the secrets | It encrypts the client secrets of the tenants at rest. | `HUB_SECRET_ENCRYPTION_KEY` |
-| A token of the administration | It guards the five administrative endpoints. | `HUB_ADMIN_TOKEN` |
+| A token of the administration | It guards the eight administrative endpoints. | `HUB_ADMIN_TOKEN` |
 | A token of the access service | The gateway presents it on the decisions. | `HUB_ACCESS_TOKEN` |
+
+The token of the access service is the scheme of the gateway of the
+reference, and it is **not scoped**: every gateway of the deployment
+shares it. A gateway that presents the **credentials of its tenant**
+instead (`client_secret_basic`, spec §8.8) only asks about the
+principals of that tenant. The two schemes work at the same time, so a
+deployment moves its gateways one by one and then removes the shared
+secret.
 
 The whole list is in [SPEC.md](../SPEC.md) §4, and the variables that a
 production deployment cannot start without are in §4.4.
+
+## The role of the database
+
+The isolation of the tenants is enforced by the database, and the
+policies of the tables are only policies for a role that is subject to
+them. A **production** deployment refuses to start with a superuser and
+with a role that has `BYPASSRLS` (spec §3.8).
+
+The role of the deployment therefore owns the tables of the platform and
+is not a superuser:
+
+```sql
+create role hub_app login password '…';
+alter database hub owner to hub_app;
+grant usage, create on schema public to hub_app;
+```
+
+The migrations are applied by that role, so it owns the tables it
+creates. The runbook of the refusal is in [runbooks.md](runbooks.md).
 
 The values are **32 bytes at least** for the two secrets, and they are the
 same on every replica: a replica that has another secret cannot read the
@@ -83,7 +110,7 @@ development machine can use.
    ```
    The two sides have to agree character for character: the issuer is the
    same url on the two sides (spec §12.2).
-5. **The check** — the five calls of the session:
+5. **The check** — the eight calls of the session:
    ```bash
    HUB_URL=https://hub.example.com HUB_ADMIN_TOKEN=… bun run scripts/admin-smoke.ts
    ```

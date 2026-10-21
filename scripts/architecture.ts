@@ -60,7 +60,7 @@ const SRC = 'src'
  *
  * The four domains are independent: the identity of a caller, the access
  * of a caller, the administration and the provider of Hub do not share a
- * policy. What they share is the table of the four tables, and that is read
+ * policy. What they share is the table of the five tables, and that is read
  * through the repositories of the platform.
  */
 export const DOMAIN_DEPENDENCIES: Record<string, readonly string[]> = {

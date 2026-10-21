@@ -71,6 +71,69 @@ export class InvalidRequestError extends Error {
 }
 
 /**
+ * The credentials of a call of the decision (spec §8.8).
+ *
+ * Two schemes are accepted: the bearer token of the deployment, which is
+ * the scheme of the gateway of the reference and is not scoped, and the
+ * credentials of a tenant, which are scoped to that tenant.
+ */
+interface DecisionCredentials {
+  /** The tenant the decision is scoped to, or null for every tenant. */
+  tenantId: string | null
+  /** The slug of the tenant, for the log. */
+  tenantSlug: string
+}
+
+/**
+ * Reads the credentials of a call of the decision.
+ *
+ * The comparison of a secret is in constant time in both schemes. The
+ * secret of a tenant is read from the storage and compared, and it is
+ * never written to a log.
+ */
+async function readCredentials(
+  header: string | undefined,
+  dependencies: HubDependencies
+): Promise<DecisionCredentials | null> {
+  const value = (header ?? '').trim()
+
+  // The credentials of a tenant: the client id names the tenant and the
+  // secret is the one of the registration of its gateway.
+  const basic = /^Basic\s+(.+)$/i.exec(value)
+  if (basic) {
+    let clientId = ''
+    let clientSecret = ''
+    try {
+      const decoded = Buffer.from(basic[1]!.trim(), 'base64').toString('utf8')
+      const separator = decoded.indexOf(':')
+      if (separator < 0) return null
+      clientId = decodeURIComponent(decoded.slice(0, separator))
+      clientSecret = decodeURIComponent(decoded.slice(separator + 1))
+    } catch {
+      return null
+    }
+    if (!clientId || !clientSecret) return null
+    const tenant = await dependencies.tenants.findByClientId(clientId)
+    if (!tenant) return null
+    const expected = await dependencies.tenants.gatewaySecret(tenant.id)
+    if (!expected || !sameSecret(clientSecret, expected)) return null
+    // A tenant with a shared client may ask about the principals of the
+    // other tenants (spec §5.2): its decisions are not scoped.
+    return {
+      tenantId: tenant.sharedClient ? null : tenant.id,
+      tenantSlug: tenant.slug,
+    }
+  }
+
+  // The bearer token of the deployment: the scheme of the reference.
+  const bearer = /^Bearer\s+(.+)$/i.exec(value)
+  const presented = bearer?.[1]?.trim() ?? ''
+  const expectedToken = dependencies.accessToken
+  if (!expectedToken || !presented || !sameSecret(presented, expectedToken)) return null
+  return { tenantId: null, tenantSlug: 'every-tenant' }
+}
+
+/**
  * `POST /v1/decisions`: the answer of the access service of the gateway.
  */
 export async function decisionHandler(
@@ -81,11 +144,8 @@ export async function decisionHandler(
   const requestId = context.get('requestId')
 
   // The token of the gateway is compared in constant time.
-  const header = context.req.header('authorization') ?? ''
-  const match = /^Bearer\s+(.+)$/i.exec(header.trim())
-  const presented = match?.[1]?.trim() ?? ''
-  const expected = dependencies.accessToken
-  if (!expected || !presented || !sameSecret(presented, expected)) {
+  const credentials = await readCredentials(context.req.header('authorization'), dependencies)
+  if (!credentials) {
     dependencies.logger.warn('the decision was refused', { requestId, reason: 'unauthorized' })
     dependencies.observer.recordDecision('deny', 'unknown', Date.now() - started)
     return jsonError(401, 'unauthorized', 'a valid access token is required')
@@ -113,6 +173,7 @@ export async function decisionHandler(
       workspaceId: body.workspaceId ?? '',
       routeId: body.routeId ?? '',
       roles: body.roles ?? [],
+      tenantId: credentials.tenantId,
     })
   } catch (error) {
     // A database that is down and a decision that is too slow are the same
@@ -124,7 +185,7 @@ export async function decisionHandler(
 
   const answer = decide(facts)
   const durationMs = Date.now() - started
-  const tenant = facts.tenantSlug ?? 'unknown'
+  const tenant = facts.tenantSlug ?? credentials.tenantSlug
 
   dependencies.observer.recordDecision(answer.allow ? 'allow' : 'deny', tenant, durationMs)
   dependencies.logger.info('the decision was answered', {

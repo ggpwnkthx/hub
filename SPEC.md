@@ -3,7 +3,7 @@
 **Hub** is a Bun service that brokers the login of a caller against the
 OpenID Connect provider of a tenant, maps the external identity of the
 caller to a principal row, answers the decision requests of a gateway over
-a table of grants, and offers five `curl` endpoints for the administration
+a table of grants, and offers eight `curl` endpoints for the administration
 of the whole thing.
 
 Hub is **not** a feature of Shuttle. It is a separate deployable that sits
@@ -36,7 +36,7 @@ Listener: HTTP on `HUB_HOST:HUB_PORT` (default `0.0.0.0:8081`).
 | **Brokers the login**                   | Hub is the OpenID Connect client of the provider of a tenant and the OpenID Connect provider of the gateway, at the same time. The browser logs in at the provider of the tenant; the gateway sees a provider it already knows how to talk to. |
 | **Maps the identity**                   | The `(tenant, subject)` pair of the provider is mapped to exactly one **principal row**. The row is the identity of the platform; the external identity is only the way in.                                                                    |
 | **Answers the decisions**               | Hub implements the decision contract the gateway already speaks: `POST /v1/decisions`. The decision is computed over a table of **grants**.                                                                                                    |
-| **Is administered with five endpoints** | A tenant, a principal and a grant are created and revoked with five `curl` calls. There is no console, no portal and no wizard.                                                                                                                |
+| **Is administered with eight endpoints** | A tenant, a principal, a grant and a group are created, revoked and **listed** with eight `curl` calls. There is no console, no portal and no wizard.                                                                                                                |
 
 
 ### 1.2 What Hub does not do
@@ -107,7 +107,7 @@ escape hatch (a shared client) and what it costs.
 | **grant**                  | The permission a principal holds, on a workspace, on a route, until it is revoked or it expires.                                                                         |
 | **decision**               | The answer of `POST /v1/decisions`: may this principal use this workspace on this route?                                                                                 |
 | **gateway**                | A Shuttle deployment. It is a client of Hub and a consumer of the decisions.                                                                                             |
-| **operator**               | The person who runs Hub and calls the five administrative endpoints.                                                                                                     |
+| **operator**               | The person who runs Hub and calls the eight administrative endpoints.                                                                                                     |
 
 
 ### 2.1 The invariants
@@ -139,9 +139,9 @@ test.
 
 ---
 
-## 3. The four tables
+## 3. The five tables
 
-The whole domain model of Hub is four tables. They are read in one sitting
+The whole domain model of Hub is five tables. They are read in one sitting
 and they are the only tables: the protocol state that is not a domain
 concept (the authorization codes) lives in the shared store (§5.5), not in
 the database.
@@ -218,15 +218,17 @@ tenant. A permission of a tenant may only be granted inside that tenant.
 
 ### 3.4 `grants`
 
-The policy of the platform. A grant says: this principal holds this
-permission, on this workspace, on this route, until this date.
+The policy of the platform. A grant says: this principal — or this group
+of principals — holds this permission, on this workspace, on this route,
+until this date.
 
 
 | Column          | Type          | Rule                                                                                                                                                                                                                                   |
 | --------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `id`            | `uuid`        | Primary key.                                                                                                                                                                                                                           |
 | `tenant_id`     | `uuid`        | The tenant of the grant. Foreign key to `tenants`.                                                                                                                                                                                     |
-| `user_id`       | `uuid`        | The principal of the grant. Foreign key to `(id, tenant_id)` of `users`: **a grant can never name a principal of another tenant**.                                                                                                     |
+| `user_id`       | `uuid`        | The principal of the grant, or `null` when the grant names a group. Foreign key to `(id, tenant_id)` of `users`: **a grant can never name a principal of another tenant**.                                                                                                     |
+| `group_id`      | `uuid`        | The group of the grant, or `null` when the grant names a principal. Foreign key to `(id, tenant_id)` of `groups`: **a grant can never name a group of another tenant**.                                                                  |
 | `permission_id` | `uuid`        | The permission of the grant. Foreign key to `permissions`.                                                                                                                                                                             |
 | `workspace_id`  | `text`        | The workspace of the grant, or `null` for every workspace of the tenant. The gateway validates a workspace as a UUID, but Hub keeps the value as it is given: a workspace that is not a UUID simply matches no workspace-scoped grant. |
 | `route_id`      | `text`        | The route of the grant, or `null` for every route. The id of a route of the gateway, e.g. `workspace-api`.                                                                                                                             |
@@ -236,21 +238,61 @@ permission, on this workspace, on this route, until this date.
 | `created_at`    | `timestamptz` |                                                                                                                                                                                                                                        |
 
 
-Unique: `(tenant_id, user_id, permission_id, coalesce(workspace_id, ''), coalesce(route_id, ''))` among the grants that are not revoked. The
+A grant names **exactly one** subject: a principal or a group. The check
+`(user_id is null) <> (group_id is null)` is in the schema, and it is not
+a rule of the application that can be forgotten.
+
+Unique: `(tenant_id, user_id, permission_id, coalesce(workspace_id, ''), coalesce(route_id, ''))` among the grants that are not revoked and that name a principal, and
+`(tenant_id, group_id, permission_id, coalesce(workspace_id, ''), coalesce(route_id, ''))` among the grants that are not revoked and that name a group. The
 `coalesce` is there for the same reason as in §3.3: a grant of "every
 workspace" and a grant of "the workspace ''" have to be two different
 rows, and the second one is impossible anyway.
 
-### 3.5 The diagram
+### 3.5 `groups`
+
+A group is a set of principals of a tenant. A grant may name a group
+instead of a principal: the grant then holds for every principal of the
+group.
+
+The group was asked for by the operator of the platform: the policy of a
+customer of a hundred people is not a hundred rows, it is one row and a
+membership (§13).
+
+A group of Hub is **not** the `groups` scope of the provider (§7.4): the
+scope asks the provider for the groups of the caller, and a group of Hub
+is a set of principals of the tenant that the policy is written on.
+
+
+| Column                     | Type          | Rule                                                                                                                                     |
+| -------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                       | `uuid`        | Primary key.                                                                                                                             |
+| `tenant_id`                | `uuid`        | The tenant of the group. Foreign key to `tenants`.                                                                                      |
+| `key`                      | `text`        | The name of the group, `[a-z0-9][a-z0-9._-]{0,63}`.                                                                                    |
+| `display_name`             | `text`        | The name shown to a human. `null` when there is none.                                                                                   |
+| `members`                  | `uuid[]`      | The principals of the group: their ids. Every member is a principal of the tenant at the moment the membership is written. The administration speaks in external subjects (§9.9) and the adapter translates them. |
+| `created_at`, `updated_at` | `timestamptz` |                                                                                                                                          |
+
+Unique: `(tenant_id, key)`. The pair `(id, tenant_id)` is unique as well,
+so a grant can carry the tenant of its group in a foreign key (§3.4).
+
+The membership is **replaced** by the call of the administration
+(§9.9): the members of the list are the members of the group, and the
+principals that are not in the list are not in the group any more. The
+membership is not a table of its own: it is a list of the principals of
+the group, and it is written in one statement.
+
+### 3.6 The diagram
 
 ```
   tenants ────< users ────< grants >──── permissions
-     │                                 (tenant_id may be null)
+     │              │          (tenant_id may be null)
+     │              │
+     │              └──< groups (the principals of the group)
      │
      └── the registration of the provider and of the gateway
 ```
 
-### 3.6 The migrations
+### 3.7 The migrations
 
 The schema is created by plain SQL files, applied in the order of their
 names, by one runner that takes an advisory lock so two replicas that
@@ -258,9 +300,10 @@ start at the same time do not apply the same migration twice. A migration
 that fails stops the process: Hub does not start against a schema it does
 not understand.
 
-The four tables are created by the first migration. There is no second
-table "for later": a feature that needs one is a feature that is deferred
-until a customer pays for it (§13).
+The tables of the domain are created by the migrations of §3.7. There is
+no table "for later": a feature that needs one is a feature that is
+deferred until a customer pays for it (§13). The fifth table, `groups`,
+was asked for by the operator of the platform (§3.5).
 
 The bookkeeping of the migrations lives in a table of the infrastructure,
 `hub_schema_migrations`. It holds the name of the migrations that were
@@ -270,7 +313,7 @@ what the schema of the database is: a database that holds a migration this
 version of Hub does not know is a schema Hub does not understand, and the
 process refuses to start against it.
 
-### 3.7 The database of a development machine
+### 3.8 The database of a development machine
 
 The database of Hub is PostgreSQL. The driver is named by
 `HUB_DATABASE_URL`:
@@ -295,6 +338,33 @@ The tests run on the embedded database by default. A workflow that has a
 server names it in `HUB_TEST_DATABASE_URL` and the same tests run against
 it.
 
+### 3.9 The isolation of the tenants
+
+The tenants are isolated by the application: the keys of the five tables
+carry the tenant, the foreign key of a grant refuses a principal of
+another tenant, and every statement that reads a tenant reads it by its
+id.
+
+The database is the **backstop** of that isolation. The five tables have
+the row level security of PostgreSQL, and their policy is the tenant of
+the statement:
+
+- A statement that is **not** scoped to a tenant (the administration, the
+decision of the bearer token of the deployment) sees the whole platform.
+- A statement that is **scoped** to a tenant runs in the scope of that
+tenant, and it sees the rows of that tenant and nothing else. The scope
+is the setting `hub.tenant_id`, and it is local to the transaction: a
+pooled connection never carries the scope of another request.
+
+A statement that forgets the tenant in its text is therefore refused by
+PostgreSQL itself, and not only by the review of the code.
+
+The policies are only policies for a role that is **subject** to them: a
+superuser and a role with `BYPASSRLS` are not. A **production**
+deployment therefore refuses to start with such a role: the isolation
+would be a promise and not a rule. The role of the deployment is a role
+that owns the tables of the platform and that is not a superuser.
+
 ---
 
 ## 4. The environment
@@ -310,10 +380,10 @@ exception is the level of the log, which falls back to `info`.
 | `HUB_PORT`                  | The port of the listener. Default `8081`.                                                                                                                                                                                                                                         |
 | `HUB_ISSUER`                | The public issuer url of Hub. It is the `iss` of every token it issues and the issuer the gateway is configured with. It must be the url the browser and the gateway use: the discovery document of a different issuer is refused by the gateway (§6 of the spec of the gateway). |
 | `HUB_PUBLIC_URL`            | The public url of Hub, when it differs from the issuer. Default: the issuer.                                                                                                                                                                                                      |
-| `HUB_DATABASE_URL`          | The PostgreSQL of the four tables. A PostgreSQL server of a deployment, the embedded PostgreSQL of a development machine (§3.7). Required in a production environment.                                                                                                                             |
+| `HUB_DATABASE_URL`          | The PostgreSQL of the five tables. A PostgreSQL server of a deployment, the embedded PostgreSQL of a development machine (§3.8). Required in a production environment.                                                                                                                             |
 | `HUB_REDIS_URL`             | The shared store of the authorization codes. Required when more than one replica runs.                                                                                                                                                                                            |
 | `HUB_ALLOW_MEMORY_STATE`    | Replaces the shared store with the memory of the process. The gateway has the same escape hatch, for the same reason.                                                                                                                                                             |
-| `HUB_ADMIN_TOKEN`           | The bearer token of the five administrative endpoints. Required in production.                                                                                                                                                                                                    |
+| `HUB_ADMIN_TOKEN`           | The bearer token of the eight administrative endpoints. Required in production.                                                                                                                                                                                                    |
 | `HUB_ACCESS_TOKEN`          | The bearer token the gateway presents on `POST /v1/decisions`. Required in production.                                                                                                                                                                                            |
 | `HUB_STATE_SECRET`          | Signs and encrypts the state of a login (§5.3). 32 bytes at least. The same value on every replica.                                                                                                                                                                               |
 | `HUB_SECRET_ENCRYPTION_KEY` | Encrypts the client secrets at rest (§4.3). 32 bytes.                                                                                                                                                                                                                             |
@@ -389,10 +459,10 @@ down.
 
 | Variable                  | Why it is required                                                              |
 | ------------------------- | ------------------------------------------------------------------------------- |
-| `HUB_DATABASE_URL`        | The four tables live there. It is required in a production environment; a development machine runs the embedded PostgreSQL of the process (§3.7). |
+| `HUB_DATABASE_URL`        | The five tables live there. It is required in a production environment; a development machine runs the embedded PostgreSQL of the process (§3.8). |
 | `HUB_ISSUER`              | It is the `iss` of every token Hub issues and the issuer the gateway is configured with. |
 | `HUB_REDIS_URL`           | The authorization codes have to be shared by the replicas, unless `HUB_ALLOW_MEMORY_STATE=true` names a deployment of a single node. |
-| `HUB_ADMIN_TOKEN`         | It is the bearer token of the five administrative endpoints.                     |
+| `HUB_ADMIN_TOKEN`         | It is the bearer token of the eight administrative endpoints.                     |
 | `HUB_ACCESS_TOKEN`        | It is the bearer token the gateway presents on `POST /v1/decisions`.             |
 | `HUB_STATE_SECRET`        | It signs and encrypts the state of a login. At least 32 bytes.                  |
 | `HUB_SECRET_ENCRYPTION_KEY` | It encrypts the client secrets at rest. At least 32 bytes.                    |
@@ -406,6 +476,11 @@ hexadecimal characters and 44 base64 characters.
 The level of the log is the only value of the environment that does not
 stop the service: a typo in the level of a log must not keep a deployment
 down.
+
+A production deployment also refuses to start when the role of the
+database is a superuser or a role with `BYPASSRLS`: the isolation of the
+tenants is enforced by the database, and it is not enforced for such a
+role (§3.9). The message names the role and what to do about it.
 
 ---
 
@@ -429,8 +504,11 @@ down.
 | `POST /v1/admin/tenants`                | Administration (§9).                                                                                                                                       |
 | `GET /v1/admin/tenants`                 | Administration (§9).                                                                                                                                       |
 | `POST /v1/admin/users`                  | Administration (§9).                                                                                                                                       |
+| `GET /v1/admin/users`                   | The list of the principals, paginated (§9.5).                                                                                                             |
 | `PUT /v1/admin/grants`                  | Administration (§9).                                                                                                                                       |
 | `DELETE /v1/admin/grants/{id}`          | Administration (§9).                                                                                                                                       |
+| `GET /v1/admin/grants`                  | The list of the grants, paginated (§9.8).                                                                                                                 |
+| `POST /v1/admin/groups`                 | The group and its membership (§9.9).                                                                                                                       |
 
 
 Every other path is `404 not_found`.
@@ -553,7 +631,7 @@ Before a single row is read, the token of the provider is validated:
 | The audience  | `aud` contains the `idp_client_id` of the tenant, or `azp` is it.                                                                  |
 | The nonce     | `nonce` is the nonce of the login in flight.                                                                                       |
 | The algorithm | The algorithm is in the `idp_algorithms` of the tenant. The `none` algorithm and an algorithm that is not in the list are refused. |
-| The signature | It is verified with the JWKS of the provider, fetched from its discovery document and cached for ten minutes.                      |
+| The signature | It is verified with the JWKS of the provider, fetched from its discovery document and cached for ten minutes. A token that names a key that the cache does not have is the sign of a **rotation**: the keys are read again once and the token is verified against them (§6.6).                      |
 | The clock     | `exp` and `iat` are checked with a tolerance of `HUB_CLOCK_SKEW_SECONDS`.                                                          |
 | The subject   | `sub` is present and is not empty.                                                                                                 |
 
@@ -562,6 +640,28 @@ The discovery document of the provider is fetched from
 `{idp_issuer}/.well-known/openid-configuration`. A provider whose issuer
 in the document is not the `idp_issuer` of the tenant is refused, for the
 same reason the gateway refuses it (§5 of the spec of the gateway).
+
+### 6.6 The rotation of the keys of a provider
+
+A provider rotates its signing key: it publishes a new key in its JWKS
+and it signs the tokens with it, and the old key stays published until
+the last token it signed has expired.
+
+The keys of a provider are cached for ten minutes (§6.1). A token that
+names a key that the cache does not have is therefore **not** a bad
+token: it is the sign of a rotation. Hub reads the keys of the provider
+again, once, and it verifies the token against them. A token that is
+signed with a key the provider does not publish is refused as before.
+
+The keys are not read again on every call: at most once every thirty
+seconds for a tenant. A provider that is hammered with tokens it did not
+sign is not hammered with calls.
+
+The client of a provider is kept for the same ten minutes: a login does
+not fetch the discovery document and the keys of the provider on every
+request. A change of the registration of a tenant (its secret, its
+issuer) drops the client of that tenant, and the next login builds a new
+one.
 
 ### 6.2 The key of the mapping
 
@@ -651,7 +751,9 @@ client that needs one asks for it: it is a feature, it is deferred.
 
 The `roles` claim is the list of the keys of the permissions of the grants
 of the principal that are alive at the moment the token is issued: not
-revoked, not expired, with an enabled permission.
+revoked, not expired, with an enabled permission. The grants of the
+**groups** of the principal are part of it: a permission that the group
+holds is a permission of every member of the group.
 
 It is a **snapshot**. It is published for the upstreams of the deployment,
 which receive it in the `x-shuttle-roles` header. It is **not** the
@@ -718,7 +820,8 @@ The four fields are the ones the gateway sends. Hub does not require a
 field that the gateway does not send, and it does not refuse a field it
 does not know: the request of the gateway is the request of the contract.
 
-- A missing or wrong bearer token → `401 unauthorized`.
+- A missing or wrong credential → `401 unauthorized`. The two schemes of
+the credentials are in §8.8.
 - A body that is not JSON, or a `subject` that is not a string → `400 bad_request`.
 - A database that cannot be reached, or a query that takes longer than
 `HUB_DECISION_TIMEOUT_MS` → `503 service_unavailable`.
@@ -749,7 +852,7 @@ grant that satisfies **all** of the following:
 | -------------- | ----------------------------------------------------------------------------------------------------- |
 | The principal  | `users.id = subject` and `users.status = 'active'`.                                                   |
 | The tenant     | `users.tenant_id` names a tenant whose `enabled = true`.                                              |
-| The grant      | `grants.user_id = users.id` and `grants.revoked_at is null`.                                          |
+| The grant      | `grants.revoked_at is null` and the grant names the principal (`grants.user_id = users.id`) or a group of the principal (`grants.group_id` names a group whose `members` hold `users.id`). |
 | The expiry     | `grants.expires_at is null` or `grants.expires_at > now()`.                                           |
 | The permission | The permission of the grant is `enabled`.                                                             |
 | The workspace  | `grants.workspace_id is null` (every workspace of the tenant) or `grants.workspace_id = workspaceId`. |
@@ -760,7 +863,12 @@ A grant of one workspace does not grant another one. A grant of one route
 does not grant another one. A grant without a workspace and without a
 route is a grant of the whole tenant.
 
-The query is a single statement over three tables, with the indexes of
+A grant of a **group** holds for every principal of the group, and for
+nobody else. A principal that is removed from the group loses the access
+at the next decision: the membership is read from the table, never from a
+token.
+
+The query is a single statement over five tables, with the indexes of
 §8.5.
 
 ### 8.4 The roles of the request
@@ -789,6 +897,7 @@ in mind, so the metric of the gateway separates the two.
 | ------------------------------------------- | -------------------------------------------- |
 | `users (id)`                                | The primary key: the subject of the request. |
 | `grants (user_id) where revoked_at is null` | The grants of the principal.                 |
+| `grants (group_id) where revoked_at is null` | The grants of the groups of the principal.  |
 | `permissions (id)`                          | The primary key.                             |
 
 
@@ -823,6 +932,44 @@ the gateway.
 The last two contain the word *role*, so the gateway counts them as
 `missing_role`.
 
+### 8.8 The credentials of the gateway
+
+The gateway authenticates itself on the decisions. Two schemes are
+accepted, and a deployment picks one of them or the other.
+
+| Scheme                          | What it is                                            | What it may ask about             |
+| ------------------------------- | ----------------------------------------------------- | --------------------------------- |
+| `Authorization: Bearer {token}` | The token of the deployment, `HUB_ACCESS_TOKEN`.      | Every principal of the platform.   |
+| `Authorization: Basic {id:secret}` | The registration of the gateway of a tenant (§3.1). | The principals of that tenant.     |
+
+
+The **bearer token** is the scheme of the gateway of the reference: it is
+the one the gateway already sends, and it keeps working. It is not
+scoped: every gateway of the deployment shares it, so the gateway that
+presents it may ask about any principal of the platform. The blast
+radius of that secret is the whole platform.
+
+The **credentials of a tenant** are the client id and the client secret
+that are registered for the gateway of a tenant (§3.1). The client id
+names the tenant, the secret is compared in constant time, and the
+decisions of that gateway are **scoped to that tenant**: a subject that is
+not a principal of the tenant is refused with the reason of a principal
+that does not exist. The answer does not tell the gateway that the
+subject exists in another tenant.
+
+A tenant whose `shared_client` is true is the exception: its gateway may
+log in the principals of the other tenants (§5.2), so its decisions are
+not scoped either.
+
+A credential that is neither of the two schemes, or one that is refused →
+`401 unauthorized`. The comparison is in constant time in both cases,
+and the secret of a tenant is never written to a log.
+
+The two schemes are not exclusive and nothing of the gateway changes: the
+scheme of the credentials is a property of the deployment. A deployment
+that moves its gateways to their own credentials removes the shared
+secret of the platform.
+
 ---
 
 ## 9. The administration
@@ -844,6 +991,11 @@ is refused with `429`, so the admin token cannot be guessed by hammering
 the endpoint.
 - Every call is logged: the endpoint, the status, the address, and the
 identifier of the thing that was changed. The secrets are never logged.
+- The two list endpoints are **paginated**: `limit` (default `50`, maximum
+`200`) and `offset` (default `0`). A `limit` that is not a number, a
+`limit` above the maximum or an `offset` that is negative →
+`400 invalid_request`. The answer carries the `total` of the rows that
+match the filter, so the operator knows how many pages there are.
 
 The error codes: `unauthorized`, `invalid_request`, `not_found`,
 `conflict`, `forbidden`, `too_many_requests`.
@@ -976,7 +1128,47 @@ updated. An unknown tenant → `404 not_found`.
 }
 ```
 
-### 9.5 `PUT /v1/admin/grants`
+### 9.5 `GET /v1/admin/users`
+
+The list of the principals. It is the endpoint that answers "who has an
+account here" and "what is the state of this account", without a query
+against the database by hand.
+
+```bash
+curl -sS "https://hub.example.com/v1/admin/users?tenant=acme&limit=50" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+```
+
+| Parameter | Rule                                                                             |
+| --------- | -------------------------------------------------------------------------------- |
+| `tenant`  | Optional. The slug of a tenant. Absent → every tenant.                             |
+| `status`  | Optional. `active` or `disabled`.                                                  |
+| `email`   | Optional. The exact e-mail of the principal.                                       |
+| `limit`   | Optional. The size of the page. Default `50`, maximum `200`.                       |
+| `offset`  | Optional. The number of rows that are skipped. Default `0`.                         |
+
+
+The order is the newest first (`created_at desc, id desc`), and it is
+stable: two pages never show the same row twice and never skip one.
+
+```json
+{
+  "principals": [
+    {
+      "id": "b1c2…", "tenant": "acme", "externalSubject": "00u1a2b3c4d5",
+      "email": "alice@acme.example", "displayName": "Alice", "status": "active",
+      "lastLoginAt": "2026-01-08T10:05:00.000Z",
+      "createdAt": "2026-01-08T10:00:00.000Z"
+    }
+  ],
+  "total": 42, "limit": 50, "offset": 0
+}
+```
+
+The list never carries a secret: it carries the same fields as the answer
+of `POST /v1/admin/users`.
+
+### 9.6 `PUT /v1/admin/grants`
 
 Creates a grant, or updates the grant of that `(tenant, user, permission, workspace, route)` tuple.
 
@@ -998,7 +1190,8 @@ curl -sS -X PUT https://hub.example.com/v1/admin/grants \
 | Field         | Rule                                                                                                                                 |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `tenant`      | Required. The slug of the tenant.                                                                                                    |
-| `userId`      | Required. The id of the principal. It must belong to the tenant.                                                                     |
+| `userId`      | The id of the principal. Exactly one of `userId` and `group` is required.                                                             |
+| `group`       | The key of the group of the grant. Exactly one of `userId` and `group` is required.                                                   |
 | `permission`  | Required. The key of the permission. The permission row is **created on demand** when it does not exist, in the scope of the tenant. |
 | `workspaceId` | Optional. `null` (the default) is every workspace of the tenant.                                                                     |
 | `routeId`     | Optional. `null` (the default) is every route.                                                                                       |
@@ -1007,9 +1200,11 @@ curl -sS -X PUT https://hub.example.com/v1/admin/grants \
 
 
 A principal that belongs to another tenant → `403 forbidden`. A `userId`
-that does not exist → `404 not_found`. A permission that exists in the
-catalogue of the platform is reused; a permission that exists in another
-tenant → `403 forbidden`.
+that does not exist → `404 not_found`. A group that does not exist → `404
+not_found`. A group of another tenant → `403 forbidden`. A body that
+names neither a principal nor a group, or both → `400 invalid_request`.
+A permission that exists in the catalogue of the platform is reused; a
+permission that exists in another tenant → `403 forbidden`.
 
 The answer:
 
@@ -1023,7 +1218,7 @@ The answer:
 }
 ```
 
-### 9.6 `DELETE /v1/admin/grants/{id}`
+### 9.7 `DELETE /v1/admin/grants/{id}`
 
 Revokes a grant. The row is kept and stamped with `revoked_at`: the
 history of the policy is worth more than the bytes, and a revoked grant
@@ -1044,7 +1239,95 @@ as well. An id that does not exist → `404 not_found`.
 A revocation is visible to the gateway within
 `SHUTTLE_ACCESS_CACHE_TTL_MS` (§8.6).
 
-### 9.7 The whole session, in five calls
+### 9.8 `GET /v1/admin/grants`
+
+The list of the grants. It is the endpoint that answers "who may use this
+workspace" and "what is still live", without a query against the database
+by hand.
+
+```bash
+curl -sS "https://hub.example.com/v1/admin/grants?tenant=acme&live=true" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+```
+
+| Parameter | Rule                                                                             |
+| --------- | -------------------------------------------------------------------------------- |
+| `tenant`  | Optional. The slug of a tenant. Absent → every tenant.                             |
+| `userId`  | Optional. The id of a principal.                                                  |
+| `live`    | Optional. `true` → the grants that are not revoked and not expired. `false` → the others. Absent → every grant. |
+| `limit`   | Optional. The size of the page. Default `50`, maximum `200`.                       |
+| `offset`  | Optional. The number of rows that are skipped. Default `0`.                         |
+
+
+The order is the newest first (`created_at desc, id desc`), and it is
+stable.
+
+```json
+{
+  "grants": [
+    {
+      "id": "d3e4…", "tenant": "acme", "userId": "b1c2…",
+      "permission": "workspace.read",
+      "workspaceId": "11111111-1111-4111-8111-111111111111",
+      "routeId": "workspace-api", "expiresAt": null, "revokedAt": null,
+      "grantedBy": "ops@example.com",
+      "createdAt": "2026-01-08T10:10:00.000Z"
+    }
+  ],
+  "total": 57, "limit": 50, "offset": 0
+}
+```
+
+The grant carries the `grantedBy` of the row: the operator has to be able
+to read who gave an access without a query against the database by hand.
+
+### 9.9 `POST /v1/admin/groups`
+
+Creates a group, or changes the group of that key. The call **replaces**
+the membership of the group: the principals of the list are the members
+of the group, and the principals that are not in the list are not in the
+group any more.
+
+```bash
+curl -sS -X POST https://hub.example.com/v1/admin/groups \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{
+        "tenant": "acme",
+        "key": "team-platform",
+        "displayName": "The platform team",
+        "members": ["00u1a2b3c4d5", "00u9z8y7x6w5"]
+      }'
+```
+
+
+| Field         | Rule                                                                        |
+| ------------- | --------------------------------------------------------------------------- |
+| `tenant`      | Required. The slug of the tenant.                                           |
+| `key`         | Required. The name of the group, `[a-z0-9][a-z0-9._-]{0,63}`.               |
+| `displayName` | Optional. The name shown to a human.                                        |
+| `members`     | Optional. The **external subjects** of the principals of the group.         |
+
+
+The members are the external identities of the principals (§6.2): the
+operator knows the `sub` of the provider, not the id of the row. A member
+that is not a principal of the tenant → `404 not_found`: a group cannot
+name a principal that does not exist.
+
+The key is the key of the row: the call is an **upsert**. `201` when the
+group was created, `200` when it was changed. The answer carries the
+members as the external subjects of the principals:
+
+```json
+{
+  "id": "e5f6…", "tenant": "acme", "key": "team-platform",
+  "displayName": "The platform team",
+  "members": ["00u1a2b3c4d5", "00u9z8y7x6w5"],
+  "createdAt": "2026-01-08T10:20:00.000Z"
+}
+```
+
+### 9.10 The whole session, in eight calls
 
 ```bash
 export HUB=https://hub.example.com
@@ -1060,18 +1343,32 @@ curl -sS -X POST $HUB/v1/admin/tenants \
 # 2. the tenants, with their counts
 curl -sS $HUB/v1/admin/tenants -H "authorization: Bearer $HUB_ADMIN_TOKEN"
 
-# 3. the principal of the external identity
+# 3. the principals of the tenant
+curl -sS "$HUB/v1/admin/users?tenant=acme" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+
+# 4. the principal of the external identity
 curl -sS -X POST $HUB/v1/admin/users \
   -H "authorization: Bearer $HUB_ADMIN_TOKEN" -H "content-type: application/json" \
   -d '{"tenant":"acme","externalSubject":"00u1a2b3c4d5","email":"alice@acme.example"}'
 
-# 4. the grant: the permission on the workspace, on the route
+# 5. the grant: the permission on the workspace, on the route
 curl -sS -X PUT $HUB/v1/admin/grants \
   -H "authorization: Bearer $HUB_ADMIN_TOKEN" -H "content-type: application/json" \
   -d '{"tenant":"acme","userId":"b1c2…","permission":"workspace.read",
        "workspaceId":"11111111-1111-4111-8111-111111111111","routeId":"workspace-api"}'
 
-# 5. the revocation, when the access has to end
+# 6. the grants of the tenant
+curl -sS "$HUB/v1/admin/grants?tenant=acme" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+
+# 7. the group and its membership: a grant of the group holds for every member
+curl -sS -X POST $HUB/v1/admin/groups \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" -H "content-type: application/json" \
+  -d '{"tenant":"acme","key":"team-platform","displayName":"The platform team",
+       "members":["00u1a2b3c4d5"]}'
+
+# 8. the revocation, when the access has to end
 curl -sS -X DELETE $HUB/v1/admin/grants/d3e4… -H "authorization: Bearer $HUB_ADMIN_TOKEN"
 ```
 
@@ -1221,13 +1518,18 @@ Not "it seems useful", not "it is on the roadmap", not "it is standard".
 | ------------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | **SAML**            | A tenant whose provider speaks SAML instead of OpenID Connect.                    | A tenant whose provider is not an OIDC provider is not served. The provider of a tenant is OpenID Connect and only OpenID Connect.  |
 | **Account linking** | One principal, several external identities (a second provider, a second subject). | The mapping key is `(tenant, subject)`, and it is one to one. A person with two accounts has two principals and two sets of grants. |
-| **The console**     | A web interface for the administration.                                           | The five endpoints of §9 and `curl`.                                                                                                |
+| **The console**     | A web interface for the administration.                                           | The eight endpoints of §9 and `curl`.                                                                                                |
 | **SCIM**            | The provisioning of the principals by a provider.                                 | The principals are created by the endpoint of §9.4, or by the auto-provisioning of the tenant.                                      |
 | **Directory sync**  | The import of the directory of a tenant, on a schedule, from a source of truth.   | The principals are created one at a time, by hand or by a script that calls the endpoints.                                          |
 
+The **groups** were not deferred: the operator of the platform asked for
+them, and they are the fifth table of the model (§3.5). The rule that
+brings a deferred feature back is "a named customer pays for it", and
+the operator of the platform is the customer of the groups.
+
 
 The list is not exhaustive and it is not a promise. The point of writing
-it down is that the four tables of §3 are the whole model, and that a
+it down is that the five tables of §3 are the whole model, and that a
 feature that needs a fifth table is a feature that has to be paid for
 before it is designed.
 
@@ -1241,7 +1543,7 @@ A rule that has no test is a rule that is not implemented.
 | Kind          | Where                         | What it proves                                                                                                                                                                                                                                                                    |
 | ------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Unit          | `src/domains/*/*.test.ts` | The validation of the token of a provider, the mapping, the rule of the decision, the resolution of the tenant.                                                                                                                                                                   |
-| Contract      | `test/contract/`          | The whole flow against the fixtures of Hub: the login of a browser, the exchange of the code, the decision, the five administrative endpoints.                                                                                                                         |
+| Contract      | `test/contract/`          | The whole flow against the fixtures of Hub: the login of a browser, the exchange of the code, the decision, the eight administrative endpoints.                                                                                                                         |
 | Integration   | `test/integration/`       | The decisions against a real PostgreSQL and a real Redis, and a deployment with two replicas.                                                                                                                                                                                     |
 | Compatibility | `test/compatibility/`     | **The gateway, unchanged, against Hub.** The fixtures of the Shuttle reference (`services/oidc-provider.ts`, `services/access-fixture.ts`) are replaced by Hub, and the contract suite of the gateway (`test/contract/`) is run against it. This is the test that proves the claim of §12. |
 | Architecture  | `test/architecture/`      | The import boundaries of Hub, the way the gateway has them.                                                                                                                                                                                                                       |
@@ -1271,6 +1573,13 @@ The suite asserts:
  gateway;
 5. the metrics of the gateway count the denial as `missing_role`.
 
+The suite holds a second file: the **rehearsal of the cutover** of a
+tenant (docs/cutover.md). It plays the phases of the runbook against the
+gateway of the reference: the tenant is registered, its principal and its
+grant are registered, a browser logs in and reaches an upstream, the grant
+is revoked and the access ends, and the tenant is switched again without
+registering anything.
+
 **The gateway is not modified for any of these tests.** If one of them
 needs a change in the gateway, the change is a change of the gateway, and
 it is refused: the compatibility test exists to prove that there is none.
@@ -1288,9 +1597,9 @@ Hub is a modular monolith of its own, with the same rules as the gateway.
 | `src/app/`                    | The HTTP application: thin handlers, the order of the pipeline, the mapping of the failures to the answers of the protocol. |
 | `src/domains/identity/`       | The validation of the token of a provider, the mapping to a principal, the resolution of the tenant.                        |
 | `src/domains/authorization/`  | The rule of the decision, the reading of the grants, the reasons.                                                           |
-| `src/domains/administration/` | The five endpoints, the validation of their bodies, the audit log.                                                          |
+| `src/domains/administration/` | The eight endpoints, the validation of their bodies, the audit log.                                                          |
 | `src/domains/provider/`       | The tokens of Hub: the signing, the JWKS, the discovery document, the code, the exchange.                                   |
-| `src/platform/postgres/`      | The client of the database, the migrations.                                                                                 |
+| `src/platform/postgres/`      | The client of the database, the migrations, the scope of a tenant.                                                          |
 | `src/platform/redis/`         | The shared store of the authorization codes.                                                                                |
 | `src/platform/bun/`           | The listener and the outbound HTTP.                                                                                         |
 | `src/runtime/`                | The environment, the composition root, the signals and the drain.                                                           |

@@ -1,4 +1,5 @@
--- The four tables of Hub (spec §3).
+-- The four tables of Hub (spec §3). The fifth one, `groups`, came later
+-- with the groups of the principals (spec §3.5).
 --
 -- The whole domain model of Hub is in this file: there is no table "for
 -- later". A feature that needs a fifth table is a feature that has to be

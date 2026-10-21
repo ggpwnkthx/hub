@@ -23,9 +23,11 @@ import {
   createTracedClient,
   DecisionRepository,
   GrantRepository,
+  GroupRepository,
   MIGRATIONS_DIRECTORY,
   MIGRATIONS_TABLE,
   PermissionRepository,
+  roleOf,
   runMigrations,
   TenantRepository,
   UserRepository,
@@ -44,11 +46,11 @@ export interface HubRuntime {
   logger: Logger
   /** The observer of the service. */
   observer: Observer
-  /** The database of the four tables. */
+  /** The database of the five tables. */
   database: Database
   /** The cipher of the client secrets, when the deployment has a key. */
   secrets?: SecretCipher
-  /** The storage of the four tables. */
+  /** The storage of the five tables. */
   repositories: HubRepositories
   /** The listener of the service. */
   listener: StartedListener
@@ -62,13 +64,16 @@ export interface HubRuntime {
   close: () => Promise<void>
 }
 
-/** The storage of the four tables, as the domains receive it. */
+/** The storage of the five tables, as the domains receive it. */
 export interface HubRepositories {
   tenants: TenantRepository
   users: UserRepository
   permissions: PermissionRepository
   grants: GrantRepository
 }
+
+/** The lifetime of the client of a provider of a tenant. */
+const PROVIDER_CLIENT_TTL_MS = 600_000
 
 /**
  * Builds the runtime of Hub.
@@ -83,7 +88,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
   })
   const observer = new MetricsStore()
 
-  // The database of the four tables. A deployment talks to a PostgreSQL
+  // The database of the five tables. A deployment talks to a PostgreSQL
   // server and a development machine runs the embedded PostgreSQL of the
   // process: both are PostgreSQL and the migrations are the same.
   const database = await createDatabase({
@@ -101,6 +106,21 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     applied: migrations.applied.length,
     known: knownMigrations,
   })
+
+  // The isolation of the tenants is enforced by the database, and the
+  // policies of the tables are only policies for a role that is subject
+  // to them. A superuser and a role with BYPASSRLS are not: a production
+  // deployment refuses to start with such a role, because the isolation
+  // would be a promise and not a rule (spec §3.7).
+  if (settings.production) {
+    const role = await roleOf(database)
+    if (role.superuser || role.bypassesRowLevelSecurity) {
+      throw new Error(
+        `the role "${role.name}" of the database bypasses the isolation of the tenants: a production deployment needs a role that is not a superuser and that does not have BYPASSRLS (spec §3.8)`
+      )
+    }
+    logger.info('the isolation of the tenants is enforced by the database', { role: role.name })
+  }
 
   // The cipher of the client secrets at rest. Without a key the service
   // cannot store the secrets of a tenant: the administration answers that
@@ -134,6 +154,9 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
   // a deployment: a code that lives in the memory of one replica is
   // unknown to the others.
   const transport = createFetchTransport()
+  // The clients of the providers of the tenants, one per tenant (spec
+  // §6.6).
+  const providerClients = new Map<string, { client: ProviderClient; at: number }>()
   const storeClient = settings.store.url
     ? await createStoreClient({
         url: settings.store.url,
@@ -292,9 +315,17 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
       },
     },
     state: createStateCipher(settings.secrets.stateSecret ?? 'the-state-of-the-development'),
+    // The client of the provider of a tenant is kept for ten minutes: the
+    // discovery document and the keys of the provider are cached in it,
+    // and a login does not call the provider on every request (spec
+    // §6.6). A change of the registration of a tenant drops its client.
     clientOf: async (tenant) => {
+      const cached = providerClients.get(tenant.id)
+      if (cached && Date.now() - cached.at < PROVIDER_CLIENT_TTL_MS) {
+        return cached.client
+      }
       const secret = await repositories.tenants.readProviderSecret(tenant.id)
-      return new ProviderClient({
+      const client = new ProviderClient({
         issuer: tenant.issuer,
         clientId: tenant.idpClientId,
         clientSecret: secret ?? '',
@@ -308,6 +339,8 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
         },
         cacheTtlMs: 600_000,
       })
+      providerClients.set(tenant.id, { client, at: Date.now() })
+      return client
     },
     secret: settings.secrets.stateSecret ?? 'the-state-of-the-development',
     clockSkewSeconds: settings.timeouts.clockSkewSeconds,
@@ -361,7 +394,14 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     tenants: {
       findByClientId: async (clientId: string) => {
         const tenant = await repositories.tenants.findByClientId(clientId)
-        return tenant ? { id: tenant.id, clientId: tenant.clientId } : null
+        return tenant
+          ? {
+              id: tenant.id,
+              slug: tenant.slug,
+              clientId: tenant.clientId,
+              sharedClient: tenant.sharedClient,
+            }
+          : null
       },
       gatewaySecret: async (tenantId: string) =>
         await repositories.tenants.readGatewaySecret(tenantId),
@@ -372,15 +412,21 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     decisions: new DecisionRepository(traced, settings.timeouts.decisionTimeoutMs),
     accessToken: settings.access.token,
     metricsToken: settings.metrics.token,
-    // The administration of the platform: the five endpoints of the
+    // The administration of the platform: the eight endpoints of the
     // specification, and nothing else.
     administration: createAdministrationService({
       tenants: repositories.tenants,
       users: repositories.users,
+      groups: new GroupRepository(traced),
       permissions: repositories.permissions,
       grants: repositories.grants,
       token: settings.admin.token,
       publicUrl: settings.public.publicUrl,
+      // The registration of a tenant changed: its client of the provider
+      // is dropped, so that the next login builds a new one (spec §6.6).
+      onTenantChanged: (tenantId: string) => {
+        providerClients.delete(tenantId)
+      },
     }),
     publicUrl: settings.public.publicUrl,
     peerAddress: (request: Request) => peer.address(request),

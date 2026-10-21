@@ -76,7 +76,12 @@ describe('the schema of Hub', () => {
     const applied = await database.query<{ name: string }>(
       `select name from ${MIGRATIONS_TABLE} order by name`
     )
-    expect(applied.map((row) => row.name)).toEqual(['0001_initial.sql'])
+    expect(applied.map((row) => row.name)).toEqual([
+      '0001_initial.sql',
+      '0002_list_indexes.sql',
+      '0003_tenant_isolation.sql',
+      '0004_groups.sql',
+    ])
 
     const second = await runMigrations({
       database,
@@ -84,16 +89,27 @@ describe('the schema of Hub', () => {
       logger: createLogger({ level: 'silent' }),
     })
     expect(second.applied).toEqual([])
-    expect(second.alreadyApplied).toEqual(['0001_initial.sql'])
+    expect(second.alreadyApplied).toEqual([
+      '0001_initial.sql',
+      '0002_list_indexes.sql',
+      '0003_tenant_isolation.sql',
+      '0004_groups.sql',
+    ])
   })
 
-  test('the four tables are the only tables of the domain', async () => {
+  test('the five tables are the only tables of the domain', async () => {
     const rows = await database.query<{ table_name: string }>(
       `select table_name from information_schema.tables
        where table_schema = 'public' and table_name not in ('${MIGRATIONS_TABLE}')
        order by table_name`
     )
-    expect(rows.map((row) => row.table_name)).toEqual(['grants', 'permissions', 'tenants', 'users'])
+    expect(rows.map((row) => row.table_name)).toEqual([
+      'grants',
+      'groups',
+      'permissions',
+      'tenants',
+      'users',
+    ])
   })
 
   test('a client id belongs to one tenant', async () => {

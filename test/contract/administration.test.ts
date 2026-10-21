@@ -226,3 +226,179 @@ describe('the administration of Hub', () => {
     expect(response.body.error).toBe('invalid_request')
   })
 })
+
+describe('the lists of the administration', () => {
+  test('the principals are listed with their total', async () => {
+    const created = await call('/v1/admin/users', 'POST', {
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-the-list',
+      email: 'listed@acme.example',
+      displayName: 'Listed',
+    })
+    expect(created.status).toBe(201)
+
+    const response = await call('/v1/admin/users?tenant=acme', 'GET')
+    expect(response.status).toBe(200)
+    const principals = response.body.principals as { id: string; tenant: string }[]
+    expect(Array.isArray(principals)).toBe(true)
+    expect(principals.some((row) => row.id === created.body.id)).toBe(true)
+    expect(principals.every((row) => row.tenant === 'acme')).toBe(true)
+    expect(response.body.total).toBe(principals.length)
+    expect(response.body.limit).toBe(50)
+    expect(response.body.offset).toBe(0)
+  })
+
+  test('the list of the principals is filtered and paginated', async () => {
+    const filtered = await call('/v1/admin/users?tenant=acme&email=listed@acme.example', 'GET')
+    expect(filtered.status).toBe(200)
+    expect((filtered.body.principals as unknown[]).length).toBe(1)
+
+    const page = await call('/v1/admin/users?tenant=acme&limit=1&offset=0', 'GET')
+    expect(page.status).toBe(200)
+    expect((page.body.principals as unknown[]).length).toBe(1)
+    expect(page.body.limit).toBe(1)
+  })
+
+  test('a limit that is not understood is refused', async () => {
+    const response = await call('/v1/admin/users?limit=many', 'GET')
+    expect(response.status).toBe(400)
+    expect(response.body.error).toBe('invalid_request')
+  })
+
+  test('a tenant that does not exist is a not found', async () => {
+    const response = await call('/v1/admin/users?tenant=nowhere', 'GET')
+    expect(response.status).toBe(404)
+    expect(response.body.error).toBe('not_found')
+  })
+
+  test('the grants are listed and they carry who granted them', async () => {
+    const principal = await call('/v1/admin/users', 'POST', {
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-the-listed-grant',
+    })
+    const grant = await call('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      userId: principal.body.id,
+      permission: 'workspace.read',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      routeId: 'workspace-api',
+      grantedBy: 'ops@acme.example',
+    })
+    expect(grant.status).toBe(200)
+    expect(grant.body.grantedBy).toBe('ops@acme.example')
+
+    const response = await call('/v1/admin/grants?tenant=acme', 'GET')
+    expect(response.status).toBe(200)
+    const grants = response.body.grants as { id: string; grantedBy: string | null }[]
+    const listed = grants.find((row) => row.id === grant.body.id)
+    expect(listed?.grantedBy).toBe('ops@acme.example')
+    expect(response.body.total).toBe(grants.length)
+  })
+
+  test('the list of the grants knows the live ones from the dead ones', async () => {
+    const live = await call('/v1/admin/grants?tenant=acme&live=true', 'GET')
+    expect(live.status).toBe(200)
+    expect(
+      (live.body.grants as { revokedAt: string | null }[]).every((row) => row.revokedAt === null)
+    ).toBe(true)
+
+    const dead = await call('/v1/admin/grants?tenant=acme&live=false', 'GET')
+    expect(dead.status).toBe(200)
+    expect((dead.body.grants as unknown[]).length).toBeGreaterThan(0)
+  })
+
+  test('the lists are behind the token of the administration', async () => {
+    const withoutToken = await call('/v1/admin/users', 'GET', undefined, { token: null })
+    expect(withoutToken.status).toBe(401)
+    const wrongToken = await call('/v1/admin/grants', 'GET', undefined, { token: 'wrong' })
+    expect(wrongToken.status).toBe(401)
+  })
+})
+
+describe('the groups of the administration', () => {
+  test('a group is created with its members', async () => {
+    const member = await call('/v1/admin/users', 'POST', {
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-a-member',
+      email: 'member@acme.example',
+    })
+    expect(member.status).toBe(201)
+
+    const response = await call('/v1/admin/groups', 'POST', {
+      tenant: 'acme',
+      key: 'team-platform',
+      displayName: 'The platform team',
+      members: ['the-subject-of-a-member'],
+    })
+    expect(response.status).toBe(201)
+    expect(response.body.key).toBe('team-platform')
+    expect(response.body.members).toEqual(['the-subject-of-a-member'])
+  })
+
+  test('the membership is replaced by the second call', async () => {
+    await call('/v1/admin/users', 'POST', {
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-the-second-member',
+    })
+    const response = await call('/v1/admin/groups', 'POST', {
+      tenant: 'acme',
+      key: 'team-platform',
+      members: ['the-subject-of-the-second-member'],
+    })
+    expect(response.status).toBe(200)
+    expect(response.body.members).toEqual(['the-subject-of-the-second-member'])
+  })
+
+  test('a member that is not a principal is a not found', async () => {
+    const response = await call('/v1/admin/groups', 'POST', {
+      tenant: 'acme',
+      key: 'team-unknown',
+      members: ['the-subject-that-does-not-exist'],
+    })
+    expect(response.status).toBe(404)
+    expect(response.body.error).toBe('not_found')
+  })
+
+  test('a grant of a group names the group', async () => {
+    const response = await call('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      group: 'team-platform',
+      permission: 'workspace.team',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      routeId: 'workspace-api',
+    })
+    expect(response.status).toBe(200)
+    expect(response.body.group).toBe('team-platform')
+    expect(response.body.userId).toBeNull()
+  })
+
+  test('a grant that names a principal and a group is refused', async () => {
+    const response = await call('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      userId: '33333333-3333-4333-8333-333333333333',
+      group: 'team-platform',
+      permission: 'workspace.both',
+    })
+    expect(response.status).toBe(400)
+    expect(response.body.error).toBe('invalid_request')
+  })
+
+  test('a grant that names neither a principal nor a group is refused', async () => {
+    const response = await call('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      permission: 'workspace.neither',
+    })
+    expect(response.status).toBe(400)
+    expect(response.body.error).toBe('invalid_request')
+  })
+
+  test('a grant of a group that does not exist is a not found', async () => {
+    const response = await call('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      group: 'team-that-does-not-exist',
+      permission: 'workspace.nowhere',
+    })
+    expect(response.status).toBe(404)
+    expect(response.body.error).toBe('not_found')
+  })
+})

@@ -53,7 +53,9 @@ export interface CodePort {
 /** The tenants of the platform, as the application sees them. */
 export interface TenantPort {
   /** The tenant of a client id of a gateway. */
-  findByClientId: (clientId: string) => Promise<{ id: string; clientId: string } | null>
+  findByClientId: (
+    clientId: string
+  ) => Promise<{ id: string; slug: string; clientId: string; sharedClient: boolean } | null>
   /** The secret of the gateway of a tenant, in clear. */
   gatewaySecret: (tenantId: string) => Promise<string | null>
 }

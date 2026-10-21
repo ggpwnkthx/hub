@@ -9,7 +9,7 @@ The names of the things:
 | Name | What it is |
 | --- | --- |
 | The deployment | The set of the replicas of Hub, behind the ingress of the platform. |
-| The database | The PostgreSQL of the four tables. |
+| The database | The PostgreSQL of the five tables. |
 | The store | The Redis of the authorization codes. |
 | The provider of a tenant | The identity provider of a tenant, outside of the deployment. |
 | The operator | The person who runs the deployment. |
@@ -182,6 +182,38 @@ exchange and the JWKS is empty.
 **What to do.** Set `HUB_SIGNING_KEY` and `HUB_SIGNING_KID` and roll the
 deployment. In production the environment refuses to start without them
 (spec §4.4).
+
+---
+
+## The deployment refuses to start: the role of the database bypasses the isolation
+
+**What the operator sees.** The process stops with the message `the role
+"<role>" of the database bypasses the isolation of the tenants`. The
+deployment never accepts a request.
+
+**Why.** The isolation of the tenants is enforced by the policies of the
+five tables, and the policies are only policies for a role that is subject
+to them. A superuser and a role with `BYPASSRLS` are not (spec §3.8).
+
+**What to do.**
+
+1. Look at the role of the deployment:
+   ```bash
+   psql "$HUB_DATABASE_URL" -c "select rolname, rolsuper, rolbypassrls from pg_roles where rolname = current_user"
+   ```
+2. Create a role for the deployment that owns the tables and that is not
+   a superuser:
+   ```sql
+   create role hub_app login password '…';
+   alter database hub owner to hub_app;
+   grant usage, create on schema public to hub_app;
+   ```
+3. Point `HUB_DATABASE_URL` at that role and roll the deployment. The
+   migrations are applied by the new role: it owns the tables it creates.
+
+**What not to do.** Do not add `BYPASSRLS` to the role and start the
+service again: the isolation of the tenants would be a promise and not a
+rule.
 
 ---
 

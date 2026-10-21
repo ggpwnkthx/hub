@@ -34,7 +34,7 @@ export interface PublicSettings {
   publicUrl: string
 }
 
-/** The settings of the database of the four tables. */
+/** The settings of the database of the five tables. */
 export interface DatabaseSettings {
   /** The driver of the database. */
   driver: 'postgres' | 'pglite'
@@ -60,7 +60,7 @@ export interface StoreSettings {
 
 /** The settings of the administration. */
 export interface AdminSettings {
-  /** The bearer token of the five administrative endpoints. */
+  /** The bearer token of the eight administrative endpoints. */
   token?: string
 }
 
@@ -264,7 +264,7 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
   const production = parsed.HUB_ENVIRONMENT === 'production'
   const problems: string[] = []
 
-  // The database of the four tables. A deployment talks to a PostgreSQL
+  // The database of the five tables. A deployment talks to a PostgreSQL
   // server: the replicas share their tables. A development machine runs
   // the embedded PostgreSQL of the process when nothing is named.
   const rawDatabase = parsed.HUB_DATABASE_URL?.trim()
@@ -274,7 +274,7 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
   if (!rawDatabase) {
     if (production) {
       problems.push(
-        'HUB_DATABASE_URL must be set in a production environment: it names the PostgreSQL of the four tables of Hub'
+        'HUB_DATABASE_URL must be set in a production environment: it names the PostgreSQL of the five tables of Hub'
       )
     } else {
       databasePath = DEFAULT_EMBEDDED_DATABASE_PATH
@@ -317,7 +317,7 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
   if (production) {
     if (!parsed.HUB_ADMIN_TOKEN) {
       problems.push(
-        'HUB_ADMIN_TOKEN must be set in a production environment: it is the bearer token of the five administrative endpoints'
+        'HUB_ADMIN_TOKEN must be set in a production environment: it is the bearer token of the seven administrative endpoints'
       )
     }
     if (!parsed.HUB_ACCESS_TOKEN) {

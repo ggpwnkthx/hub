@@ -17,6 +17,13 @@ export interface DecisionRequest {
   routeId: string
   /** The roles of the token of the caller: the context, never the policy. */
   roles: string[]
+  /**
+   * The tenant the decision is scoped to, or null for every tenant.
+   *
+   * A gateway that authenticates itself with the credentials of a tenant
+   * only asks about the principals of that tenant (spec §8.8).
+   */
+  tenantId?: string | null
 }
 
 /**

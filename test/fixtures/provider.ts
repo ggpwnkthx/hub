@@ -25,6 +25,15 @@ const OTHER_KEY = generateKeyPairSync('rsa', {
   publicKeyEncoding: { type: 'spki', format: 'pem' },
 })
 
+/**
+ * A key of the fixture, with the identifier the provider publishes it
+ * under.
+ */
+interface FixtureKey {
+  kid: string
+  privateKey: string
+}
+
 export interface FixtureOptions {
   /** The issuer the discovery document names; it is the wrong one when it differs. */
   issuer?: string
@@ -56,10 +65,23 @@ export interface ProviderFixture {
   subject: string
   /** Authenticates the next callers as another subject. */
   authenticateAs: (subject: string) => void
+  /**
+   * Rotates the signing key of the provider.
+   *
+   * A real provider publishes a new key and signs with it, and the old
+   * key stays published until the last token it signed has expired. The
+   * fixture does the same: the new key is added to the JWKS and it is the
+   * one that signs.
+   */
+  rotate: () => void
   /** Stops the fixture. */
   stop: () => Promise<void>
   /** The number of calls to the token endpoint. */
   exchanges: () => number
+  /** The number of calls to the JWKS endpoint. */
+  keyReads: () => number
+  /** The number of calls to the discovery endpoint. */
+  discoveries: () => number
 }
 
 /** Starts the fixture of a provider. */
@@ -70,6 +92,13 @@ export async function startProviderFixture(options: FixtureOptions = {}): Promis
   const clientId = 'hub-acme'
   const clientSecret = 'the-secret-of-the-provider'
   let exchanges = 0
+  let keyReads = 0
+  let discoveries = 0
+
+  // The keys of the provider: the one that signs and the ones that are
+  // still published.
+  const published: FixtureKey[] = [{ kid: 'fixture-1', privateKey: KEY.privateKey }]
+  let signing: FixtureKey = published[0]!
 
   // The codes of the fixture: the nonce of the login travels with them.
   const codes = new Map<string, { nonce: string; challenge: string; redirectUri: string }>()
@@ -81,6 +110,7 @@ export async function startProviderFixture(options: FixtureOptions = {}): Promis
       const url = new URL(request.url)
 
       if (url.pathname === '/.well-known/openid-configuration') {
+        discoveries += 1
         const issuer = options.issuer ?? url.origin
         return Response.json({
           issuer,
@@ -93,11 +123,18 @@ export async function startProviderFixture(options: FixtureOptions = {}): Promis
       }
 
       if (url.pathname === '/jwks') {
-        // The published key is always the key of the tenant: the broken
-        // fixture signs with another one, so its tokens do not verify.
-        const publicKey = createPublicKey(createPrivateKey(KEY.privateKey))
-        const jwk = await exportJWK(publicKey)
-        return Response.json({ keys: [{ ...jwk, kid: 'fixture-1', alg: 'RS256', use: 'sig' }] })
+        keyReads += 1
+        // Every published key is in the JWKS: a provider that rotates its
+        // key keeps the old one published until the last token it signed
+        // has expired.
+        const keys = await Promise.all(
+          published.map(async (key) => {
+            const publicKey = createPublicKey(createPrivateKey(key.privateKey))
+            const jwk = await exportJWK(publicKey)
+            return { ...jwk, kid: key.kid, alg: 'RS256', use: 'sig' }
+          })
+        )
+        return Response.json({ keys })
       }
 
       if (url.pathname === '/authorize') {
@@ -137,7 +174,7 @@ export async function startProviderFixture(options: FixtureOptions = {}): Promis
         const audience = options.audience === 'another-client' ? 'another-client' : clientId
         const nonce = options.nonce === 'another-nonce' ? 'another-nonce' : record.nonce
         const privateKey = createPrivateKey(
-          options.signWith === 'another-key' ? OTHER_KEY.privateKey : KEY.privateKey
+          options.signWith === 'another-key' ? OTHER_KEY.privateKey : signing.privateKey
         )
         const idToken = await new SignJWT({
           sub: subject,
@@ -149,7 +186,7 @@ export async function startProviderFixture(options: FixtureOptions = {}): Promis
           iat: Math.floor(Date.now() / 1000),
           exp: Math.floor(Date.now() / 1000) + 300,
         })
-          .setProtectedHeader({ alg: 'RS256', kid: 'fixture-1' })
+          .setProtectedHeader({ alg: 'RS256', kid: signing.kid })
           .sign(privateKey)
         return Response.json({
           access_token: 'the-access-token-of-the-provider',
@@ -167,6 +204,19 @@ export async function startProviderFixture(options: FixtureOptions = {}): Promis
     authenticateAs: (value: string) => {
       subject = value
     },
+    rotate: () => {
+      const rotated = generateKeyPairSync('rsa', {
+        modulusLength: 2048,
+        privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+        publicKeyEncoding: { type: 'spki', format: 'pem' },
+      })
+      const key: FixtureKey = {
+        kid: `fixture-${published.length + 1}`,
+        privateKey: rotated.privateKey,
+      }
+      published.push(key)
+      signing = key
+    },
     url: `http://127.0.0.1:${server.port}`,
     issuer: `http://127.0.0.1:${server.port}`,
     clientId,
@@ -176,5 +226,7 @@ export async function startProviderFixture(options: FixtureOptions = {}): Promis
       await server.stop(true)
     },
     exchanges: () => exchanges,
+    keyReads: () => keyReads,
+    discoveries: () => discoveries,
   }
 }

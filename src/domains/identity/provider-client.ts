@@ -59,6 +59,8 @@ export interface ProviderDiscovery {
 export class ProviderClient {
   private discoveryCache: { document: ProviderDiscovery; at: number } | null = null
   private jwksCache: { keys: unknown; at: number } | null = null
+  /** The moment of the last refresh of the keys of the provider. */
+  private jwksRefreshedAt: number | null = null
 
   constructor(
     private readonly options: {
@@ -72,6 +74,8 @@ export class ProviderClient {
       /** The guard of the addresses; without it every address is allowed. */
       guard?: AddressGuard
       cacheTtlMs?: number
+      /** How long two refreshes of the keys are apart, in milliseconds. */
+      refreshIntervalMs?: number
       now?: () => number
       /** How long a call to the provider may take, in milliseconds. */
       timeoutMs?: number
@@ -81,6 +85,11 @@ export class ProviderClient {
   /** How long the discovery document and the keys are cached. */
   private get ttl(): number {
     return this.options.cacheTtlMs ?? 600_000
+  }
+
+  /** How long two refreshes of the keys are apart. */
+  private get refreshInterval(): number {
+    return this.options.refreshIntervalMs ?? 30_000
   }
 
   /** The moment of the cache. */
@@ -170,9 +179,20 @@ export class ProviderClient {
   }
 
   /** The keys of the provider. */
-  async jwks(): Promise<unknown> {
-    if (this.jwksCache && this.now - this.jwksCache.at < this.ttl) {
-      return this.jwksCache.keys
+  async jwks(options: { refresh?: boolean } = {}): Promise<unknown> {
+    const fresh = this.jwksCache !== null && this.now - this.jwksCache.at < this.ttl
+    if (fresh && !options.refresh) {
+      return this.jwksCache!.keys
+    }
+    // A refresh is not done on every call: a provider that is hammered
+    // with tokens it did not sign is not hammered with calls (spec §6.6).
+    // The first refresh of a rotation is always allowed.
+    if (
+      options.refresh &&
+      this.jwksRefreshedAt !== null &&
+      this.now - this.jwksRefreshedAt < this.refreshInterval
+    ) {
+      return this.jwksCache!.keys
     }
     const discovery = await this.discovery()
     const response = await this.call(discovery.jwks_uri, {
@@ -189,6 +209,9 @@ export class ProviderClient {
       throw new ProviderError('provider_error', 'the keys of the provider are not json')
     }
     this.jwksCache = { keys: parsed, at: this.now }
+    if (options.refresh) {
+      this.jwksRefreshedAt = this.now
+    }
     return parsed
   }
 

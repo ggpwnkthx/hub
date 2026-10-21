@@ -503,6 +503,54 @@ before the difference is empty.
 
 ---
 
+### M9 — The platform of the operator
+
+**Goal**: the operator can run the platform of a customer with many
+people, and the isolation of the tenants is enforced by the database
+instead of by the review of the code.
+
+| Task | Description | Size |
+| --- | --- | --- |
+| HUB-090 | The list of the principals and the list of the grants: two endpoints of the administration, paginated, with the filters of the tenant, of the status, of the principal and of the life (spec §9.5, §9.8). | M |
+| HUB-091 | The credentials of the decisions: the credentials of a tenant are accepted and the decisions of that gateway are scoped to that tenant (spec §8.8). | M |
+| HUB-092 | The isolation of the tenants: the row level security of PostgreSQL, the scope of a statement, and the refusal of a production deployment whose role bypasses the policies (spec §3.9). | L |
+| HUB-093 | The rotation of the keys of a provider: the keys are read again when a token names a key that the cache does not have, and the client of a provider is kept for ten minutes (spec §6.6). | M |
+| HUB-094 | The rehearsal of the cutover: the phases of the runbook, played against the gateway of the reference (docs/cutover.md). | M |
+| HUB-095 | The groups of the principals: the fifth table, the endpoint of the administration, the grant that names a group, the rule of the decision and the roles of the token (spec §3.5, §9.9). | L |
+
+**State**: the six tasks are done and the milestone is closed.
+
+**The decisions of the milestone**
+
+| Question | Decision | Where |
+| --- | --- | --- |
+| How does the operator see the principals and the grants of a tenant? | Two endpoints of the administration, paginated, with the total of the rows that match the filter. | spec §9.5, §9.8 |
+| How does a gateway stop asking about the principals of the other tenants? | It authenticates itself with the credentials of its tenant instead of the token of the deployment. The two schemes work at the same time, and the gateway of the reference is not modified. | spec §8.8 |
+| What enforces the isolation of the tenants? | The database: the four tables have the row level security, and a statement that runs in the scope of a tenant sees nothing else. The application already isolated the tenants; this is the backstop. | spec §3.9 |
+| What happens when the provider rotates its key? | The keys are read again once, and the token is verified against them. The client of the provider is kept for ten minutes, and a change of the registration of a tenant drops it. | spec §6.6 |
+| Is a group a table of its own for the membership? | No: the membership is a list of the principals of the group, written in one statement by the administration. A sixth table would be a table for the convenience of a query that is rare. | spec §3.5 |
+| How is a grant of a group revoked? | Like any other grant: the row is kept and stamped. The revocation of a grant of a group ends the access of every member at the next decision. | spec §8.6 |
+
+**Exit criteria**
+
+- The list of the principals and the list of the grants answer, and the
+  pages do not overlap.
+- A gateway that presents the credentials of a tenant does not see the
+  principals of the other tenants.
+- A statement that forgets the tenant is refused by PostgreSQL, and a
+  production deployment refuses to start with a role that bypasses the
+  policies.
+- A login works across the rotation of the key of the provider.
+- The rehearsal of the cutover plays every phase of the runbook against
+  the gateway of the reference.
+- A grant of a group holds for the members of the group, and it stops
+  holding when a member leaves the group.
+
+**Demo**: the list of the principals, the isolation of the tenants, the
+rotation of the key of the provider, the rehearsal of the cutover.
+
+---
+
 ## 5. The tasks, in one table
 
 | Id | Milestone | Task | Size | Depends on |

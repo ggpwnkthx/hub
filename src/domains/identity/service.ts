@@ -7,7 +7,7 @@
  */
 
 import { createHash, createHmac } from 'node:crypto'
-import { createLocalJWKSet, jwtVerify } from 'jose'
+import { createLocalJWKSet, decodeProtectedHeader, jwtVerify } from 'jose'
 import { IdentityError, validateProviderToken } from './token'
 import { ProviderError, type ProviderClient } from './provider-client'
 import {
@@ -342,7 +342,7 @@ export class LoginService {
     name?: string
   }> {
     const client = await this.options.clientOf(tenant)
-    const jwks = (await client.jwks()) as { keys: [] }
+    const jwks = await this.keysFor(client, idToken)
     try {
       const verified = await jwtVerify(idToken, createLocalJWKSet(jwks as { keys: [] }))
       const header = verified.protectedHeader
@@ -362,6 +362,32 @@ export class LoginService {
     } catch {
       throw new LoginError('identity_rejected', 'the token of the provider was refused')
     }
+  }
+
+  /**
+   * The keys that verify a token of a provider.
+   *
+   * A provider that rotates its signing key publishes a new one, and the
+   * keys of the provider are cached for ten minutes. A token that names a
+   * key that the cache does not have is therefore the sign of a rotation
+   * and not a bad token: the keys are read again once, and the token is
+   * verified against them (spec §6.6).
+   */
+  private async keysFor(client: ProviderClient, idToken: string): Promise<{ keys: [] }> {
+    const jwks = (await client.jwks()) as { keys: { kid?: string }[] }
+    let kid: string | undefined
+    try {
+      kid = decodeProtectedHeader(idToken).kid
+    } catch {
+      kid = undefined
+    }
+    // A token without an identifier of a key is verified against the keys
+    // of the provider: a provider that signs with one key does not name
+    // it.
+    if (!kid) return jwks as { keys: [] }
+    const known = (jwks.keys ?? []).some((key) => key.kid === kid)
+    if (known) return jwks as { keys: [] }
+    return (await client.jwks({ refresh: true })) as { keys: [] }
   }
 
   /**

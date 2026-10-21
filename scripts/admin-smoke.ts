@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 /**
- * The five calls of the administration (spec §9.7).
+ * The eight calls of the administration (spec §9.10).
  *
  * The script is the smoke test of a deployment: it creates a tenant, it
- * lists the tenants, it creates a principal, it grants a permission and it
+ * lists the tenants, it lists the principals, it creates a principal, it
+ * grants a permission, it lists the grants, it creates a group and it
  * revokes the grant. It reads the environment of the process: it is an
  * operator tool and not part of the service.
  *
@@ -90,7 +91,15 @@ async function main(): Promise<void> {
     fail('the principal could not be created', principal)
   }
 
-  // 4. the grant: the permission on the workspace, on the route
+  // 4. the principals of the tenant
+  const principals = await call(`/v1/admin/users?tenant=${slug}`, 'GET')
+  if (principals.status !== 200) fail('the principals could not be listed', principals)
+  const listedPrincipals = (principals.body.principals ?? []) as { id: string }[]
+  if (!listedPrincipals.some((row) => row.id === principal.body.id)) {
+    fail('the principal is not in the list', principals)
+  }
+
+  // 5. the grant: the permission on the workspace, on the route
   const grant = await call('/v1/admin/grants', 'PUT', {
     tenant: slug,
     userId: principal.body.id,
@@ -100,14 +109,34 @@ async function main(): Promise<void> {
   })
   if (grant.status !== 200) fail('the grant could not be created', grant)
 
-  // 5. the revocation, when the access has to end
+  // 6. the grants of the tenant
+  const grants = await call(`/v1/admin/grants?tenant=${slug}`, 'GET')
+  if (grants.status !== 200) fail('the grants could not be listed', grants)
+  const listedGrants = (grants.body.grants ?? []) as { id: string }[]
+  if (!listedGrants.some((row) => row.id === grant.body.id)) {
+    fail('the grant is not in the list', grants)
+  }
+
+  // 7. the group and its membership: a grant of the group holds for every
+  // member of the group
+  const group = await call('/v1/admin/groups', 'POST', {
+    tenant: slug,
+    key: 'smoke-team',
+    displayName: 'The team of the smoke test',
+    members: ['the-subject-of-the-smoke-test'],
+  })
+  if (group.status !== 201 && group.status !== 200) {
+    fail('the group could not be created', group)
+  }
+
+  // 8. the revocation, when the access has to end
   const revoked = await call(`/v1/admin/grants/${grant.body.id}`, 'DELETE')
   if (revoked.status !== 204) fail('the grant could not be revoked', revoked)
 
   console.log(
     JSON.stringify({
       level: 'info',
-      msg: 'the five calls of the administration answered',
+      msg: 'the eight calls of the administration answered',
       tenant: tenantId,
       principal: principal.body.id,
       grant: grant.body.id,

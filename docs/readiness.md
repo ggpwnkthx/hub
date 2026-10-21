@@ -32,15 +32,18 @@ cutover of the first tenant, by a person who did not write the service.
 | The password of the database is not in the image | The environment of the deployment; the image carries no secret. |
 | The image runs as a non-root user, has no shell and is scanned | `Dockerfile`, the job `image` of the CI. |
 | The security review has no open finding above "low" | [security.md](security.md). |
+| The rotation of the keys of a provider does not lock the logins out | The keys are read again when a token names a key that the cache does not have (spec §6.6); the test is `test/contract/rotation.test.ts`. |
 
 ## 11.3 The data
 
 | Item | Answer |
 | --- | --- |
-| The four tables are the only domain tables, and the schema of the production is the schema of the migrations | The migrations of the platform; the bookkeeping of the migrations (`hub_schema_migrations`) is a table of the infrastructure and not of the domain. |
+| The five tables are the only domain tables, and the schema of the production is the schema of the migrations | The migrations of the platform; the bookkeeping of the migrations (`hub_schema_migrations`) is a table of the infrastructure and not of the domain. |
 | The backup is automatic, the restore is rehearsed, and the time of the recovery is written down | [backup.md](backup.md). The rehearsal of the quarter is the moment where the times are measured. |
-| The migration that removes a column is two releases after the one that stops using it | No migration removes a column: the four tables are the model (spec §13). |
+| The migration that removes a column is two releases after the one that stops using it | No migration removes a column: the five tables are the model (spec §13). |
 | The audit log of the administration is shipped somewhere that is not the database | The audit is a log line of the service (`the administrative call`): it is shipped with the logs of the deployment. |
+| The tenants are isolated by the database, and not only by the application | The row level security of the five tables, the scope of a statement (`src/platform/postgres/scope.ts`) and the refusal of a production deployment whose role bypasses the policies (spec §3.9). The test is `test/integration/isolation.test.ts`. |
+| The membership of a group never names a principal of another tenant | The foreign keys of the schema and the check of the domain: a member that is not a principal of the tenant is a `404` (spec §9.9). |
 
 ## 11.4 The availability
 

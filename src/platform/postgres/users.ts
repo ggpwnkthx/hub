@@ -6,6 +6,7 @@
  * the key `(tenant, subject)` and never the e-mail.
  */
 
+import { withTenantScope } from './scope'
 import type { SqlClient } from './database'
 
 /** The status of a principal. */
@@ -84,6 +85,44 @@ function toRow(record: UserRecord): UserRow {
   }
 }
 
+/** The filter of the list of the principals. */
+export interface UserListFilter {
+  /** The id of the tenant, or null for every tenant. */
+  tenantId: string | null
+  /** The status of the principals, or null for every status. */
+  status: PrincipalStatus | null
+  /** The exact e-mail of the principals, or null for every one. */
+  email: string | null
+  /** The size of the page. */
+  limit: number
+  /** The number of rows that are skipped. */
+  offset: number
+}
+
+/**
+ * The conditions of a list of principals.
+ *
+ * Every value of a caller is a parameter: the statement is never built
+ * with text (spec §9.1).
+ */
+function listConditions(filter: UserListFilter): { where: string; params: unknown[] } {
+  const conditions: string[] = []
+  const params: unknown[] = []
+  if (filter.tenantId !== null) {
+    params.push(filter.tenantId)
+    conditions.push(`users.tenant_id = $${params.length}`)
+  }
+  if (filter.status !== null) {
+    params.push(filter.status)
+    conditions.push(`users.status = $${params.length}`)
+  }
+  if (filter.email !== null) {
+    params.push(filter.email)
+    conditions.push(`users.email = $${params.length}`)
+  }
+  return { where: conditions.length > 0 ? `where ${conditions.join(' and ')}` : '', params }
+}
+
 /** The storage of the principals. */
 export class UserRepository {
   constructor(private readonly db: SqlClient) {}
@@ -104,22 +143,73 @@ export class UserRepository {
    * not an identity (spec §6.2).
    */
   async findByExternalSubject(tenantId: string, externalSubject: string): Promise<UserRow | null> {
-    const rows = await this.db.query<UserRecord>(
-      `select ${COLUMNS} from users join tenants on tenants.id = users.tenant_id
+    const rows = await withTenantScope(
+      this.db,
+      tenantId,
+      async (client) =>
+        await client.query<UserRecord>(
+          `select ${COLUMNS} from users join tenants on tenants.id = users.tenant_id
        where users.tenant_id = $1 and users.external_subject = $2`,
-      [tenantId, externalSubject]
+          [tenantId, externalSubject]
+        )
     )
     return rows[0] ? toRow(rows[0]) : null
   }
 
   /** The principals of a tenant. */
   async findByTenant(tenantId: string): Promise<UserRow[]> {
-    const rows = await this.db.query<UserRecord>(
-      `select ${COLUMNS} from users join tenants on tenants.id = users.tenant_id
+    const rows = await withTenantScope(
+      this.db,
+      tenantId,
+      async (client) =>
+        await client.query<UserRecord>(
+          `select ${COLUMNS} from users join tenants on tenants.id = users.tenant_id
        where users.tenant_id = $1 order by users.created_at`,
-      [tenantId]
+          [tenantId]
+        )
     )
     return rows.map(toRow)
+  }
+
+  /**
+   * The principals that match a filter, and their number.
+   *
+   * The order is the newest first and it is stable: two pages never show
+   * the same row twice and never skip one (spec §9.5).
+   */
+  async list(filter: UserListFilter): Promise<{ rows: UserRow[]; total: number }> {
+    const { where, params } = listConditions(filter)
+    const page = await withTenantScope(this.db, filter.tenantId, async (client) => {
+      const counted = await client.query<{ count: number }>(
+        `select count(*)::int as count from users ${where}`,
+        params
+      )
+      const rows = await client.query<UserRecord>(
+        `select ${COLUMNS} from users join tenants on tenants.id = users.tenant_id
+       ${where}
+       order by users.created_at desc, users.id desc
+       limit $${params.length + 1} offset $${params.length + 2}`,
+        [...params, filter.limit, filter.offset]
+      )
+      return { rows, total: counted[0]?.count ?? 0 }
+    })
+    return { rows: page.rows.map(toRow), total: page.total }
+  }
+
+  /**
+   * The external subjects of a list of principals.
+   *
+   * The membership of a group is stored as the ids of the principals and
+   * it is published as the external identities: the translation is the
+   * work of the adapter.
+   */
+  async findExternalSubjectsByIds(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return []
+    const rows = await this.db.query<{ external_subject: string }>(
+      `select external_subject from users where id = any($1::uuid[])`,
+      [ids]
+    )
+    return rows.map((row) => row.external_subject)
   }
 
   /** Creates a principal. */

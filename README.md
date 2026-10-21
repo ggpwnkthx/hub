@@ -8,10 +8,10 @@ platform that Shuttle fronts.
 - It maps the external identity `(tenant, subject)` to a **principal**.
 - It answers the decision contract the gateway already speaks,
   `POST /v1/decisions`, over a table of **grants**.
-- It is administered with five `curl` endpoints.
+- It is administered with eight `curl` endpoints.
 
-The whole domain model is four tables: `tenants`, `users`, `permissions`,
-`grants`.
+The whole domain model is five tables: `tenants`, `users`, `permissions`,
+`grants`, `groups`.
 
 | Document | What it holds |
 | --- | --- |

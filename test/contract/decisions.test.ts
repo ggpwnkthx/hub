@@ -340,3 +340,383 @@ describe('the metrics of the service', () => {
     expect(text).toContain('hub_decision_duration_seconds')
   })
 })
+
+describe('the credentials of the decisions', () => {
+  /** The credentials of the gateway of a tenant, in base64. */
+  function basic(clientId: string, clientSecret: string): string {
+    return `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`
+  }
+
+  /** Asks for a decision with a credential of the caller. */
+  async function decideWith(
+    credential: string,
+    body: Record<string, unknown>
+  ): Promise<{ status: number; body: Record<string, unknown> }> {
+    const response = await fetch(`${base}/v1/decisions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: credential },
+      body: JSON.stringify(body),
+    })
+    return { status: response.status, body: (await response.json()) as Record<string, unknown> }
+  }
+
+  test('the credentials of a tenant answer a decision of that tenant', async () => {
+    const answer = await decideWith(basic('shuttle-acme', 'secret'), {
+      subject,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.status).toBe(200)
+    expect(answer.body.allow).toBe(true)
+  })
+
+  test('a wrong secret is refused', async () => {
+    const answer = await decideWith(basic('shuttle-acme', 'wrong'), {
+      subject,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.status).toBe(401)
+  })
+
+  test('a client id that is not registered is refused', async () => {
+    const answer = await decideWith(basic('shuttle-nowhere', 'secret'), {
+      subject,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.status).toBe(401)
+  })
+
+  test('the decisions of a tenant do not see the principals of another tenant', async () => {
+    await admin('/v1/admin/tenants', 'POST', {
+      slug: 'other',
+      displayName: 'Other',
+      issuer: 'https://login.other.example',
+      idpClientId: 'hub-other',
+      idpClientSecret: 'secret',
+      clientId: 'shuttle-other',
+      clientSecret: 'the-secret-of-other',
+    })
+    const principal = await admin('/v1/admin/users', 'POST', {
+      tenant: 'other',
+      externalSubject: 'the-subject-of-another-tenant',
+    })
+    await admin('/v1/admin/grants', 'PUT', {
+      tenant: 'other',
+      userId: principal.id,
+      // The permission of the grant belongs to the tenant: a permission of
+      // another tenant is refused (spec §9.6).
+      permission: 'workspace.other',
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+    })
+
+    // The gateway of the tenant acme asks about a principal of the tenant
+    // other: the answer does not say that the principal exists.
+    const answer = await decideWith(basic('shuttle-acme', 'secret'), {
+      subject: principal.id,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.status).toBe(200)
+    expect(answer.body.allow).toBe(false)
+    expect(answer.body.reason).toBe('the principal does not exist')
+
+    // The gateway of the tenant other asks about its own principal.
+    const own = await decideWith(basic('shuttle-other', 'the-secret-of-other'), {
+      subject: principal.id,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(own.body.allow).toBe(true)
+  })
+
+  test('the bearer token of the deployment is not scoped', async () => {
+    await admin('/v1/admin/tenants', 'POST', {
+      slug: 'third',
+      displayName: 'Third',
+      issuer: 'https://login.third.example',
+      idpClientId: 'hub-third',
+      idpClientSecret: 'secret',
+      clientId: 'shuttle-third',
+      clientSecret: 'secret',
+    })
+    const principal = await admin('/v1/admin/users', 'POST', {
+      tenant: 'third',
+      externalSubject: 'the-subject-of-the-third-tenant',
+    })
+    await admin('/v1/admin/grants', 'PUT', {
+      tenant: 'third',
+      userId: principal.id,
+      permission: 'workspace.third',
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+    })
+
+    // The bearer token of the deployment sees every tenant of the
+    // platform: that is the price of the scheme of the reference.
+    const answer = await decide({
+      subject: principal.id,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.status).toBe(200)
+    expect(answer.body.allow).toBe(true)
+
+    // The credentials of the tenant acme do not.
+    const scoped = await decideWith(basic('shuttle-acme', 'secret'), {
+      subject: principal.id,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(scoped.body.allow).toBe(false)
+    expect(scoped.body.reason).toBe('the principal does not exist')
+  })
+
+  test('a tenant with a shared client is not scoped', async () => {
+    await admin('/v1/admin/tenants', 'POST', {
+      slug: 'shared',
+      displayName: 'Shared',
+      issuer: 'https://login.shared.example',
+      idpClientId: 'hub-shared',
+      idpClientSecret: 'secret',
+      clientId: 'shuttle-shared',
+      clientSecret: 'secret',
+      sharedClient: true,
+    })
+    const principal = await admin('/v1/admin/users', 'POST', {
+      tenant: 'shared',
+      externalSubject: 'the-subject-of-the-shared-tenant',
+    })
+    await admin('/v1/admin/grants', 'PUT', {
+      tenant: 'shared',
+      userId: principal.id,
+      permission: 'workspace.read',
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+    })
+    const answer = await decideWith(basic('shuttle-shared', 'secret'), {
+      subject,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.status).toBe(200)
+    expect(answer.body.allow).toBe(true)
+  })
+
+  test('a credential that is not understood is refused', async () => {
+    const answer = await decideWith('Digest whatever', {
+      subject,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.status).toBe(401)
+  })
+})
+
+describe('the grants of a group', () => {
+  test('a member of the group is allowed by the grant of the group', async () => {
+    const member = await admin('/v1/admin/users', 'POST', {
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-a-member',
+    })
+    const group = await admin('/v1/admin/groups', 'POST', {
+      tenant: 'acme',
+      key: 'team-decisions',
+      members: ['the-subject-of-a-member'],
+    })
+    expect(group.key).toBe('team-decisions')
+
+    await admin('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      group: 'team-decisions',
+      permission: 'workspace.team',
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+    })
+
+    const answer = await decide({
+      subject: member.id,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.status).toBe(200)
+    expect(answer.body.allow).toBe(true)
+    expect(answer.body.reason).toBe('allowed')
+  })
+
+  test('a principal that is not a member of the group is refused', async () => {
+    const outsider = await admin('/v1/admin/users', 'POST', {
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-an-outsider',
+    })
+    const answer = await decide({
+      subject: outsider.id,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.body.allow).toBe(false)
+    expect(answer.body.reason).toBe('the principal does not have the role of the workspace')
+  })
+
+  test('a principal that leaves the group loses the access', async () => {
+    const member = await admin('/v1/admin/users', 'POST', {
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-a-leaver',
+    })
+    await admin('/v1/admin/groups', 'POST', {
+      tenant: 'acme',
+      key: 'team-leavers',
+      members: ['the-subject-of-a-leaver'],
+    })
+    await admin('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      group: 'team-leavers',
+      permission: 'workspace.leavers',
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+    })
+    const before = await decide({
+      subject: member.id,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(before.body.allow).toBe(true)
+
+    // The membership is replaced: the principal is not in the group any
+    // more.
+    await admin('/v1/admin/groups', 'POST', {
+      tenant: 'acme',
+      key: 'team-leavers',
+      members: [],
+    })
+    const after = await decide({
+      subject: member.id,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(after.body.allow).toBe(false)
+  })
+})
+
+describe('the grants of a group and the grants of the principal', () => {
+  test('a live grant of a group wins over an expired grant of the principal', async () => {
+    const principal = await admin('/v1/admin/users', 'POST', {
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-both-kinds',
+    })
+    await admin('/v1/admin/groups', 'POST', {
+      tenant: 'acme',
+      key: 'team-both-kinds',
+      members: ['the-subject-of-both-kinds'],
+    })
+    // An expired grant of the principal.
+    await admin('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      userId: principal.id,
+      permission: 'workspace.expired',
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    })
+    // A live grant of the group.
+    await admin('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      group: 'team-both-kinds',
+      permission: 'workspace.live',
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+    })
+
+    const answer = await decide({
+      subject: principal.id,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.status).toBe(200)
+    expect(answer.body.allow).toBe(true)
+    expect(answer.body.reason).toBe('allowed')
+  })
+})
+
+describe('the grants of a group and the grants of the principal', () => {
+  test('a live grant of the principal wins over an expired grant of the group', async () => {
+    const principal = await admin('/v1/admin/users', 'POST', {
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-a-live-principal',
+    })
+    await admin('/v1/admin/groups', 'POST', {
+      tenant: 'acme',
+      key: 'team-of-an-expired-grant',
+      members: ['the-subject-of-a-live-principal'],
+    })
+    await admin('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      group: 'team-of-an-expired-grant',
+      permission: 'workspace.expired',
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    })
+    await admin('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      userId: principal.id,
+      permission: 'workspace.live',
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+    })
+
+    const answer = await decide({
+      subject: principal.id,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.body.allow).toBe(true)
+    expect(answer.body.reason).toBe('allowed')
+  })
+
+  test('an expired grant of a group is the reason of the refusal', async () => {
+    const principal = await admin('/v1/admin/users', 'POST', {
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-an-expired-group',
+    })
+    await admin('/v1/admin/groups', 'POST', {
+      tenant: 'acme',
+      key: 'team-of-expired-grants',
+      members: ['the-subject-of-an-expired-group'],
+    })
+    await admin('/v1/admin/grants', 'PUT', {
+      tenant: 'acme',
+      group: 'team-of-expired-grants',
+      permission: 'workspace.expired',
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    })
+
+    const answer = await decide({
+      subject: principal.id,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.body.allow).toBe(false)
+    expect(answer.body.reason).toBe('the role of the workspace has expired')
+  })
+})

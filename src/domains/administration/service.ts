@@ -12,12 +12,20 @@ import { AdministrationError } from './errors'
 import { FailedAuthenticationLimiter } from './limiter'
 import type {
   Grant,
+  GrantFilter,
+  Group,
+  GroupRegistration,
+  GroupStore,
+  GrantPage,
   GrantRegistration,
   GrantStore,
   Permission,
   PermissionStore,
   Principal,
+  PrincipalFilter,
+  PrincipalPage,
   PrincipalRegistration,
+  PrincipalStatus,
   PrincipalStore,
   Tenant,
   TenantRegistration,
@@ -30,6 +38,8 @@ export interface AdministrationOptions {
   tenants: TenantStore
   /** The storage of the principals. */
   principals: PrincipalStore
+  /** The storage of the groups. */
+  groups?: GroupStore
   /** The storage of the permissions. */
   permissions: PermissionStore
   /** The storage of the grants. */
@@ -62,6 +72,66 @@ export const DEFAULT_IDP_SCOPES = ['openid', 'email', 'profile']
 
 /** The defaults of the algorithms of a tenant. */
 export const DEFAULT_IDP_ALGORITHMS = ['RS256']
+
+/** The default size of a page of the administration. */
+export const DEFAULT_PAGE_SIZE = 50
+
+/** The maximum size of a page of the administration. */
+export const MAX_PAGE_SIZE = 200
+
+/**
+ * Reads a whole number of the query of a list.
+ *
+ * A value that is not a whole number, a value that is below the minimum
+ * and a value that is above the maximum are refused: the page is never
+ * read from a value that was not understood.
+ */
+function wholeNumber(
+  value: string | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+  name: string
+): number {
+  if (value === undefined || value.trim() === '') return fallback
+  const text = value.trim()
+  if (!/^\d+$/.test(text)) {
+    throw new AdministrationError('invalid_request', `${name} must be a whole number`)
+  }
+  const parsed = Number(text)
+  if (parsed < min || parsed > max) {
+    throw new AdministrationError('invalid_request', `${name} must be between ${min} and ${max}`)
+  }
+  return parsed
+}
+
+/**
+ * Reads the status of a principal of the query of a list.
+ *
+ * A status that is not one of the two of the schema is refused.
+ */
+function statusOf(value: string | undefined): PrincipalStatus | null {
+  if (value === undefined || value.trim() === '') return null
+  const text = value.trim()
+  if (text !== 'active' && text !== 'disabled') {
+    throw new AdministrationError('invalid_request', 'status must be active or disabled')
+  }
+  return text
+}
+
+/**
+ * Reads the "live" filter of the list of the grants.
+ *
+ * A value that is not `true` and not `false` is refused: the operator
+ * does not get a list of something he did not ask for.
+ */
+function liveOf(value: string | undefined): boolean | null {
+  if (value === undefined || value.trim() === '') return null
+  const text = value.trim().toLowerCase()
+  if (text === 'true') return true
+  if (text === 'false') return false
+  throw new AdministrationError('invalid_request', 'live must be true or false')
+}
 
 /** The administration of Hub. */
 export class AdministrationService {
@@ -164,6 +234,91 @@ export class AdministrationService {
   }
 
   /**
+   * The principals that match a filter, and their number.
+   *
+   * The page is read from the table of the principals: the filter of the
+   * tenant is optional, and a tenant that does not exist is a
+   * `404 not_found`.
+   */
+  async listPrincipals(query: {
+    tenant?: string | null
+    status?: string | null
+    email?: string | null
+    limit?: string | null
+    offset?: string | null
+  }): Promise<PrincipalPage> {
+    const limit = wholeNumber(
+      query.limit ?? undefined,
+      DEFAULT_PAGE_SIZE,
+      1,
+      MAX_PAGE_SIZE,
+      'limit'
+    )
+    const offset = wholeNumber(query.offset ?? undefined, 0, 0, Number.MAX_SAFE_INTEGER, 'offset')
+    const status = statusOf(query.status ?? undefined)
+
+    let tenantId: string | null = null
+    const slug = query.tenant?.trim()
+    if (slug) {
+      const tenant = await this.options.tenants.findBySlug(slug)
+      if (!tenant) {
+        throw new AdministrationError('not_found', 'the tenant does not exist')
+      }
+      tenantId = tenant.id
+    }
+
+    const filter: PrincipalFilter = {
+      tenantId,
+      status,
+      email: query.email?.trim() || null,
+      limit,
+      offset,
+    }
+    const page = await this.options.principals.list(filter)
+    return { principals: page.principals, total: page.total, limit, offset }
+  }
+
+  /**
+   * The grants that match a filter, and their number.
+   *
+   * A tenant that does not exist is a `404 not_found`, and a principal
+   * that does not exist is an empty list: the id of a principal of
+   * another tenant is not a way to read the grants of this one.
+   */
+  async listGrants(query: {
+    tenant?: string | null
+    userId?: string | null
+    live?: string | null
+    limit?: string | null
+    offset?: string | null
+  }): Promise<GrantPage> {
+    const limit = wholeNumber(
+      query.limit ?? undefined,
+      DEFAULT_PAGE_SIZE,
+      1,
+      MAX_PAGE_SIZE,
+      'limit'
+    )
+    const offset = wholeNumber(query.offset ?? undefined, 0, 0, Number.MAX_SAFE_INTEGER, 'offset')
+    const live = liveOf(query.live ?? undefined)
+
+    let tenantId: string | null = null
+    const slug = query.tenant?.trim()
+    if (slug) {
+      const tenant = await this.options.tenants.findBySlug(slug)
+      if (!tenant) {
+        throw new AdministrationError('not_found', 'the tenant does not exist')
+      }
+      tenantId = tenant.id
+    }
+
+    const userId = query.userId?.trim() || null
+    const filter: GrantFilter = { tenantId, userId, live, limit, offset }
+    const page = await this.options.grants.list(filter)
+    return { grants: page.grants, total: page.total, limit, offset }
+  }
+
+  /**
    * Creates a principal, or updates the principal of that
    * `(tenant, externalSubject)` pair.
    */
@@ -210,8 +365,72 @@ export class AdministrationService {
   }
 
   /**
+   * Creates a group, or updates the group of that key.
+   *
+   * The membership is **replaced**: the principals of the list are the
+   * members of the group, and the principals that are not in the list are
+   * not in the group any more. The members are the external identities of
+   * the principals: a member that is not a principal of the tenant is a
+   * `404 not_found`.
+   */
+  async upsertGroup(
+    registration: GroupRegistration
+  ): Promise<{ group: Group; created: boolean; audit: AuditEntry }> {
+    const tenant = await this.options.tenants.findBySlug(registration.tenant)
+    if (!tenant) {
+      throw new AdministrationError('not_found', 'the tenant does not exist')
+    }
+    const groups = this.options.groups
+    if (!groups) {
+      throw new AdministrationError('forbidden', 'the groups are not enabled in this deployment')
+    }
+
+    // Every member is a principal of the tenant: the group cannot name a
+    // principal that does not exist.
+    const members: string[] = []
+    for (const subject of registration.members) {
+      const principal = await this.options.principals.findByExternalSubject(tenant.id, subject)
+      if (!principal) {
+        throw new AdministrationError(
+          'not_found',
+          `the principal "${subject}" does not exist in the tenant`
+        )
+      }
+      members.push(principal.id)
+    }
+
+    const existing = await groups.findByKey(tenant.id, registration.key)
+    if (!existing) {
+      const group = await groups.create({
+        tenantId: tenant.id,
+        key: registration.key,
+        displayName: registration.displayName ?? null,
+        memberIds: members,
+      })
+      return {
+        group,
+        created: true,
+        audit: { action: 'group.created', id: group.id, tenant: tenant.slug },
+      }
+    }
+
+    const group = await groups.update(existing.id, {
+      displayName: registration.displayName,
+      memberIds: members,
+    })
+    if (!group) {
+      throw new AdministrationError('not_found', 'the group does not exist')
+    }
+    return {
+      group,
+      created: false,
+      audit: { action: 'group.updated', id: group.id, tenant: tenant.slug },
+    }
+  }
+
+  /**
    * Creates a grant, or updates the grant of that
-   * `(tenant, user, permission, workspace, route)` tuple.
+   * `(tenant, subject, permission, workspace, route)` tuple.
    *
    * The permission is created on demand in the scope of the tenant. A
    * permission of the catalogue of the platform is reused, and a
@@ -223,12 +442,36 @@ export class AdministrationService {
       throw new AdministrationError('not_found', 'the tenant does not exist')
     }
 
-    const principal = await this.options.principals.findById(registration.userId)
-    if (!principal) {
-      throw new AdministrationError('not_found', 'the principal does not exist')
+    // A grant names exactly one subject: a principal or a group.
+    const userId = registration.userId ?? null
+    const groupKey = registration.group ?? null
+    if ((userId === null) === (groupKey === null)) {
+      throw new AdministrationError(
+        'invalid_request',
+        'the grant names a principal or a group, and not both'
+      )
     }
-    if (principal.tenant !== tenant.slug) {
-      throw new AdministrationError('forbidden', 'the principal belongs to another tenant')
+
+    let subjectId: string
+    if (userId !== null) {
+      const principal = await this.options.principals.findById(userId)
+      if (!principal) {
+        throw new AdministrationError('not_found', 'the principal does not exist')
+      }
+      if (principal.tenant !== tenant.slug) {
+        throw new AdministrationError('forbidden', 'the principal belongs to another tenant')
+      }
+      subjectId = principal.id
+    } else {
+      const groups = this.options.groups
+      if (!groups) {
+        throw new AdministrationError('forbidden', 'the groups are not enabled in this deployment')
+      }
+      const group = await groups.findByKey(tenant.id, groupKey!)
+      if (!group) {
+        throw new AdministrationError('not_found', 'the group does not exist')
+      }
+      subjectId = group.id
     }
 
     const permission = await this.resolvePermission(tenant.id, registration.permission)
@@ -237,7 +480,7 @@ export class AdministrationService {
     const routeId = registration.routeId ?? null
     const existing = await this.options.grants.findLive(
       tenant.id,
-      principal.id,
+      { userId: userId, groupId: userId === null ? subjectId : null },
       permission.id,
       workspaceId,
       routeId
@@ -245,7 +488,8 @@ export class AdministrationService {
     if (!existing) {
       const grant = await this.options.grants.create({
         tenantId: tenant.id,
-        userId: principal.id,
+        userId: userId,
+        groupId: userId === null ? subjectId : null,
         permissionId: permission.id,
         workspaceId,
         routeId,

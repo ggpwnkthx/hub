@@ -1,7 +1,7 @@
 /**
  * The ports of the administration.
  *
- * The domain owns the rules of the five endpoints; the storage is a port
+ * The domain owns the rules of the eight endpoints; the storage is a port
  * that the composition root fulfils. The domain knows nothing about
  * PostgreSQL and nothing about the shape of the rows.
  */
@@ -87,18 +87,47 @@ export interface Permission {
   enabled: boolean
 }
 
+/** A group of principals (spec §3.5). */
+export interface Group {
+  id: string
+  /** The slug of the tenant of the group. */
+  tenant: string
+  /** The name of the group. */
+  key: string
+  displayName: string | null
+  /** The external subjects of the principals of the group. */
+  members: string[]
+  createdAt: Date
+}
+
+/** The registration of a group. */
+export interface GroupRegistration {
+  /** The slug of the tenant of the group. */
+  tenant: string
+  /** The name of the group. */
+  key: string
+  displayName?: string | null
+  /** The external subjects of the principals of the group. */
+  members: string[]
+}
+
 /** A grant of the policy. */
 export interface Grant {
   id: string
   /** The slug of the tenant of the grant. */
   tenant: string
-  userId: string
+  /** The principal of the grant, or null when the grant names a group. */
+  userId: string | null
+  /** The key of the group of the grant, when it names one. */
+  group: string | null
   /** The key of the permission of the grant. */
   permission: string
   workspaceId: string | null
   routeId: string | null
   expiresAt: Date | null
   revokedAt: Date | null
+  /** Who granted it, for the audit log. */
+  grantedBy: string | null
   createdAt: Date
 }
 
@@ -106,13 +135,69 @@ export interface Grant {
 export interface GrantRegistration {
   /** The slug of the tenant of the grant. */
   tenant: string
-  userId: string
+  /** The id of the principal of the grant, when it names one. */
+  userId?: string | null
+  /** The key of the group of the grant, when it names one. */
+  group?: string | null
   /** The key of the permission of the grant. */
   permission: string
   workspaceId?: string | null
   routeId?: string | null
   expiresAt?: Date | null
   grantedBy?: string | null
+}
+
+/** The filter of the list of the principals. */
+export interface PrincipalFilter {
+  /** The id of the tenant, or null for every tenant. */
+  tenantId: string | null
+  /** The status of the principals, or null for every status. */
+  status: PrincipalStatus | null
+  /** The exact e-mail of the principals, or null for every one. */
+  email: string | null
+  /** The size of the page. */
+  limit: number
+  /** The number of rows that are skipped. */
+  offset: number
+}
+
+/** A page of principals and the number of the principals that match. */
+export interface PrincipalPage {
+  principals: Principal[]
+  /** The number of principals that match the filter, the page included. */
+  total: number
+  /** The size of the page that was asked for. */
+  limit: number
+  /** The number of rows that were skipped. */
+  offset: number
+}
+
+/** The filter of the list of the grants. */
+export interface GrantFilter {
+  /** The id of the tenant, or null for every tenant. */
+  tenantId: string | null
+  /** The id of the principal, or null for every principal. */
+  userId: string | null
+  /**
+   * True: the grants that are not revoked and not expired. False: the
+   * others. Null: every grant.
+   */
+  live: boolean | null
+  /** The size of the page. */
+  limit: number
+  /** The number of rows that are skipped. */
+  offset: number
+}
+
+/** A page of grants and the number of the grants that match. */
+export interface GrantPage {
+  grants: Grant[]
+  /** The number of grants that match the filter, the page included. */
+  total: number
+  /** The size of the page that was asked for. */
+  limit: number
+  /** The number of rows that were skipped. */
+  offset: number
 }
 
 /** The storage of the tenants. */
@@ -148,6 +233,8 @@ export interface PrincipalStore {
     id: string,
     changes: { email?: string | null; displayName?: string | null; status?: PrincipalStatus }
   ): Promise<Principal | null>
+  /** The principals that match a filter, and their number. */
+  list(filter: PrincipalFilter): Promise<PrincipalPage>
 }
 
 /** The storage of the permissions. */
@@ -162,6 +249,25 @@ export interface PermissionStore {
   create(registration: { tenantId: string | null; key: string }): Promise<Permission>
 }
 
+/** The storage of the groups. */
+export interface GroupStore {
+  /** The group of a key, in the scope of a tenant. */
+  findByKey(tenantId: string, key: string): Promise<Group | null>
+  /** Creates a group. */
+  create(registration: {
+    tenantId: string
+    key: string
+    displayName?: string | null
+    /** The ids of the principals of the group. */
+    memberIds: string[]
+  }): Promise<Group>
+  /** Changes a group: the membership is replaced. */
+  update(
+    id: string,
+    changes: { displayName?: string | null; memberIds?: string[] }
+  ): Promise<Group | null>
+}
+
 /** The storage of the grants. */
 export interface GrantStore {
   /** The grant of an id. */
@@ -169,7 +275,7 @@ export interface GrantStore {
   /** The live grant of a scope. */
   findLive(
     tenantId: string,
-    userId: string,
+    subject: { userId: string | null; groupId: string | null },
     permissionId: string,
     workspaceId: string | null,
     routeId: string | null
@@ -177,7 +283,8 @@ export interface GrantStore {
   /** Creates a grant. */
   create(registration: {
     tenantId: string
-    userId: string
+    userId: string | null
+    groupId: string | null
     permissionId: string
     workspaceId: string | null
     routeId: string | null
@@ -191,4 +298,6 @@ export interface GrantStore {
   ): Promise<Grant | null>
   /** Revokes a grant: the row is kept and stamped. */
   revoke(id: string): Promise<Grant | null>
+  /** The grants that match a filter, and their number. */
+  list(filter: GrantFilter): Promise<GrantPage>
 }

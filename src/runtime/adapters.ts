@@ -11,8 +11,12 @@
 import {
   AdministrationError,
   AdministrationService,
+  type GrantFilter,
   type GrantStore,
+  type Group,
+  type GroupStore,
   type PermissionStore,
+  type PrincipalFilter,
   type PrincipalStore,
   type TenantStore,
 } from '../domains/administration'
@@ -21,6 +25,8 @@ import {
   UNIQUE_VIOLATION,
   type GrantRepository,
   type GrantRow,
+  type GroupRepository,
+  type GroupRow,
   type PermissionRepository,
   type PermissionRow,
   type TenantRepository,
@@ -99,27 +105,43 @@ function toPermission(row: PermissionRow): {
   }
 }
 
+/** Turns a group of the storage into a group of the domain. */
+function toGroup(row: GroupRow, members: string[]): Group {
+  return {
+    id: row.id,
+    tenant: row.tenantSlug,
+    key: row.key,
+    displayName: row.displayName,
+    members,
+    createdAt: row.createdAt,
+  }
+}
+
 /** Turns a grant of the storage into a grant of the domain. */
 function toGrant(row: GrantRow): {
   id: string
   tenant: string
-  userId: string
+  userId: string | null
+  group: string | null
   permission: string
   workspaceId: string | null
   routeId: string | null
   expiresAt: Date | null
   revokedAt: Date | null
+  grantedBy: string | null
   createdAt: Date
 } {
   return {
     id: row.id,
     tenant: row.tenantSlug,
     userId: row.userId,
+    group: row.groupKey,
     permission: row.permissionKey,
     workspaceId: row.workspaceId,
     routeId: row.routeId,
     expiresAt: row.expiresAt,
     revokedAt: row.revokedAt,
+    grantedBy: row.grantedBy,
     createdAt: row.createdAt,
   }
 }
@@ -149,12 +171,20 @@ async function run<T>(action: () => Promise<T>): Promise<T> {
 export interface AdministrationDependencies {
   tenants: TenantRepository
   users: UserRepository
+  groups?: GroupRepository
   permissions: PermissionRepository
   grants: GrantRepository
   /** The bearer token of the administration. */
   token?: string
   /** The public url of Hub. */
   publicUrl: string
+  /**
+   * Called when the registration of a tenant changes.
+   *
+   * The client of the provider of the tenant is dropped, so that the next
+   * login builds a new one with the new registration (spec §6.6).
+   */
+  onTenantChanged?: (tenantId: string) => void
 }
 
 /**
@@ -185,10 +215,12 @@ export function createAdministrationService(
     },
     create: async (registration) => {
       const row = await run(async () => await dependencies.tenants.create(registration))
+      dependencies.onTenantChanged?.(row.id)
       return toTenant(row)
     },
     update: async (id, registration) => {
       const row = await run(async () => await dependencies.tenants.update(id, registration))
+      if (row) dependencies.onTenantChanged?.(id)
       return row ? toTenant(row) : null
     },
   }
@@ -211,6 +243,15 @@ export function createAdministrationService(
     update: async (id, changes) => {
       const row = await run(async () => await dependencies.users.update(id, changes))
       return row ? toPrincipal(row) : null
+    },
+    list: async (filter: PrincipalFilter) => {
+      const page = await run(async () => await dependencies.users.list(filter))
+      return {
+        principals: page.rows.map(toPrincipal),
+        total: page.total,
+        limit: filter.limit,
+        offset: filter.offset,
+      }
     },
   }
 
@@ -235,15 +276,61 @@ export function createAdministrationService(
     },
   }
 
+  /**
+   * The external subjects of the principals of a group.
+   *
+   * The membership is stored as the ids of the principals and it is
+   * published as the external identities of the principals: the
+   * translation is the work of the adapter.
+   */
+  const membersOf = async (ids: string[]): Promise<string[]> => {
+    if (ids.length === 0) return []
+    const rows = await run(async () => await dependencies.users.findExternalSubjectsByIds(ids))
+    return rows
+  }
+
+  const groupStore: GroupStore | undefined = dependencies.groups
+    ? {
+        findByKey: async (tenantId, key) => {
+          const row = await run(async () => await dependencies.groups!.findByKey(tenantId, key))
+          if (!row) return null
+          return toGroup(row, await membersOf(row.members))
+        },
+        create: async (registration) => {
+          const row = await run(
+            async () =>
+              await dependencies.groups!.create({
+                tenantId: registration.tenantId,
+                key: registration.key,
+                displayName: registration.displayName ?? null,
+                members: registration.memberIds,
+              })
+          )
+          return toGroup(row, await membersOf(row.members))
+        },
+        update: async (id, changes) => {
+          const row = await run(
+            async () =>
+              await dependencies.groups!.update(id, {
+                displayName: changes.displayName,
+                ...(changes.memberIds ? { members: changes.memberIds } : {}),
+              })
+          )
+          if (!row) return null
+          return toGroup(row, await membersOf(row.members))
+        },
+      }
+    : undefined
+
   const grantStore: GrantStore = {
     findById: async (id) => {
       const row = await run(async () => await dependencies.grants.findById(id))
       return row ? toGrant(row) : null
     },
-    findLive: async (tenantId, userId, permissionId, workspaceId, routeId) => {
+    findLive: async (tenantId, subject, permissionId, workspaceId, routeId) => {
       const row = await run(
         async () =>
-          await dependencies.grants.findLive(tenantId, userId, permissionId, workspaceId, routeId)
+          await dependencies.grants.findLive(tenantId, subject, permissionId, workspaceId, routeId)
       )
       return row ? toGrant(row) : null
     },
@@ -259,6 +346,15 @@ export function createAdministrationService(
       const row = await run(async () => await dependencies.grants.revoke(id))
       return row ? toGrant(row) : null
     },
+    list: async (filter: GrantFilter) => {
+      const page = await run(async () => await dependencies.grants.list(filter))
+      return {
+        grants: page.rows.map(toGrant),
+        total: page.total,
+        limit: filter.limit,
+        offset: filter.offset,
+      }
+    },
   }
 
   return new AdministrationService({
@@ -266,6 +362,7 @@ export function createAdministrationService(
     principals: principalStore,
     permissions: permissionStore,
     grants: grantStore,
+    groups: groupStore,
     token: dependencies.token,
     publicUrl: dependencies.publicUrl,
   })

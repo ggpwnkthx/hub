@@ -30,7 +30,7 @@ afterAll(async () => {
 })
 
 describe('the smoke test of the administration', () => {
-  test('the five calls of the specification answer', async () => {
+  test('the eight calls of the specification answer', async () => {
     const proc = Bun.spawn(['bun', 'run', 'scripts/admin-smoke.ts'], {
       cwd: root,
       env: {
@@ -45,7 +45,7 @@ describe('the smoke test of the administration', () => {
     const exitCode = await proc.exited
     const stdout = await new Response(proc.stdout).text()
     expect(exitCode).toBe(0)
-    expect(stdout).toContain('the five calls of the administration answered')
+    expect(stdout).toContain('the eight calls of the administration answered')
     // The secrets never reach the output of the tool.
     expect(stdout).not.toContain('the-secret-of-the-provider')
     expect(stdout).not.toContain('the-secret-of-the-gateway')

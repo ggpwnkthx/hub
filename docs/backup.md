@@ -1,6 +1,6 @@
 # The backup and the restore of Hub
 
-The data of Hub is the four tables: `tenants`, `users`, `permissions` and
+The data of Hub is the five tables: `tenants`, `users`, `permissions` and
 `grants`. Everything else is derived: the state of a login lives in the
 cookie of the browser, the code of a login lives in the store for sixty
 seconds, and the tokens are signed.
@@ -37,7 +37,7 @@ before every change of the process of the backup. The rehearsal answers
 three questions:
 
 1. Does the dump restore without an error? (`pg_restore --exit-on-error`)
-2. Are the four tables there, with their constraints and their indexes?
+2. Are the five tables there, with their constraints and their indexes?
    ```sql
    select count(*) from tenants;
    select count(*) from users;

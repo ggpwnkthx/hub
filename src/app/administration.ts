@@ -10,6 +10,7 @@ import type { Context } from 'hono'
 import {
   AdministrationError,
   GrantBody,
+  GroupBody,
   PrincipalBody,
   TenantBody,
   type AuditEntry,
@@ -187,23 +188,27 @@ function principalBody(principal: {
 function grantBody(grant: {
   id: string
   tenant: string
-  userId: string
+  userId: string | null
+  group: string | null
   permission: string
   workspaceId: string | null
   routeId: string | null
   expiresAt: Date | null
   revokedAt: Date | null
+  grantedBy: string | null
   createdAt: Date
 }): Record<string, unknown> {
   return {
     id: grant.id,
     tenant: grant.tenant,
     userId: grant.userId,
+    group: grant.group,
     permission: grant.permission,
     workspaceId: grant.workspaceId,
     routeId: grant.routeId,
     expiresAt: grant.expiresAt?.toISOString() ?? null,
     revokedAt: grant.revokedAt?.toISOString() ?? null,
+    grantedBy: grant.grantedBy,
     createdAt: grant.createdAt.toISOString(),
   }
 }
@@ -298,6 +303,52 @@ export async function principalHandler(
   }
 }
 
+/** The group of an answer. */
+function groupBody(group: {
+  id: string
+  tenant: string
+  key: string
+  displayName: string | null
+  members: string[]
+  createdAt: Date
+}): Record<string, unknown> {
+  return {
+    id: group.id,
+    tenant: group.tenant,
+    key: group.key,
+    displayName: group.displayName,
+    members: group.members,
+    createdAt: group.createdAt.toISOString(),
+  }
+}
+
+/** `GET /v1/admin/users`: the list of the principals. */
+export async function principalsHandler(
+  context: Context<HubEnv>,
+  dependencies: HubDependencies
+): Promise<Response> {
+  const endpoint = '/v1/admin/users'
+  try {
+    authenticate(context, dependencies)
+    const query = context.req.query()
+    const page = await dependencies.administration.listPrincipals({
+      tenant: query.tenant ?? null,
+      status: query.status ?? null,
+      email: query.email ?? null,
+      limit: query.limit ?? null,
+      offset: query.offset ?? null,
+    })
+    return answer(context, dependencies, endpoint, 200, {
+      principals: page.principals.map(principalBody),
+      total: page.total,
+      limit: page.limit,
+      offset: page.offset,
+    })
+  } catch (error) {
+    return failure(error)
+  }
+}
+
 /** `PUT /v1/admin/grants`: the grant of a scope. */
 export async function grantHandler(
   context: Context<HubEnv>,
@@ -309,7 +360,8 @@ export async function grantHandler(
     const body = await readBody(context, GrantBody)
     const result = await dependencies.administration.upsertGrant({
       tenant: body.tenant,
-      userId: body.userId,
+      userId: body.userId ?? null,
+      group: body.group ?? null,
       permission: body.permission,
       workspaceId: body.workspaceId ?? null,
       routeId: body.routeId ?? null,
@@ -317,6 +369,61 @@ export async function grantHandler(
       grantedBy: body.grantedBy ?? null,
     })
     return answer(context, dependencies, endpoint, 200, grantBody(result.grant), result.audit)
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+/** `POST /v1/admin/groups`: the group and its membership. */
+export async function groupHandler(
+  context: Context<HubEnv>,
+  dependencies: HubDependencies
+): Promise<Response> {
+  const endpoint = '/v1/admin/groups'
+  try {
+    authenticate(context, dependencies)
+    const body = await readBody(context, GroupBody)
+    const result = await dependencies.administration.upsertGroup({
+      tenant: body.tenant,
+      key: body.key,
+      displayName: body.displayName,
+      members: body.members ?? [],
+    })
+    return answer(
+      context,
+      dependencies,
+      endpoint,
+      result.created ? 201 : 200,
+      groupBody(result.group),
+      result.audit
+    )
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+/** `GET /v1/admin/grants`: the list of the grants. */
+export async function grantsHandler(
+  context: Context<HubEnv>,
+  dependencies: HubDependencies
+): Promise<Response> {
+  const endpoint = '/v1/admin/grants'
+  try {
+    authenticate(context, dependencies)
+    const query = context.req.query()
+    const page = await dependencies.administration.listGrants({
+      tenant: query.tenant ?? null,
+      userId: query.userId ?? null,
+      live: query.live ?? null,
+      limit: query.limit ?? null,
+      offset: query.offset ?? null,
+    })
+    return answer(context, dependencies, endpoint, 200, {
+      grants: page.grants.map(grantBody),
+      total: page.total,
+      limit: page.limit,
+      offset: page.offset,
+    })
   } catch (error) {
     return failure(error)
   }

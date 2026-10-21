@@ -68,6 +68,15 @@ export interface AdminSettings {
 export interface AccessSettings {
   /** The bearer token the gateway presents on `POST /v1/decisions`. */
   token?: string
+  /**
+   * The credentials of the access context contract.
+   *
+   * The value is a json object: every key is a bearer token and every
+   * value holds the tenants the token may ask about. A `null` scope
+   * means every tenant: it is a choice of the deployment and not the
+   * default of a tenant credential.
+   */
+  contextTokens?: string
 }
 
 /** The settings of the metrics. */
@@ -193,6 +202,7 @@ const EnvSchema = z.object({
 
   HUB_ADMIN_TOKEN: z.string().optional(),
   HUB_ACCESS_TOKEN: z.string().optional(),
+  HUB_ACCESS_CONTEXT_TOKENS: z.string().optional(),
   HUB_METRICS_TOKEN: z.string().optional(),
 
   HUB_STATE_SECRET: z.string().optional(),
@@ -402,6 +412,7 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
     },
     access: {
       token: parsed.HUB_ACCESS_TOKEN,
+      contextTokens: parsed.HUB_ACCESS_CONTEXT_TOKENS,
     },
     metrics: {
       token: parsed.HUB_METRICS_TOKEN,

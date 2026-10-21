@@ -30,6 +30,8 @@ function dependencies(decide: () => Promise<DecisionFacts>): HubDependencies {
     tenants: {} as HubDependencies['tenants'],
     cookieSecure: false,
     decisions: { decide },
+    accessContexts: { context: async () => ({}) as never },
+    accessContextCredentials: [],
     accessToken: TOKEN,
     publicUrl: 'https://hub.example.com',
     peerAddress: () => '127.0.0.1',

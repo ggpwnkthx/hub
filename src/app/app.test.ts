@@ -21,6 +21,8 @@ function dependencies(): HubDependencies {
     administration: {} as HubDependencies['administration'],
     provider: {} as HubDependencies['provider'],
     decisions: { decide: async () => ({}) as never },
+    accessContexts: { context: async () => ({}) as never },
+    accessContextCredentials: [],
     login: {} as HubDependencies['login'],
     codes: {} as HubDependencies['codes'],
     tenants: {} as HubDependencies['tenants'],

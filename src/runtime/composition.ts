@@ -8,6 +8,7 @@
  */
 
 import { createHubApp, createHubHandler } from '../app/app'
+import type { AccessContextCredential } from '../app/access-context'
 import { LoginService, ProviderClient, createStateCipher } from '../domains/identity'
 import { CodeService, ProviderService } from '../domains/provider'
 import { assertCallableAddress } from '../platform/bun/address'
@@ -21,6 +22,7 @@ import {
   createDatabase,
   createSecretCipher,
   createTracedClient,
+  AccessContextRepository,
   DecisionRepository,
   GrantRepository,
   GroupRepository,
@@ -411,6 +413,10 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     // policy, with the deadline of the deployment.
     decisions: new DecisionRepository(traced, settings.timeouts.decisionTimeoutMs),
     accessToken: settings.access.token,
+    // The access context contract: the same tables of the policy, read
+    // with the complete set of the keys of the grants.
+    accessContexts: new AccessContextRepository(traced),
+    accessContextCredentials: readAccessContextCredentials(settings.access.contextTokens),
     metricsToken: settings.metrics.token,
     // The administration of the platform: the eight endpoints of the
     // specification, and nothing else.
@@ -473,4 +479,40 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     },
     close: closeResources,
   }
+}
+
+/**
+ * Reads the credentials of the access context contract.
+ *
+ * The value is a json object: every key is a bearer token and every
+ * value holds the tenants the token may ask about. A malformed value
+ * stops the service: a credential that is not understood is a credential
+ * that is not scoped.
+ */
+function readAccessContextCredentials(raw: string | undefined): AccessContextCredential[] {
+  if (!raw || raw.trim().length === 0) return []
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new Error('HUB_ACCESS_CONTEXT_TOKENS must be a json object')
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('HUB_ACCESS_CONTEXT_TOKENS must be a json object')
+  }
+  const credentials: AccessContextCredential[] = []
+  for (const [token, scope] of Object.entries(parsed as Record<string, unknown>)) {
+    if (token.length < 16) {
+      throw new Error('a credential of the access context is at least 16 characters long')
+    }
+    if (scope === null) {
+      credentials.push({ token, tenants: null })
+      continue
+    }
+    if (!Array.isArray(scope) || scope.some((entry) => typeof entry !== 'string')) {
+      throw new Error('the scope of a credential of the access context is a list of tenants')
+    }
+    credentials.push({ token, tenants: scope as string[] })
+  }
+  return credentials
 }

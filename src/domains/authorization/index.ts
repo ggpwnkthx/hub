@@ -15,3 +15,16 @@ export type {
   DecisionStore,
 } from './decision'
 export { decide, isMissingRole, REASONS } from './decision'
+export type {
+  AccessContextAnswer,
+  AccessContextFacts,
+  AccessContextRequest,
+  AccessContextStore,
+} from './access-context'
+export {
+  ACCESS_CONTEXT_VERSION,
+  MAX_LIFETIME_MS,
+  MAX_PERMISSION_KEYS,
+  MAX_REQUEST_BYTES,
+  evaluateAccessContext,
+} from './access-context'

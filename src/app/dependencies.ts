@@ -7,7 +7,8 @@
  */
 
 import type { AdministrationService } from '../domains/administration'
-import type { DecisionStore } from '../domains/authorization'
+import type { AccessContextStore, DecisionStore } from '../domains/authorization'
+import type { AccessContextCredential } from './access-context'
 import type { AuthorizationRequest, BegunLogin, CompletedLogin } from '../domains/identity'
 import type { ProviderService, TokenPair } from '../domains/provider'
 import type { Logger, Observer } from '../observability'
@@ -86,6 +87,10 @@ export interface HubDependencies {
   administration: AdministrationService
   /** The decision of the gateway. */
   decisions: DecisionStore
+  /** The storage of the access context. */
+  accessContexts: AccessContextStore
+  /** The credentials of the access context contract. */
+  accessContextCredentials: AccessContextCredential[]
   /** The provider of the gateway: the JWKS, the discovery and the tokens. */
   provider: ProviderService
   /** The bearer token the gateway presents on the decisions. */

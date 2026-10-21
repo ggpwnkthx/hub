@@ -20,6 +20,7 @@ import {
   tenantsHandler,
 } from './administration'
 import { decisionHandler } from './decisions'
+import { accessContextDiscoveryHandler, accessContextHandler } from './access-context'
 import { authorizeHandler, callbackHandler } from './login'
 import { tokenHandler } from './oauth'
 import { healthHandler, readyHandler } from './endpoints'
@@ -124,6 +125,25 @@ export function createHubApp(dependencies: HubDependencies): Hono<HubEnv> {
 
   // The decision contract of the gateway.
   app.post('/v1/decisions', async (context) => await decisionHandler(context, dependencies))
+
+  // The access context contract: the complete set of the capabilities of
+  // a principal, for a consumer that owns data.
+  app.get('/v1/access-context', async (context) =>
+    accessContextDiscoveryHandler(context, {
+      store: dependencies.accessContexts,
+      credentials: dependencies.accessContextCredentials,
+      observer: dependencies.observer,
+    })
+  )
+  app.post(
+    '/v1/access-context',
+    async (context) =>
+      await accessContextHandler(context, {
+        store: dependencies.accessContexts,
+        credentials: dependencies.accessContextCredentials,
+        observer: dependencies.observer,
+      })
+  )
 
   // The metrics of the service.
   app.get('/metrics', async (context) => await metricsHandler(context, dependencies))

@@ -162,6 +162,88 @@ a tenant (its own principals only).
 
 ---
 
+## The access context contract
+
+> **Status: extension.** Added by the extension of the access context
+> contract, a required integration change of the data backend. The
+> decision contract above is unchanged.
+
+The contract a service that owns data uses to learn the **complete** set
+of the capabilities of a principal, for a workspace and a route. It is
+not the credential of the gateway and it is not a credential of the
+administration: it is a dedicated read only credential, scoped to an
+explicit set of tenants with `HUB_ACCESS_CONTEXT_TOKENS`.
+
+### `GET /v1/access-context`
+
+The discovery of the contract. It is the readiness check of a consumer.
+
+```
+GET /v1/access-context
+Authorization: Bearer {access context credential}
+```
+
+```json
+{"versions":[1],"maxPermissionKeys":4096,"maxLifetimeMs":5000}
+```
+
+The refusals: `401 unauthorized` (missing or wrong credential). The
+discovery discloses nothing about the principals and nothing about the
+grants.
+
+### `POST /v1/access-context`
+
+The context of a principal.
+
+```
+POST /v1/access-context
+Authorization: Bearer {access context credential}
+Content-Type: application/json
+
+{"version":1,"subject":"…","tenantId":"…","workspaceId":"…","routeId":"…"}
+```
+
+| Field | Rule |
+| --- | --- |
+| `version` | Required. `1`. Another version is `400 bad_request`. |
+| `subject` | Required. The id of the principal. |
+| `tenantId` | Required. The tenant of the request. |
+| `workspaceId` | Required. The workspace of the request. |
+| `routeId` | Required. The route of the request. |
+
+A field that is not known and a field of the wrong type are refused. The
+body is at most 64 KiB.
+
+```json
+{
+  "version": 1,
+  "allow": true,
+  "subject": "…",
+  "tenantId": "…",
+  "workspaceId": "…",
+  "routeId": "…",
+  "permissionKeys": ["content.editor", "content.reader"],
+  "evaluatedAt": "2026-10-21T16:00:00.000Z",
+  "validUntil": "2026-10-21T16:00:05.000Z"
+}
+```
+
+`permissionKeys` is the complete, sorted and deduplicated set of the
+keys of the grants that apply to the request. The answer is never
+partial: more than 4096 keys is `503 service_unavailable` and never an
+allowance with fewer keys.
+
+A denial is an answer of `200`: `allow` is false, `permissionKeys` is
+empty, `validUntil` is absent, and the answer does not disclose the
+cause.
+
+The refusals: `401 unauthorized` (missing or wrong credential), `403
+forbidden` (the credential may not ask about this tenant), `400
+bad_request` (the body is not understood), `503 service_unavailable`
+(the policy could not be evaluated completely).
+
+---
+
 ## The administration
 
 Eight endpoints, all under `/v1/admin`, all requiring

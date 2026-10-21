@@ -361,6 +361,7 @@ readable list with the values of a development machine is in `.env.example`.
 | `HUB_ALLOW_MEMORY_STATE` | Replaces the shared store with the memory of the process. A single-node deployment only. |
 | `HUB_ADMIN_TOKEN` | The bearer token of the eight administrative endpoints. |
 | `HUB_ACCESS_TOKEN` | The bearer token the gateway presents on `POST /v1/decisions`. |
+| `HUB_ACCESS_CONTEXT_TOKENS` | The credentials of the access context contract (§8bis): a JSON object whose keys are bearer tokens and whose values are the tenants every token may ask about. A `null` value is a credential of the platform. |
 | `HUB_STATE_SECRET` | Signs and encrypts the state of a login (§5.3). 32 bytes at least. The same value on every replica. |
 | `HUB_SECRET_ENCRYPTION_KEY` | Encrypts the client secrets at rest (§4.3). 32 bytes at least. |
 | `HUB_SIGNING_KEY` | The private key of Hub, in PEM. The public part is published at `/oauth/jwks`. |
@@ -434,6 +435,7 @@ down.
 | `HUB_REDIS_URL` | The authorization codes have to be shared by the replicas, unless `HUB_ALLOW_MEMORY_STATE=true` names a deployment of a single node. |
 | `HUB_ADMIN_TOKEN` | It is the bearer token of the eight administrative endpoints. |
 | `HUB_ACCESS_TOKEN` | It is the bearer token the gateway presents on `POST /v1/decisions`. |
+| `HUB_ACCESS_CONTEXT_TOKENS` | It holds the credentials of the access context contract (§8bis). A deployment that serves a data backend needs it. |
 | `HUB_STATE_SECRET` | It signs and encrypts the state of a login. At least 32 bytes. |
 | `HUB_SECRET_ENCRYPTION_KEY` | It encrypts the client secrets at rest. At least 32 bytes. |
 | `HUB_SIGNING_KEY` | It is the private key Hub signs its tokens with, in PEM. |
@@ -916,6 +918,140 @@ The two schemes are not exclusive and nothing of the gateway changes: the
 scheme of the credentials is a property of the deployment. A deployment
 that moves its gateways to their own credentials removes the shared
 secret of the platform.
+
+---
+
+## 8bis. The access context
+
+> **Status: extension.** This section was added by the extension of the
+> access context contract, which is a required integration change of the
+> data backend. It does not change the contract of §8: the gateway keeps
+> using `POST /v1/decisions` and nothing of the gateway changes.
+
+A service that owns data needs more than a boolean. It needs to know
+**which** capabilities a principal holds, so that it can decide what the
+principal may read and what it may write. The decision of §8 answers
+"may this principal use this workspace on this route"; the access context
+answers "which capabilities does this principal hold for this workspace
+and this route".
+
+The two contracts read the same tables and they evaluate the same policy.
+The access context never replaces the decision: the gateway continues to
+use §8.
+
+The bodies of the requests and of the answers are in
+[api.md](api.md#the-access-context-contract).
+
+### 8bis.1 The discovery
+
+```
+GET {HUB_ISSUER}/v1/access-context
+Authorization: Bearer {access context credential}
+```
+
+```json
+{"versions":[1],"maxPermissionKeys":4096,"maxLifetimeMs":5000}
+```
+
+The discovery is the readiness check of a consumer. A version the
+consumer does not know stops its readiness: a consumer that guesses the
+contract guesses the permissions.
+
+### 8bis.2 The request
+
+```
+POST {HUB_ISSUER}/v1/access-context
+Authorization: Bearer {access context credential}
+Content-Type: application/json
+
+{"version":1,"subject":"…","tenantId":"…","workspaceId":"…","routeId":"…"}
+```
+
+The body is at most 64 KiB. A field that is not known, a field of the
+wrong type and a version that is not supported are refused with
+`400 bad_request`.
+
+The credential of the access context is **not** the credential of the
+gateway and it is not a credential of the administration. It is a
+dedicated read only credential, and it is scoped to an explicit set of
+tenants:
+
+| Situation                                   | Answer  |
+| ------------------------------------------- | ------- |
+| A missing or wrong credential               | `401 unauthorized` |
+| A credential that may not ask about the tenant | `403 forbidden` |
+| A body that is not understood               | `400 bad_request` |
+| A policy that cannot be evaluated completely | `503 service_unavailable` |
+
+The scope of a credential is configured with `HUB_ACCESS_CONTEXT_TOKENS`,
+a JSON object whose keys are the bearer tokens and whose values are the
+lists of the tenants the token may ask about. A `null` value is a
+credential of the platform: it may ask about every tenant. It is a
+choice of the deployment and it is never the default of a credential of
+a tenant.
+
+### 8bis.3 The answer
+
+```json
+{
+  "version": 1,
+  "allow": true,
+  "subject": "…",
+  "tenantId": "…",
+  "workspaceId": "…",
+  "routeId": "…",
+  "permissionKeys": ["content.editor", "content.reader"],
+  "evaluatedAt": "2026-10-21T16:00:00.000Z",
+  "validUntil": "2026-10-21T16:00:05.000Z"
+}
+```
+
+`permissionKeys` is the **complete**, sorted and deduplicated set of the
+keys of the grants that apply to the request: the grants of the
+principal and the grants of the groups of the principal, the grants that
+are enabled, that are not revoked, that are not expired and whose
+workspace and route scope match the request or is unrestricted.
+
+The answer is never partial: more than 4096 keys is an error and never
+an allowance with fewer keys.
+
+`validUntil` is at most `evaluatedAt + 5000 ms` and at most the earliest
+expiry among the grants that contributed. A conservative earlier expiry
+is allowed. It is not a promise that a grant cannot be revoked before
+that instant.
+
+A denial is an answer of `200`: `allow` is false, `permissionKeys` is
+empty, `validUntil` is absent, and the answer does not disclose whether
+the cause was an unknown principal, another tenant, a disabled state or
+a missing grant.
+
+### 8bis.4 The rule
+
+Hub evaluates one consistent policy snapshot:
+
+1. The credential may ask about the requested tenant.
+2. The principal exists, is active and belongs to that tenant.
+3. The tenant is enabled.
+4. At least one enabled, unrevoked and unexpired grant applies to the
+   principal or to a group the principal belongs to.
+
+Hub does not own a catalog of the workspaces: the relation between a
+tenant and a workspace is the responsibility of the consumer. Hub still
+verifies that the principal belongs to the tenant of the request.
+
+### 8bis.5 The freshness
+
+The context is evaluated on every request and it is never cached by Hub.
+The consumer may cache a context for a read, and the bounds of the
+cache are the ones of the consumer: the cache of a consumer never holds
+a context longer than `validUntil`, and a mutation or a background
+command asks for a fresh context.
+
+The authorization is evaluated at the moment of the decision. A
+revocation that happens after that moment may leave a request that is
+already running in flight. The bound of that window is the lifetime of
+the cache of the consumer plus the duration of the request that is
+running. It is not a distributed transaction.
 
 ---
 

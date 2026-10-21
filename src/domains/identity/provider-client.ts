@@ -23,6 +23,18 @@ export interface HttpTransport {
   ) => Promise<TransportResponse>
 }
 
+/**
+ * The guard of the addresses of the providers.
+ *
+ * A tenant registers the issuer of its provider: the address is checked
+ * before the call, so a tenant cannot make Hub call a service of the
+ * deployment.
+ */
+export interface AddressGuard {
+  /** Refuses the addresses that the deployment may not call. */
+  assert: (url: string) => Promise<void>
+}
+
 /** The failure of a call to the provider of a tenant. */
 export class ProviderError extends Error {
   constructor(
@@ -57,6 +69,8 @@ export class ProviderClient {
       scopes: string[]
       algorithms: string[]
       transport: HttpTransport
+      /** The guard of the addresses; without it every address is allowed. */
+      guard?: AddressGuard
       cacheTtlMs?: number
       now?: () => number
       /** How long a call to the provider may take, in milliseconds. */
@@ -85,11 +99,13 @@ export class ProviderClient {
     init: { method: string; headers: Record<string, string>; body?: string }
   ): Promise<TransportResponse> {
     try {
+      await this.options.guard?.assert(url)
       return await this.options.transport.call(url, {
         ...init,
         timeoutMs: this.options.timeoutMs ?? 5_000,
       })
-    } catch {
+    } catch (error) {
+      if (error instanceof ProviderError) throw error
       throw new ProviderError('upstream_unavailable', 'the provider of the tenant is not reachable')
     }
   }

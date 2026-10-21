@@ -7,7 +7,12 @@
  */
 
 export type { ExternalIdentity, Mapping, Principal, PrincipalLookup } from './mapping'
-export type { HttpTransport, ProviderDiscovery, TransportResponse } from './provider-client'
+export type {
+  AddressGuard,
+  HttpTransport,
+  ProviderDiscovery,
+  TransportResponse,
+} from './provider-client'
 export { ProviderClient, ProviderError } from './provider-client'
 export { mapIdentity, MappingError } from './mapping'
 export type {

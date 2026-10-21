@@ -128,6 +128,21 @@ jobs:
       - name: build
         run: docker build -f Dockerfile -t hub:ci .
 
+      - name: the scan of the image
+        run: |
+          # A finding of a severity above high fails the build.
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/work" aquasec/trivy:latest \
+            image --severity HIGH,CRITICAL --exit-code 1 --no-progress hub:ci
+
+      - name: the software bill of materials
+        run: |
+          # The deployment knows what it runs.
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/work" anchore/syft:latest \
+            hub:ci -o spdx-json > hub.spdx.json
+          ls -l hub.spdx.json
+
       - name: the image runs as a user that is not root
         run: |
           user="$(docker image inspect hub:ci --format '{{.Config.User}}')"

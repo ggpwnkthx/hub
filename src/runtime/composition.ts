@@ -10,6 +10,7 @@
 import { createHubApp, createHubHandler } from '../app/app'
 import { LoginService, ProviderClient, createStateCipher } from '../domains/identity'
 import { CodeService, ProviderService } from '../domains/provider'
+import { assertCallableAddress } from '../platform/bun/address'
 import { createFetchTransport } from '../platform/bun/http'
 import { createStoreClient, MemoryCodeStore, RedisCodeStore } from '../platform/redis/store'
 import type { HubDependencies } from '../app/dependencies'
@@ -301,6 +302,10 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
         scopes: tenant.scopes,
         algorithms: tenant.algorithms,
         transport,
+        guard: {
+          assert: async (url: string) =>
+            await assertCallableAddress(url, { allowPrivate: !settings.production }),
+        },
         cacheTtlMs: 600_000,
       })
     },

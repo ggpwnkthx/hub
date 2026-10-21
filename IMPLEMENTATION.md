@@ -468,6 +468,17 @@ are exercised by the same fixture with two issuers.
 | HUB-085 | The delivery: the image by digest, the scan, the SBOM, the promotion between the environments, the rollback of the image. | M |
 | HUB-086 | The documentation of the operator: the README of Hub, the `.env.example`, the page of the deployment. | S |
 
+**State**: the seven tasks are done and the milestone is closed.
+
+**The decisions of the milestone**
+
+| Question | Decision | Where |
+| --- | --- | --- |
+| Where are the numbers of the capacity published? | In `docs/capacity.md`, with the environment of the measurement. The numbers of a deployment are measured by the same script against the server of the deployment. | `scripts/load.ts`, `docs/capacity.md` |
+| How is the address of a provider of a tenant checked? | Before the call: the host is resolved and every address it resolves to has to be a public one. A production deployment refuses the private addresses; a development machine accepts them. | `src/platform/bun/address.ts` |
+| What does an alert do? | Nothing by itself: it is read by a person, and the person follows a runbook. | `docs/alerts.md` |
+| What is backed up? | The database. The store of the codes is not backed up: a code that is lost is a login that starts again. | `docs/backup.md` |
+
 **Exit criteria**
 
 - The checklist of §11 is checked, item by item, by a person who did not
@@ -608,6 +619,8 @@ the coverage, and it is reviewed at the end of every milestone.
 | §9.7 | The five calls of the session | `contract/smoke.test.ts` |
 | §11.2 | The bounded labels | `observability.test.ts` |
 | §13 | The deferred features are absent | `architecture/no-scaffolding.test.ts` |
+| §11.1 | The probes of the deployment | `contract/probes.test.ts` |
+| §11.2 | The security review | `docs/security.md` |
 
 The last row deserves a word: a test asserts that the code contains no
 SAML, no console, no SCIM and no directory sync — not because the

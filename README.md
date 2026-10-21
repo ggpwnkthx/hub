@@ -19,6 +19,18 @@ The whole domain model is four tables: `tenants`, `users`, `permissions`,
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | How it is built, in what order, and what has to be true before it carries a customer. |
 | [BUILD-PROMPT.md](BUILD-PROMPT.md) | The prompt that starts the build, with the map of the reference. |
 
+The documents of the operations:
+
+| Document | What it holds |
+| --- | --- |
+| [docs/deployment.md](docs/deployment.md) | What a deployment needs, how the first tenant is registered, the probes. |
+| [docs/runbooks.md](docs/runbooks.md) | What to do when the provider, the database, the store or a secret fails. |
+| [docs/alerts.md](docs/alerts.md) | The alerts of the service and the expression of each one. |
+| [docs/capacity.md](docs/capacity.md) | The measured numbers of the decision and of the plan of the query. |
+| [docs/security.md](docs/security.md) | The security review, item by item, with the findings. |
+| [docs/backup.md](docs/backup.md) | The dump, the restore and the rehearsal. |
+| [docs/delivery.md](docs/delivery.md) | The image, the scan, the promotion and the rollback. |
+
 ## The reference
 
 Shuttle, the gateway this service brokers for, is a **separate
@@ -37,9 +49,11 @@ touched.
 ## The status
 
 The plan of the first release is in
-[IMPLEMENTATION.md](IMPLEMENTATION.md) §4. The skeleton (milestone M0) is
-built: the process starts, validates its environment, answers the probes
-and drains on a signal.
+[IMPLEMENTATION.md](IMPLEMENTATION.md) §4. The milestones M0 to M7 are
+built: the process starts, validates its environment, answers the probes,
+drains on a signal, brokers the login of a caller and answers the
+decisions of a gateway. The gateway of the reference runs against Hub,
+unchanged, in the compatibility suite.
 
 ## Running it
 

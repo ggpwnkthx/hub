@@ -345,9 +345,10 @@ comes back with a principal.
 | HUB-055 | The refusal pages of the login (spec §5.6): the provider unreachable, the token refused, the identity unknown, the principal disabled, the state invalid. | M |
 | HUB-056 | The multi-tenant fixture: two providers with two issuers, two tenants, two principals. The fixture of the Shuttle reference (`services/oidc-provider.ts`) is reused with a second issuer. | M |
 
-**State**: the seven tasks are done. The multi-tenant fixture is the one of
-the refusals and of the login: two providers, two issuers and two tenants
-are exercised by the same fixture with two issuers.
+**State**: the seven tasks are done and the milestone is closed. The
+multi-tenant fixture is the one of the refusals and of the login: two
+providers, two issuers and two tenants are exercised by the same fixture
+with two issuers.
 
 **The decisions of the milestone**
 

@@ -18,6 +18,7 @@ import {
   revokeGrantHandler,
   tenantHandler,
   tenantsHandler,
+  auditHandler,
 } from './administration'
 import { decisionHandler } from './decisions'
 import { accessContextDiscoveryHandler, accessContextHandler } from './access-context'
@@ -158,6 +159,9 @@ export function createHubApp(dependencies: HubDependencies): Hono<HubEnv> {
   app.put('/v1/admin/grants', async (context) => await grantHandler(context, dependencies))
   app.get('/v1/admin/grants', async (context) => await grantsHandler(context, dependencies))
   app.delete('/v1/admin/grants/:id', async (context) => revokeGrantHandler(context, dependencies))
+  // The audit of the administration: the trail of the changes. It reads
+  // and it does not change.
+  app.get('/v1/admin/audit', async (context) => auditHandler(context, dependencies))
 
   // Every other path is refused: Hub has a fixed surface and the paths
   // that are not part of it are not part of it.

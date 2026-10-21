@@ -8,7 +8,8 @@ speaks.
 
 The whole domain model is five tables — `tenants`, `users`,
 `permissions`, `grants`, `groups` — and the whole administration surface
-is eight `curl` endpoints.
+is eight `curl` endpoints that change something, plus one that reads the
+audit of the changes.
 
 | Document | What it holds |
 | --- | --- |

@@ -21,6 +21,9 @@ import {
  */
 const url = process.env.HUB_TEST_DATABASE_URL ?? 'pglite://memory://'
 
+/** The table of the audit of the administration: it is infrastructure. */
+const AUDIT_TABLE = 'admin_audit'
+
 let database: Database
 
 beforeAll(async () => {
@@ -83,6 +86,7 @@ describe('the schema of Hub', () => {
       '0004_groups.sql',
       '0005_group_members_index.sql',
       '0006_secret_rotation.sql',
+      '0007_admin_audit.sql',
     ])
 
     const second = await runMigrations({
@@ -98,6 +102,7 @@ describe('the schema of Hub', () => {
       '0004_groups.sql',
       '0005_group_members_index.sql',
       '0006_secret_rotation.sql',
+      '0007_admin_audit.sql',
     ])
   })
 
@@ -105,7 +110,7 @@ describe('the schema of Hub', () => {
     const rows = await database.query<{ table_name: string }>(
       `select table_name from information_schema.tables
        where table_schema = 'public'
-         and table_name not in ('${MIGRATIONS_TABLE}')
+         and table_name not in ('${MIGRATIONS_TABLE}', '${AUDIT_TABLE}')
        order by table_name`
     )
     expect(rows.map((row) => row.table_name)).toEqual([
@@ -115,6 +120,16 @@ describe('the schema of Hub', () => {
       'tenants',
       'users',
     ])
+  })
+
+  test('the tables of the infrastructure are the migrations and the audit', async () => {
+    const rows = await database.query<{ table_name: string }>(
+      `select table_name from information_schema.tables
+       where table_schema = 'public'
+         and table_name in ('${MIGRATIONS_TABLE}', '${AUDIT_TABLE}')
+       order by table_name`
+    )
+    expect(rows.map((row) => row.table_name)).toEqual([AUDIT_TABLE, MIGRATIONS_TABLE])
   })
 
   test('a client id belongs to one tenant', async () => {

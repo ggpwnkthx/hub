@@ -11,6 +11,10 @@
 import {
   AdministrationError,
   AdministrationService,
+  type AuditFilter,
+  type AuditPage,
+  type AuditRecord,
+  type AuditStore,
   type GrantFilter,
   type GrantStore,
   type Group,
@@ -23,6 +27,8 @@ import {
 import {
   DatabaseError,
   UNIQUE_VIOLATION,
+  type AuditRepository,
+  type AuditRow,
   type GrantRepository,
   type GrantRow,
   type GroupRepository,
@@ -174,6 +180,8 @@ export interface AdministrationDependencies {
   groups?: GroupRepository
   permissions: PermissionRepository
   grants: GrantRepository
+  /** The storage of the audit of the administration. */
+  audit?: AuditRepository
   /** The bearer token of the administration. */
   token?: string
   /** The token that the current one replaced, during a rotation. */
@@ -359,12 +367,42 @@ export function createAdministrationService(
     },
   }
 
+  /** Turns a row of the audit into a row of the domain. */
+  const toAudit = (row: AuditRow): AuditRecord => ({
+    id: row.id,
+    at: row.at,
+    action: row.action,
+    targetId: row.targetId,
+    tenant: row.tenant,
+    operator: row.operator,
+    address: row.address,
+    requestId: row.requestId,
+  })
+
+  const auditStore: AuditStore | undefined = dependencies.audit
+    ? {
+        append: async (entry) => {
+          await run(async () => await dependencies.audit!.append(entry))
+        },
+        list: async (filter: AuditFilter): Promise<AuditPage> => {
+          const page = await run(async () => await dependencies.audit!.list(filter))
+          return {
+            records: page.rows.map(toAudit),
+            total: page.total,
+            limit: filter.limit,
+            offset: filter.offset,
+          }
+        },
+      }
+    : undefined
+
   return new AdministrationService({
     tenants: tenantStore,
     principals: principalStore,
     permissions: permissionStore,
     grants: grantStore,
     groups: groupStore,
+    audit: auditStore,
     token: dependencies.token,
     previousToken: dependencies.previousToken,
     publicUrl: dependencies.publicUrl,

@@ -78,13 +78,13 @@ a half-built feature in a service that carries a customer is a liability
 | `src/app/app.ts` | The pipeline of a request: the request id, the probes, the routes, the refusal of the unknown paths, the handler of the unexpected errors. |
 | `src/app/{login,oauth,provider}.ts` | The login, the token endpoint, the discovery and the JWKS. |
 | `src/app/decisions.ts` | The decision contract of the gateway. |
-| `src/app/administration.ts` | The eight endpoints: the authentication, the limits, the pagination. |
+| `src/app/administration.ts` | The eight endpoints: the authentication, the limits, the pagination, the audit of the changes. |
 | `src/app/{errors,pages,metrics,endpoints,state}.ts` | The answers of refusal, the pages of the login, the metrics, the probes, the state of a request. |
 | `src/domains/identity/` | The validation of the token of a provider, the resolution of the tenant, the state of a login, the mapping to a principal, the client of the provider. |
 | `src/domains/authorization/` | The rule of the decision and the reasons. |
 | `src/domains/administration/` | The eight endpoints as a service: the validation of the bodies, the limiter, the audit. |
 | `src/domains/provider/` | The keys, the tokens, the discovery, the authorization code, the exchange. |
-| `src/platform/postgres/` | The pool, the migrations, the repositories of the five tables, the trace of the statements, the scope of a tenant. |
+| `src/platform/postgres/` | The pool, the migrations, the repositories of the five tables, the trace of the statements, the scope of a tenant, the table of the audit. |
 | `src/platform/redis/` | The store of the authorization codes. |
 | `src/platform/bun/` | The listener, the request and the response of the platform, the guard of the addresses. |
 | `src/observability/` | The logs and the redaction, the metrics, the comparison of the secrets. |
@@ -153,13 +153,17 @@ architecture:
 - The **protocol state is not in the database**: the state of a login is
   in the cookie of the browser, the authorization code is in the store for
   sixty seconds.
+- The **audit is not in the domain model**: the table `admin_audit` holds
+  what changed and who changed it, and it holds no tenant, no principal
+  and no grant. It is a table of the infrastructure, like the table of the
+  migrations.
 
 ## The tests
 
 | Kind | Where | What it proves |
 | --- | --- | --- |
 | Unit | `src/domains/*/*.test.ts` | The policy of one domain, without the network and without the database. |
-| Contract | `test/contract/` | The endpoints over a socket, with the fixtures around: the login, the decision, the administration, the rotation of the secrets. |
+| Contract | `test/contract/` | The endpoints over a socket, with the fixtures around: the login, the decision, the administration, the audit, the rotation of the secrets. |
 | Integration | `test/integration/` | The decisions against a real PostgreSQL, the isolation, the migrations, the deadline of a statement, the rule of the decision against a policy that is built at random. |
 | Compatibility | `test/compatibility/` | **The gateway of the reference, unchanged, against Hub.** |
 | Architecture | `test/architecture/` | The import boundaries and the absence of the deferred features. |

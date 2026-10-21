@@ -530,6 +530,53 @@ cannot name a principal that does not exist.
 }
 ```
 
+### `GET /v1/admin/audit`
+
+The audit of the changes, the newest first. It reads and it does not
+change.
+
+```bash
+curl -sS "https://hub.example.com/v1/admin/audit?tenant=acme&limit=20" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+```
+
+| Query | Rule |
+| --- | --- |
+| `tenant` | Optional. The slug of a tenant. A tenant that does not exist → `404 not_found`. |
+| `action` | Optional. The name of the action. |
+| `limit` | Optional. Default `50`, maximum `200`. |
+| `offset` | Optional. Default `0`. |
+
+The actions are `tenant.created`, `tenant.updated`, `principal.created`,
+`principal.updated`, `group.created`, `group.updated`, `grant.created`,
+`grant.updated` and `grant.revoked`.
+
+```json
+{
+  "records": [
+    {
+      "id": "0f2c…",
+      "at": "2026-01-08T10:30:00.000Z",
+      "action": "grant.revoked",
+      "targetId": "9fbfda13-…",
+      "tenant": "acme",
+      "operator": "6b1f2c9d0e3a",
+      "address": "10.0.0.7",
+      "requestId": "8452a08e-ebd7-4e61-ae99-fe051f3e531d"
+    }
+  ],
+  "total": 1,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+The `operator` is the fingerprint of the credential that made the call:
+the first twelve hexadecimal characters of the digest of the token. It
+names the operator and it is not the token.
+
+---
+
 ## The session in eight calls
 
 The whole life of a tenant, from the registration to the revocation.

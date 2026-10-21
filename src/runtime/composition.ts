@@ -23,6 +23,7 @@ import {
   createSecretCipher,
   createTracedClient,
   AccessContextRepository,
+  AuditRepository,
   DecisionRepository,
   GrantRepository,
   GroupRepository,
@@ -432,6 +433,9 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
       groups: new GroupRepository(traced),
       permissions: repositories.permissions,
       grants: repositories.grants,
+      // The audit of the administration: a table of the infrastructure,
+      // like the table of the migrations.
+      audit: new AuditRepository(traced),
       token: settings.admin.token,
       previousToken: settings.admin.previousToken,
       publicUrl: settings.public.publicUrl,

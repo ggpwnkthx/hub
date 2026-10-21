@@ -7,6 +7,7 @@
  */
 
 import type { Context } from 'hono'
+import { fingerprint } from '../observability'
 import {
   AdministrationError,
   GrantBody,
@@ -112,24 +113,56 @@ function failure(error: unknown): Response {
   throw error
 }
 
-/** The answer of a change, with the audit of the change. */
-function answer(
+/**
+ * The answer of a change, with the audit of the change.
+ *
+ * The audit is written in the table of the audit and it is in the log of
+ * the service. The row of the table names the operator by the
+ * fingerprint of the credential that made the call: the secret itself
+ * never reaches the table.
+ */
+async function answer(
   context: Context<HubEnv>,
   dependencies: HubDependencies,
   endpoint: string,
   status: number,
   body: unknown,
   audit?: AuditEntry
-): Response {
+): Promise<Response> {
+  const address = dependencies.peerAddress(context.req.raw)
+  if (audit) {
+    await dependencies.administration.recordAudit({
+      action: audit.action,
+      targetId: audit.id,
+      tenant: audit.tenant ?? null,
+      operator: operatorOf(context),
+      address,
+      requestId: context.get('requestId'),
+    })
+  }
   dependencies.logger.info('the administrative call', {
     endpoint,
     status,
-    address: dependencies.peerAddress(context.req.raw),
+    address,
     ...(audit?.action ? { action: audit.action } : {}),
     ...(audit?.id ? { id: audit.id } : {}),
     ...(audit?.tenant ? { tenant: audit.tenant } : {}),
   })
   return context.json(body, status as 200)
+}
+
+/**
+ * The fingerprint of the credential of the operator.
+ *
+ * The audit names the operator by the fingerprint of the token that made
+ * the call: two operators that hold two tokens are two operators in the
+ * audit, and the token itself is never written.
+ */
+function operatorOf(context: Context<HubEnv>): string | null {
+  const header = context.req.header('authorization') ?? ''
+  const match = /^Bearer\s+(.+)$/i.exec(header.trim())
+  const presented = match?.[1]?.trim()
+  return presented ? fingerprint(presented) : null
 }
 
 /** The tenant of an answer: it never carries a secret. */
@@ -444,6 +477,14 @@ export async function revokeGrantHandler(
       throw new AdministrationError('not_found', 'the grant does not exist')
     }
     const audit = await dependencies.administration.revokeGrant(id)
+    await dependencies.administration.recordAudit({
+      action: audit.action,
+      targetId: audit.id,
+      tenant: audit.tenant ?? null,
+      operator: operatorOf(context),
+      address: dependencies.peerAddress(context.req.raw),
+      requestId: context.get('requestId'),
+    })
     dependencies.logger.info('the administrative call', {
       endpoint,
       status: 204,
@@ -453,6 +494,60 @@ export async function revokeGrantHandler(
       ...(audit.tenant ? { tenant: audit.tenant } : {}),
     })
     return new Response(null, { status: 204 })
+  } catch (error) {
+    return failure(error)
+  }
+}
+
+/** The row of the audit, as it is published. */
+function auditBody(record: {
+  id: string
+  at: Date
+  action: string
+  targetId: string | null
+  tenant: string | null
+  operator: string | null
+  address: string | null
+  requestId: string | null
+}): Record<string, unknown> {
+  return {
+    id: record.id,
+    at: record.at.toISOString(),
+    action: record.action,
+    targetId: record.targetId,
+    tenant: record.tenant,
+    operator: record.operator,
+    address: record.address,
+    requestId: record.requestId,
+  }
+}
+
+/**
+ * `GET /v1/admin/audit`: the audit of the administration.
+ *
+ * It is the one endpoint of the administration that reads and that does
+ * not change: it is the trail of the changes, and it is read only.
+ */
+export async function auditHandler(
+  context: Context<HubEnv>,
+  dependencies: HubDependencies
+): Promise<Response> {
+  const endpoint = '/v1/admin/audit'
+  try {
+    authenticate(context, dependencies)
+    const query = context.req.query()
+    const page = await dependencies.administration.listAudit({
+      tenant: query.tenant ?? null,
+      action: query.action ?? null,
+      limit: query.limit ?? null,
+      offset: query.offset ?? null,
+    })
+    return answer(context, dependencies, endpoint, 200, {
+      records: page.records.map(auditBody),
+      total: page.total,
+      limit: page.limit,
+      offset: page.offset,
+    })
   } catch (error) {
     return failure(error)
   }

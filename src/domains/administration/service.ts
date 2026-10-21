@@ -11,6 +11,9 @@ import { sameSecret } from '../../observability'
 import { AdministrationError } from './errors'
 import { FailedAuthenticationLimiter } from './limiter'
 import type {
+  AuditPage,
+  AuditStore,
+  AuditWrite,
   Grant,
   GrantFilter,
   Group,
@@ -58,6 +61,8 @@ export interface AdministrationOptions {
   publicUrl: string
   /** The limiter of the failed authentications. */
   limiter?: FailedAuthenticationLimiter
+  /** The storage of the audit of the administration. */
+  audit?: AuditStore
 }
 
 /**
@@ -544,6 +549,58 @@ export class AdministrationService {
     }
     await this.options.grants.revoke(id)
     return { action: 'grant.revoked', id, tenant: existing.tenant }
+  }
+
+  /**
+   * Writes a row of the audit (spec §9.1).
+   *
+   * The row is written in the request that changed the thing. A write
+   * that fails is a failure of the request: the caller repeats the call,
+   * and a call of the administration is idempotent.
+   */
+  async recordAudit(entry: AuditWrite): Promise<void> {
+    await this.options.audit?.append(entry)
+  }
+
+  /**
+   * The rows of the audit that match a filter, and their number.
+   *
+   * The filter is the tenant, the action and the page. A tenant that
+   * does not exist is a `404 not_found`, like everywhere else.
+   */
+  async listAudit(query: {
+    tenant?: string | null
+    action?: string | null
+    limit?: string | null
+    offset?: string | null
+  }): Promise<AuditPage> {
+    const limit = wholeNumber(
+      query.limit ?? undefined,
+      DEFAULT_PAGE_SIZE,
+      1,
+      MAX_PAGE_SIZE,
+      'limit'
+    )
+    const offset = wholeNumber(query.offset ?? undefined, 0, 0, Number.MAX_SAFE_INTEGER, 'offset')
+
+    let tenant: string | null = null
+    const slug = query.tenant?.trim()
+    if (slug) {
+      const found = await this.options.tenants.findBySlug(slug)
+      if (!found) {
+        throw new AdministrationError('not_found', 'the tenant does not exist')
+      }
+      tenant = found.slug
+    }
+
+    const action = query.action?.trim() || null
+    const page = await this.options.audit?.list({ tenant, action, limit, offset })
+    return {
+      records: page?.records ?? [],
+      total: page?.total ?? 0,
+      limit,
+      offset,
+    }
   }
 
   /**

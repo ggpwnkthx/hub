@@ -7,7 +7,7 @@
  */
 
 export type { LogFields, LogLevel, Logger } from './logging'
-export { sameSecret } from './secrets'
+export { fingerprint, sameSecret } from './secrets'
 export { createLogger, createSilentLogger, parseLogLevel, redactFields, redactUrl } from './logging'
 export type { Observer } from './metrics'
 export {

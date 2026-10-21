@@ -200,6 +200,83 @@ export interface GrantPage {
   offset: number
 }
 
+/**
+ * The row of the audit of the administration (spec §9.1).
+ *
+ * The row names what changed, when, and who changed it. It never carries
+ * a secret: the operator is a fingerprint of the credential that made the
+ * call.
+ */
+export interface AuditRecord {
+  id: string
+  /** The moment of the change. */
+  at: Date
+  /** What happened: `tenant.created`, `grant.revoked`, and so on. */
+  action: string
+  /** The identifier of the thing that changed. */
+  targetId: string | null
+  /** The slug of the tenant, when the change belongs to one. */
+  tenant: string | null
+  /** The fingerprint of the credential of the operator. */
+  operator: string | null
+  /** The address of the socket of the call. */
+  address: string | null
+  /** The identifier of the request. */
+  requestId: string | null
+}
+
+/** The entry of the audit: what is written. */
+export interface AuditWrite {
+  /** What happened. */
+  action: string
+  /** The identifier of the thing that changed. */
+  targetId?: string | null
+  /** The slug of the tenant, when the change belongs to one. */
+  tenant?: string | null
+  /** The fingerprint of the credential of the operator. */
+  operator?: string | null
+  /** The address of the socket of the call. */
+  address?: string | null
+  /** The identifier of the request. */
+  requestId?: string | null
+}
+
+/** The filter of the list of the audit. */
+export interface AuditFilter {
+  /** The slug of the tenant, or null for every tenant. */
+  tenant: string | null
+  /** The action, or null for every action. */
+  action: string | null
+  /** The size of the page. */
+  limit: number
+  /** The number of rows that are skipped. */
+  offset: number
+}
+
+/** A page of the audit and the number of the rows that match the filter. */
+export interface AuditPage {
+  records: AuditRecord[]
+  /** The number of rows that match the filter, the page included. */
+  total: number
+  /** The size of the page that was asked for. */
+  limit: number
+  /** The number of rows that were skipped. */
+  offset: number
+}
+
+/**
+ * The storage of the audit of the administration.
+ *
+ * The audit is a port like the others: the domain asks for a row to be
+ * written and for the rows to be read, and it never sees the table.
+ */
+export interface AuditStore {
+  /** Writes a row of the audit. */
+  append(entry: AuditWrite): Promise<void>
+  /** The rows of the audit that match a filter, and their number. */
+  list(filter: AuditFilter): Promise<AuditPage>
+}
+
 /** The storage of the tenants. */
 export interface TenantStore {
   /** The tenant of a slug: the slug is the key of the row. */

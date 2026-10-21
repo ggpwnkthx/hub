@@ -9,6 +9,7 @@
 
 import { createHubApp, createHubHandler } from '../app/app'
 import type { HubDependencies } from '../app/dependencies'
+import { createAdministrationService } from './adapters'
 import { createLogger, type Logger } from '../observability'
 import { startListener, type StartedListener } from '../platform/bun/listener'
 import {
@@ -116,6 +117,10 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
   // The service stops accepting new work when it drains.
   const state = { draining: false }
 
+  // The address of the peer of a request is known by the listener, which
+  // is built after the application: the holder is filled in below.
+  const peer = { address: (_request: Request) => '0.0.0.0' }
+
   const dependencies: HubDependencies = {
     version: VERSION,
     logger,
@@ -135,6 +140,18 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
       },
     },
     isDraining: () => state.draining,
+    // The administration of the platform: the five endpoints of the
+    // specification, and nothing else.
+    administration: createAdministrationService({
+      tenants: repositories.tenants,
+      users: repositories.users,
+      permissions: repositories.permissions,
+      grants: repositories.grants,
+      token: settings.admin.token,
+      publicUrl: settings.public.publicUrl,
+    }),
+    publicUrl: settings.public.publicUrl,
+    peerAddress: (request: Request) => peer.address(request),
   }
 
   const app = createHubApp(dependencies)
@@ -144,6 +161,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     port: settings.network.port,
     onError: (error) => logger.error('the listener reported an error', { error }),
   })
+  peer.address = listener.peerAddress
 
   const closeResources = async (): Promise<void> => {
     await database.close()

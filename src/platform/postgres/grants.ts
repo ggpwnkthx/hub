@@ -12,8 +12,12 @@ import type { SqlClient } from './database'
 export interface GrantRow {
   id: string
   tenantId: string
+  /** The slug of the tenant of the grant. */
+  tenantSlug: string
   userId: string
   permissionId: string
+  /** The key of the permission of the grant. */
+  permissionKey: string
   /** The workspace of the grant, or null for every workspace of the tenant. */
   workspaceId: string | null
   /** The route of the grant, or null for every route. */
@@ -40,8 +44,10 @@ export interface NewGrant {
 interface GrantRecord {
   id: string
   tenant_id: string
+  tenant_slug: string
   user_id: string
   permission_id: string
+  permission_key: string
   workspace_id: string | null
   route_id: string | null
   expires_at: Date | null
@@ -50,17 +56,25 @@ interface GrantRecord {
   created_at: Date
 }
 
-/** The columns of a grant. */
-const COLUMNS = `id, tenant_id, user_id, permission_id, workspace_id, route_id, expires_at,
-  revoked_at, granted_by, created_at`
+/**
+ * The columns of a grant.
+ *
+ * The slug of the tenant comes with them: the answer of the
+ * administration names the tenant and not its id.
+ */
+const COLUMNS = `grants.id, grants.tenant_id, grants.user_id, grants.permission_id,
+  grants.workspace_id, grants.route_id, grants.expires_at, grants.revoked_at, grants.granted_by,
+  grants.created_at, tenants.slug as tenant_slug, permissions.key as permission_key`
 
 /** Turns the row of the database into the row of the domain. */
 function toRow(record: GrantRecord): GrantRow {
   return {
     id: record.id,
     tenantId: record.tenant_id,
+    tenantSlug: record.tenant_slug,
     userId: record.user_id,
     permissionId: record.permission_id,
+    permissionKey: record.permission_key,
     workspaceId: record.workspace_id,
     routeId: record.route_id,
     expiresAt: record.expires_at,
@@ -76,9 +90,12 @@ export class GrantRepository {
 
   /** The grant of an id. */
   async findById(id: string): Promise<GrantRow | null> {
-    const rows = await this.db.query<GrantRecord>(`select ${COLUMNS} from grants where id = $1`, [
-      id,
-    ])
+    const rows = await this.db.query<GrantRecord>(
+      `select ${COLUMNS} from grants join tenants on tenants.id = grants.tenant_id
+       join permissions on permissions.id = grants.permission_id
+       where grants.id = $1`,
+      [id]
+    )
     return rows[0] ? toRow(rows[0]) : null
   }
 
@@ -97,11 +114,12 @@ export class GrantRepository {
     routeId: string | null
   ): Promise<GrantRow | null> {
     const rows = await this.db.query<GrantRecord>(
-      `select ${COLUMNS} from grants
-       where tenant_id = $1 and user_id = $2 and permission_id = $3
-         and coalesce(workspace_id, '') = coalesce($4, '')
-         and coalesce(route_id, '') = coalesce($5, '')
-         and revoked_at is null`,
+      `select ${COLUMNS} from grants join tenants on tenants.id = grants.tenant_id
+       join permissions on permissions.id = grants.permission_id
+       where grants.tenant_id = $1 and grants.user_id = $2 and grants.permission_id = $3
+         and coalesce(grants.workspace_id, '') = coalesce($4, '')
+         and coalesce(grants.route_id, '') = coalesce($5, '')
+         and grants.revoked_at is null`,
       [tenantId, userId, permissionId, workspaceId, routeId]
     )
     return rows[0] ? toRow(rows[0]) : null
@@ -110,9 +128,11 @@ export class GrantRepository {
   /** The live grants of a principal: the roles of the token (spec §7.3). */
   async findLiveByUser(userId: string): Promise<GrantRow[]> {
     const rows = await this.db.query<GrantRecord>(
-      `select ${COLUMNS} from grants
-       where user_id = $1 and revoked_at is null and (expires_at is null or expires_at > now())
-       order by created_at`,
+      `select ${COLUMNS} from grants join tenants on tenants.id = grants.tenant_id
+       join permissions on permissions.id = grants.permission_id
+       where grants.user_id = $1 and grants.revoked_at is null
+         and (grants.expires_at is null or grants.expires_at > now())
+       order by grants.created_at`,
       [userId]
     )
     return rows.map(toRow)
@@ -121,7 +141,9 @@ export class GrantRepository {
   /** The grants of a tenant, the revoked ones included. */
   async findByTenant(tenantId: string): Promise<GrantRow[]> {
     const rows = await this.db.query<GrantRecord>(
-      `select ${COLUMNS} from grants where tenant_id = $1 order by created_at`,
+      `select ${COLUMNS} from grants join tenants on tenants.id = grants.tenant_id
+       join permissions on permissions.id = grants.permission_id
+       where grants.tenant_id = $1 order by grants.created_at`,
       [tenantId]
     )
     return rows.map(toRow)
@@ -130,7 +152,9 @@ export class GrantRepository {
   /** The grants of a principal, the revoked ones included. */
   async findByUser(userId: string): Promise<GrantRow[]> {
     const rows = await this.db.query<GrantRecord>(
-      `select ${COLUMNS} from grants where user_id = $1 order by created_at`,
+      `select ${COLUMNS} from grants join tenants on tenants.id = grants.tenant_id
+       join permissions on permissions.id = grants.permission_id
+       where grants.user_id = $1 order by grants.created_at`,
       [userId]
     )
     return rows.map(toRow)
@@ -139,10 +163,16 @@ export class GrantRepository {
   /** Creates a grant. */
   async create(input: NewGrant): Promise<GrantRow> {
     const rows = await this.db.query<GrantRecord>(
-      `insert into grants (tenant_id, user_id, permission_id, workspace_id, route_id, expires_at,
-         granted_by)
-       values ($1, $2, $3, $4, $5, $6, $7)
-       returning ${COLUMNS}`,
+      `with inserted as (
+         insert into grants (tenant_id, user_id, permission_id, workspace_id, route_id, expires_at,
+           granted_by)
+         values ($1, $2, $3, $4, $5, $6, $7)
+         returning id, tenant_id, user_id, permission_id, workspace_id, route_id, expires_at,
+           revoked_at, granted_by, created_at
+       )
+       select inserted.*, tenants.slug as tenant_slug, permissions.key as permission_key
+       from inserted join tenants on tenants.id = inserted.tenant_id
+       join permissions on permissions.id = inserted.permission_id`,
       [
         input.tenantId,
         input.userId,
@@ -172,7 +202,14 @@ export class GrantRepository {
     if (assignments.length === 0) return await this.findById(id)
     params.push(id)
     const rows = await this.db.query<GrantRecord>(
-      `update grants set ${assignments.join(', ')} where id = $${params.length} returning ${COLUMNS}`,
+      `with updated as (
+         update grants set ${assignments.join(', ')} where id = $${params.length}
+         returning id, tenant_id, user_id, permission_id, workspace_id, route_id, expires_at,
+           revoked_at, granted_by, created_at
+       )
+       select updated.*, tenants.slug as tenant_slug, permissions.key as permission_key
+       from updated join tenants on tenants.id = updated.tenant_id
+       join permissions on permissions.id = updated.permission_id`,
       params
     )
     return rows[0] ? toRow(rows[0]) : null
@@ -187,7 +224,14 @@ export class GrantRepository {
    */
   async revoke(id: string): Promise<GrantRow | null> {
     const rows = await this.db.query<GrantRecord>(
-      `update grants set revoked_at = coalesce(revoked_at, now()) where id = $1 returning ${COLUMNS}`,
+      `with updated as (
+         update grants set revoked_at = coalesce(revoked_at, now()) where id = $1
+         returning id, tenant_id, user_id, permission_id, workspace_id, route_id, expires_at,
+           revoked_at, granted_by, created_at
+       )
+       select updated.*, tenants.slug as tenant_slug, permissions.key as permission_key
+       from updated join tenants on tenants.id = updated.tenant_id
+       join permissions on permissions.id = updated.permission_id`,
       [id]
     )
     return rows[0] ? toRow(rows[0]) : null

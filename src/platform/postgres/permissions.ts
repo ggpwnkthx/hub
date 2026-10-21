@@ -80,6 +80,15 @@ export class PermissionRepository {
     return rows[0] ? toRow(rows[0]) : null
   }
 
+  /** The permission of a key, whatever the tenant that owns it. */
+  async findByKey(key: string): Promise<PermissionRow | null> {
+    const rows = await this.db.query<PermissionRecord>(
+      `select ${COLUMNS} from permissions where key = $1 order by tenant_id nulls first limit 1`,
+      [key]
+    )
+    return rows[0] ? toRow(rows[0]) : null
+  }
+
   /** The permissions of a tenant, and the ones of the catalogue. */
   async findByTenant(tenantId: string): Promise<PermissionRow[]> {
     const rows = await this.db.query<PermissionRecord>(

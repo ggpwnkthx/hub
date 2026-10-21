@@ -15,6 +15,8 @@ export type PrincipalStatus = 'active' | 'disabled'
 export interface UserRow {
   id: string
   tenantId: string
+  /** The slug of the tenant of the principal. */
+  tenantSlug: string
   /** The `sub` of the provider of the tenant. */
   externalSubject: string
   /** The last e-mail seen at the provider: a display value, never a key. */
@@ -46,6 +48,7 @@ export interface UserUpdate {
 interface UserRecord {
   id: string
   tenant_id: string
+  tenant_slug: string
   external_subject: string
   email: string | null
   display_name: string | null
@@ -55,15 +58,22 @@ interface UserRecord {
   updated_at: Date
 }
 
-/** The columns of a principal. */
-const COLUMNS = `id, tenant_id, external_subject, email, display_name, status, last_login_at,
-  created_at, updated_at`
+/**
+ * The columns of a principal.
+ *
+ * The slug of the tenant comes with them: the answer of the
+ * administration names the tenant and not its id.
+ */
+const COLUMNS = `users.id, users.tenant_id, users.external_subject, users.email,
+  users.display_name, users.status, users.last_login_at, users.created_at, users.updated_at,
+  tenants.slug as tenant_slug`
 
 /** Turns the row of the database into the row of the domain. */
 function toRow(record: UserRecord): UserRow {
   return {
     id: record.id,
     tenantId: record.tenant_id,
+    tenantSlug: record.tenant_slug,
     externalSubject: record.external_subject,
     email: record.email,
     displayName: record.display_name,
@@ -80,7 +90,10 @@ export class UserRepository {
 
   /** The principal of an id: the id is the subject of every token. */
   async findById(id: string): Promise<UserRow | null> {
-    const rows = await this.db.query<UserRecord>(`select ${COLUMNS} from users where id = $1`, [id])
+    const rows = await this.db.query<UserRecord>(
+      `select ${COLUMNS} from users join tenants on tenants.id = users.tenant_id where users.id = $1`,
+      [id]
+    )
     return rows[0] ? toRow(rows[0]) : null
   }
 
@@ -92,7 +105,8 @@ export class UserRepository {
    */
   async findByExternalSubject(tenantId: string, externalSubject: string): Promise<UserRow | null> {
     const rows = await this.db.query<UserRecord>(
-      `select ${COLUMNS} from users where tenant_id = $1 and external_subject = $2`,
+      `select ${COLUMNS} from users join tenants on tenants.id = users.tenant_id
+       where users.tenant_id = $1 and users.external_subject = $2`,
       [tenantId, externalSubject]
     )
     return rows[0] ? toRow(rows[0]) : null
@@ -101,7 +115,8 @@ export class UserRepository {
   /** The principals of a tenant. */
   async findByTenant(tenantId: string): Promise<UserRow[]> {
     const rows = await this.db.query<UserRecord>(
-      `select ${COLUMNS} from users where tenant_id = $1 order by created_at`,
+      `select ${COLUMNS} from users join tenants on tenants.id = users.tenant_id
+       where users.tenant_id = $1 order by users.created_at`,
       [tenantId]
     )
     return rows.map(toRow)
@@ -110,9 +125,14 @@ export class UserRepository {
   /** Creates a principal. */
   async create(input: NewUser): Promise<UserRow> {
     const rows = await this.db.query<UserRecord>(
-      `insert into users (tenant_id, external_subject, email, display_name, status)
-       values ($1, $2, $3, $4, $5)
-       returning ${COLUMNS}`,
+      `with inserted as (
+         insert into users (tenant_id, external_subject, email, display_name, status)
+         values ($1, $2, $3, $4, $5)
+         returning id, tenant_id, external_subject, email, display_name, status, last_login_at,
+           created_at, updated_at
+       )
+       select inserted.*, tenants.slug as tenant_slug
+       from inserted join tenants on tenants.id = inserted.tenant_id`,
       [
         input.tenantId,
         input.externalSubject,
@@ -139,7 +159,13 @@ export class UserRepository {
     set('updated_at', new Date())
     params.push(id)
     const rows = await this.db.query<UserRecord>(
-      `update users set ${assignments.join(', ')} where id = $${params.length} returning ${COLUMNS}`,
+      `with updated as (
+         update users set ${assignments.join(', ')} where id = $${params.length}
+         returning id, tenant_id, external_subject, email, display_name, status, last_login_at,
+           created_at, updated_at
+       )
+       select updated.*, tenants.slug as tenant_slug
+       from updated join tenants on tenants.id = updated.tenant_id`,
       params
     )
     return rows[0] ? toRow(rows[0]) : null

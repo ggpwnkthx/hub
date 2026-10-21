@@ -72,7 +72,7 @@ describe('the probes of Hub', () => {
   })
 
   test('an unknown path is refused', async () => {
-    const response = await fetch(`${base}/v1/admin/tenants`)
+    const response = await fetch(`${base}/v1/unknown`)
     expect(response.status).toBe(404)
     expect(await response.json()).toEqual({
       error: 'not_found',

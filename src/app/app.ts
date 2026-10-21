@@ -9,6 +9,13 @@
 import { randomUUID } from 'node:crypto'
 import { Hono, type ExecutionContext } from 'hono'
 import type { HubDependencies } from './dependencies'
+import {
+  grantHandler,
+  principalHandler,
+  revokeGrantHandler,
+  tenantHandler,
+  tenantsHandler,
+} from './administration'
 import { healthHandler, readyHandler } from './endpoints'
 import { jsonError } from './errors'
 import type { HubEnv, HubState } from './state'
@@ -89,6 +96,14 @@ export function createHubApp(dependencies: HubDependencies): Hono<HubEnv> {
   // The probes of the service.
   app.get('/healthz', (context) => healthHandler(context, dependencies))
   app.get('/readyz', async (context) => await readyHandler(context, dependencies))
+
+  // The administration of the platform: five endpoints, and they are the
+  // whole surface.
+  app.post('/v1/admin/tenants', async (context) => await tenantHandler(context, dependencies))
+  app.get('/v1/admin/tenants', async (context) => await tenantsHandler(context, dependencies))
+  app.post('/v1/admin/users', async (context) => await principalHandler(context, dependencies))
+  app.put('/v1/admin/grants', async (context) => await grantHandler(context, dependencies))
+  app.delete('/v1/admin/grants/:id', async (context) => revokeGrantHandler(context, dependencies))
 
   // Every other path is refused: Hub has a fixed surface and the paths
   // that are not part of it are not part of it.

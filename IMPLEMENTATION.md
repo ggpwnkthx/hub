@@ -210,6 +210,19 @@ every change is audited.
 | HUB-027 | The audit log of the administration: the endpoint, the status, the address, the identifier of the thing that changed. The secrets are never in it. | S |
 | HUB-028 | The script of the five calls of spec §9.7, as a smoke test of a deployment. | S |
 
+**State**: the nine tasks are done and the milestone is closed.
+
+**The decisions of the milestone**
+
+| Question | Decision | Where |
+| --- | --- | --- |
+| Where does the rate limit of the administration live? | In the domain, with the window of the process: the replicas of a deployment have one window each. | `src/domains/administration/limiter.ts` |
+| Is an address that used up its budget refused even with the right token? | Yes. A caller that hammers the endpoint is refused whatever it presents. | `src/domains/administration/service.ts` |
+| What is the body of a refusal? | `{"error": <code>, "message": <text>}` with the codes of the specification: `unauthorized`, `invalid_request`, `not_found`, `conflict`, `forbidden`, `too_many_requests`. | `src/app/administration.ts` |
+| What is the size of a body? | 64 KiB. A body that is larger is a `413`. | `src/app/administration.ts` |
+| Where does the audit live? | The domain names what changed and the thing that changed; the application writes the line of the call with the endpoint, the status and the address. | `src/domains/administration/service.ts`, `src/app/administration.ts` |
+| How are the repositories adapted to the ports of the domain? | In the composition root: the rows are translated and the failures of the driver become the failures of the domain. | `src/runtime/adapters.ts` |
+
 **Exit criteria**
 
 - The five endpoints answer exactly the bodies of the spec, and the
@@ -507,7 +520,9 @@ the coverage, and it is reviewed at the end of every milestone.
 | §8.4 | The roles are context | `authorization/decision.test.ts` |
 | §8.6 | The latency of a revocation | `compatibility/gateway.test.ts` |
 | §8.7 | The reasons and the metric of the gateway | `compatibility/gateway.test.ts` |
-| §9.2–9.6 | The five endpoints | `contract/administration.test.ts` |
+| §9.2–9.6 | The five endpoints | `contract/administration.test.ts`, `administration/service.test.ts` |
+| §9.1 | The authentication, the limiter and the audit | `administration/service.test.ts`, `contract/administration.test.ts` |
+| §9.7 | The five calls of the session | `contract/smoke.test.ts` |
 | §11.2 | The bounded labels | `observability.test.ts` |
 | §13 | The deferred features are absent | `architecture/no-scaffolding.test.ts` |
 

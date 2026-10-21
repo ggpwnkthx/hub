@@ -6,6 +6,7 @@
  * and hands them over here.
  */
 
+import type { AdministrationService } from '../domains/administration'
 import type { Logger } from '../observability'
 
 /**
@@ -30,4 +31,10 @@ export interface HubDependencies {
   probe: ReadinessProbe
   /** True while the service is draining: it does not accept new work. */
   isDraining: () => boolean
+  /** The administration of the platform. */
+  administration: AdministrationService
+  /** The public url of Hub, for the default callback of a tenant. */
+  publicUrl: string
+  /** The address of the peer of a request: the address of the socket. */
+  peerAddress: (request: Request) => string
 }

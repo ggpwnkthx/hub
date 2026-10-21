@@ -34,14 +34,12 @@ const SENSITIVE_KEYS = new Set([
   'x-amz-security-token',
   'access_token',
   'client_secret',
-  'code',
   'code_verifier',
   'id_token',
   'password',
   'refresh_token',
   'secret',
   'session',
-  'state',
   'token',
 ])
 

@@ -17,6 +17,23 @@ jobs:
   check:
     name: types, lint, format and tests
     runs-on: ubuntu-latest
+    services:
+      # The integration tests run on the embedded PostgreSQL by default and
+      # on a real server here: the engine of a deployment is the one of the
+      # tests.
+      postgres:
+        image: postgres:17-alpine
+        ports:
+          - '5432:5432'
+        env:
+          POSTGRES_USER: hub
+          POSTGRES_PASSWORD: hub
+          POSTGRES_DB: hub
+        options: >-
+          --health-cmd "pg_isready -U hub"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -46,6 +63,11 @@ jobs:
 
       - name: integration tests
         run: bun test test/integration
+
+      - name: the integration tests against a PostgreSQL server
+        run: bun test test/integration
+        env:
+          HUB_TEST_DATABASE_URL: postgres://hub:hub@localhost:5432/hub
 
   image:
     name: the production image

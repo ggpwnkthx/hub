@@ -155,9 +155,9 @@ encrypted at rest.
 | HUB-014 | The repositories of the four tables: one method per rule, no SQL in the application layer. | L |
 | HUB-015 | The trace of the queries: the duration of every statement, the number of the rows, a warning above a threshold. | S |
 
-**State**: HUB-010, HUB-011, HUB-012, HUB-013 and HUB-014 are done.
-HUB-015 is open: the trace of the queries is missing, and the milestone is
-not closed until it is.
+**State**: the six tasks are done and the milestone is closed. The
+criteria about the plan of the decision query are checked with the
+milestone of the decisions (HUB-031), which writes it.
 
 **The decisions of the milestone**
 
@@ -171,6 +171,7 @@ not closed until it is.
 | What is the format of the stored secret? | The version (one byte), the nonce (twelve bytes), the body and the tag. The key is derived with HKDF-SHA256, so the secret of the deployment may be of any form. | spec §4.3, `src/platform/postgres/secrets.ts` |
 | How is the key of the secrets rotated? | By `scripts/rotate-secrets.ts`: the two columns of every tenant are re-encrypted in one transaction, and the deployment is restarted with the new key. | spec §4.3, `scripts/rotate-secrets.ts` |
 | Where do the repositories of the four tables live? | In the platform, one file per table. They are the storage of the rows and they hold no policy: the rules live in the domains that use them. | `src/platform/postgres/` |
+| Which statements are traced? | Every one of them: the duration and the number of the rows are written, and a statement that is slower than 50 ms is a warning. The values of a statement are never written. | `src/platform/postgres/trace.ts` |
 
 **Exit criteria**
 

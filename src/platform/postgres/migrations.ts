@@ -98,10 +98,18 @@ export async function runMigrations(options: MigrationRunnerOptions): Promise<Mi
         continue
       }
       logger.info('the migration is applied', { migration: migration.name })
-      await database.transaction(async (client) => {
-        await client.exec(migration.sql)
-        await client.query(`insert into ${MIGRATIONS_TABLE} (name) values ($1)`, [migration.name])
-      })
+      try {
+        await database.transaction(async (client) => {
+          await client.exec(migration.sql)
+          await client.query(`insert into ${MIGRATIONS_TABLE} (name) values ($1)`, [migration.name])
+        })
+      } catch (error) {
+        // The name of the migration is in the failure: the operator has to
+        // know which one of them stopped the service.
+        throw new Error(
+          `the migration "${migration.name}" failed: ${error instanceof Error ? error.message : String(error)}`
+        )
+      }
       result.applied.push(migration.name)
     }
     return result

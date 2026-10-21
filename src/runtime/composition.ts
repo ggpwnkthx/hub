@@ -14,9 +14,14 @@ import { startListener, type StartedListener } from '../platform/bun/listener'
 import {
   createDatabase,
   createSecretCipher,
+  createTracedClient,
+  GrantRepository,
   MIGRATIONS_DIRECTORY,
   MIGRATIONS_TABLE,
+  PermissionRepository,
   runMigrations,
+  TenantRepository,
+  UserRepository,
   type Database,
   type SecretCipher,
 } from '../platform/postgres'
@@ -34,6 +39,8 @@ export interface HubRuntime {
   database: Database
   /** The cipher of the client secrets, when the deployment has a key. */
   secrets?: SecretCipher
+  /** The storage of the four tables. */
+  repositories: HubRepositories
   /** The listener of the service. */
   listener: StartedListener
   /** True while the service is draining. */
@@ -44,6 +51,14 @@ export interface HubRuntime {
   drain: (reason: string) => Promise<void>
   /** Closes everything the runtime owns. */
   close: () => Promise<void>
+}
+
+/** The storage of the four tables, as the domains receive it. */
+export interface HubRepositories {
+  tenants: TenantRepository
+  users: UserRepository
+  permissions: PermissionRepository
+  grants: GrantRepository
 }
 
 /**
@@ -88,6 +103,16 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     logger.warn('the client secrets cannot be encrypted: the key of the deployment is not set')
   }
 
+  // Every statement of the repositories is timed: a query that slows down
+  // is a fact the operator has to see.
+  const traced = createTracedClient(database, { logger })
+  const repositories: HubRepositories = {
+    tenants: new TenantRepository(traced, secrets),
+    users: new UserRepository(traced),
+    permissions: new PermissionRepository(traced),
+    grants: new GrantRepository(traced),
+  }
+
   // The service stops accepting new work when it drains.
   const state = { draining: false }
 
@@ -129,6 +154,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     logger,
     database,
     secrets,
+    repositories,
     listener,
     setDraining: (draining: boolean) => {
       state.draining = draining

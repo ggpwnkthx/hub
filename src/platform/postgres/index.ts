@@ -34,3 +34,5 @@ export type { NewTenant, TenantRow, TenantSummary, TenantUpdate } from './tenant
 export { TenantRepository } from './tenants'
 export type { NewUser, PrincipalStatus, UserRow, UserUpdate } from './users'
 export { UserRepository } from './users'
+export type { TraceOptions } from './trace'
+export { createTracedClient, SLOW_QUERY_MS } from './trace'

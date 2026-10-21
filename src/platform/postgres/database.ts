@@ -99,4 +99,6 @@ export interface DatabaseOptions {
   url?: string
   /** The directory of the embedded database, when the driver is embedded. */
   path?: string
+  /** The schema the tables live in, when the driver is the server. */
+  schema?: string
 }

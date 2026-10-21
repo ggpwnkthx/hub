@@ -21,6 +21,14 @@ export interface PostgresOptions {
   statementTimeoutMs?: number
   /** How long a connection may wait for a free slot, in milliseconds. */
   connectionTimeoutMs?: number
+  /**
+   * The schema the tables live in.
+   *
+   * The schema of a deployment is the one of PostgreSQL by default. The
+   * tests that run against a server use one schema per file, so they do
+   * not share their rows.
+   */
+  schema?: string
 }
 
 /** A client of the server. */
@@ -87,6 +95,14 @@ class PostgresDatabase implements Database {
       statement_timeout: options.statementTimeoutMs ?? 10_000,
       application_name: 'hub',
     })
+    if (options.schema) {
+      // The schema of the connection is the one the caller asked for: the
+      // statements of the repositories do not name a schema.
+      const schema = options.schema
+      this.pool.on('connect', (client) => {
+        void client.query(`set search_path to "${schema.replace(/"/g, '""')}"`)
+      })
+    }
   }
 
   query<T>(text: string, params: readonly unknown[] = []): Promise<T[]> {

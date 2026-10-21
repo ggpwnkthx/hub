@@ -11,12 +11,15 @@ import { sameSecret } from '../../observability'
 import { AdministrationError } from './errors'
 import { FailedAuthenticationLimiter } from './limiter'
 import type {
+  AuditContext,
   AuditPage,
   AuditStore,
-  AuditWrite,
+  ChangeAudit,
   Grant,
   GrantFilter,
   Group,
+  GroupFilter,
+  GroupPage,
   GroupRegistration,
   GroupStore,
   GrantPage,
@@ -69,7 +72,9 @@ export interface AdministrationOptions {
  * The entry of the audit of a change (spec §9.1).
  *
  * The audit names what changed and the thing that changed: the secrets are
- * never in it.
+ * never in it. The row of the table is written by the statement that
+ * changed the thing, so this entry is what the log of the service says
+ * about it.
  */
 export interface AuditEntry {
   /** What happened: `tenant.created`, `grant.revoked`, and so on. */
@@ -206,9 +211,14 @@ export class AdministrationService {
    * The slug is the key of the row: the call is an upsert. A client id
    * belongs to one tenant and a default belongs to one tenant: both are
    * a conflict.
+   *
+   * The context carries the facts of the call that the domain cannot
+   * know: the operator, the address and the request. The row of the audit
+   * is written by the statement that writes the tenant (spec §9.1).
    */
   async upsertTenant(
-    registration: TenantRegistration
+    registration: TenantRegistration,
+    context: AuditContext
   ): Promise<{ tenant: Tenant; created: boolean; audit: AuditEntry }> {
     const existing = await this.options.tenants.findBySlug(registration.slug)
 
@@ -230,7 +240,10 @@ export class AdministrationService {
     }
 
     if (!existing) {
-      const tenant = await this.options.tenants.create(registration)
+      const tenant = await this.options.tenants.create(
+        registration,
+        this.change('tenant.created', registration.slug, context)
+      )
       return {
         tenant,
         created: true,
@@ -238,7 +251,11 @@ export class AdministrationService {
       }
     }
 
-    const tenant = await this.options.tenants.update(existing.id, registration)
+    const tenant = await this.options.tenants.update(
+      existing.id,
+      registration,
+      this.change('tenant.updated', existing.slug, context)
+    )
     if (!tenant) {
       throw new AdministrationError('not_found', 'the tenant does not exist')
     }
@@ -300,6 +317,51 @@ export class AdministrationService {
   }
 
   /**
+   * The groups that match a filter, and their number.
+   *
+   * A tenant that does not exist is a `404 not_found`, like everywhere
+   * else. The groups are paginated like the other lists (spec §9.1).
+   */
+  async listGroups(query: {
+    tenant?: string | null
+    key?: string | null
+    limit?: string | null
+    offset?: string | null
+  }): Promise<GroupPage> {
+    const groups = this.options.groups
+    if (!groups) {
+      throw new AdministrationError('forbidden', 'the groups are not enabled in this deployment')
+    }
+    const limit = wholeNumber(
+      query.limit ?? undefined,
+      DEFAULT_PAGE_SIZE,
+      1,
+      MAX_PAGE_SIZE,
+      'limit'
+    )
+    const offset = wholeNumber(query.offset ?? undefined, 0, 0, Number.MAX_SAFE_INTEGER, 'offset')
+
+    let tenantId: string | null = null
+    const slug = query.tenant?.trim()
+    if (slug) {
+      const tenant = await this.options.tenants.findBySlug(slug)
+      if (!tenant) {
+        throw new AdministrationError('not_found', 'the tenant does not exist')
+      }
+      tenantId = tenant.id
+    }
+
+    const filter: GroupFilter = {
+      tenantId,
+      key: query.key?.trim() || null,
+      limit,
+      offset,
+    }
+    const page = await groups.list(filter)
+    return { groups: page.groups, total: page.total, limit, offset }
+  }
+
+  /**
    * The grants that match a filter, and their number.
    *
    * A tenant that does not exist is a `404 not_found`, and a principal
@@ -342,9 +404,13 @@ export class AdministrationService {
   /**
    * Creates a principal, or updates the principal of that
    * `(tenant, externalSubject)` pair.
+   *
+   * The row of the audit is written by the statement that writes the
+   * principal (spec §9.1).
    */
   async upsertPrincipal(
-    registration: PrincipalRegistration
+    registration: PrincipalRegistration,
+    context: AuditContext
   ): Promise<{ principal: Principal; created: boolean; audit: AuditEntry }> {
     const tenant = await this.options.tenants.findBySlug(registration.tenant)
     if (!tenant) {
@@ -356,13 +422,16 @@ export class AdministrationService {
       registration.externalSubject
     )
     if (!existing) {
-      const principal = await this.options.principals.create({
-        tenantId: tenant.id,
-        externalSubject: registration.externalSubject,
-        email: registration.email ?? null,
-        displayName: registration.displayName ?? null,
-        status: registration.status ?? 'active',
-      })
+      const principal = await this.options.principals.create(
+        {
+          tenantId: tenant.id,
+          externalSubject: registration.externalSubject,
+          email: registration.email ?? null,
+          displayName: registration.displayName ?? null,
+          status: registration.status ?? 'active',
+        },
+        this.change('principal.created', tenant.slug, context)
+      )
       return {
         principal,
         created: true,
@@ -370,11 +439,15 @@ export class AdministrationService {
       }
     }
 
-    const principal = await this.options.principals.update(existing.id, {
-      email: registration.email,
-      displayName: registration.displayName,
-      status: registration.status,
-    })
+    const principal = await this.options.principals.update(
+      existing.id,
+      {
+        email: registration.email,
+        displayName: registration.displayName,
+        status: registration.status,
+      },
+      this.change('principal.updated', tenant.slug, context)
+    )
     if (!principal) {
       throw new AdministrationError('not_found', 'the principal does not exist')
     }
@@ -393,9 +466,13 @@ export class AdministrationService {
    * not in the group any more. The members are the external identities of
    * the principals: a member that is not a principal of the tenant is a
    * `404 not_found`.
+   *
+   * The row of the audit is written by the statement that writes the
+   * group (spec §9.1).
    */
   async upsertGroup(
-    registration: GroupRegistration
+    registration: GroupRegistration,
+    context: AuditContext
   ): Promise<{ group: Group; created: boolean; audit: AuditEntry }> {
     const tenant = await this.options.tenants.findBySlug(registration.tenant)
     if (!tenant) {
@@ -422,12 +499,15 @@ export class AdministrationService {
 
     const existing = await groups.findByKey(tenant.id, registration.key)
     if (!existing) {
-      const group = await groups.create({
-        tenantId: tenant.id,
-        key: registration.key,
-        displayName: registration.displayName ?? null,
-        memberIds: members,
-      })
+      const group = await groups.create(
+        {
+          tenantId: tenant.id,
+          key: registration.key,
+          displayName: registration.displayName ?? null,
+          memberIds: members,
+        },
+        this.change('group.created', tenant.slug, context)
+      )
       return {
         group,
         created: true,
@@ -435,10 +515,14 @@ export class AdministrationService {
       }
     }
 
-    const group = await groups.update(existing.id, {
-      displayName: registration.displayName,
-      memberIds: members,
-    })
+    const group = await groups.update(
+      existing.id,
+      {
+        displayName: registration.displayName,
+        memberIds: members,
+      },
+      this.change('group.updated', tenant.slug, context)
+    )
     if (!group) {
       throw new AdministrationError('not_found', 'the group does not exist')
     }
@@ -456,8 +540,14 @@ export class AdministrationService {
    * The permission is created on demand in the scope of the tenant. A
    * permission of the catalogue of the platform is reused, and a
    * permission of another tenant is refused.
+   *
+   * The row of the audit is written by the statement that writes the
+   * grant (spec §9.1).
    */
-  async upsertGrant(registration: GrantRegistration): Promise<{ grant: Grant; audit: AuditEntry }> {
+  async upsertGrant(
+    registration: GrantRegistration,
+    context: AuditContext
+  ): Promise<{ grant: Grant; audit: AuditEntry }> {
     const tenant = await this.options.tenants.findBySlug(registration.tenant)
     if (!tenant) {
       throw new AdministrationError('not_found', 'the tenant does not exist')
@@ -507,26 +597,33 @@ export class AdministrationService {
       routeId
     )
     if (!existing) {
-      const grant = await this.options.grants.create({
-        tenantId: tenant.id,
-        userId: userId,
-        groupId: userId === null ? subjectId : null,
-        permissionId: permission.id,
-        workspaceId,
-        routeId,
-        expiresAt: registration.expiresAt ?? null,
-        grantedBy: registration.grantedBy ?? null,
-      })
+      const grant = await this.options.grants.create(
+        {
+          tenantId: tenant.id,
+          userId: userId,
+          groupId: userId === null ? subjectId : null,
+          permissionId: permission.id,
+          workspaceId,
+          routeId,
+          expiresAt: registration.expiresAt ?? null,
+          grantedBy: registration.grantedBy ?? null,
+        },
+        this.change('grant.created', tenant.slug, context)
+      )
       return {
         grant,
         audit: { action: 'grant.created', id: grant.id, tenant: tenant.slug },
       }
     }
 
-    const grant = await this.options.grants.update(existing.id, {
-      expiresAt: registration.expiresAt,
-      grantedBy: registration.grantedBy,
-    })
+    const grant = await this.options.grants.update(
+      existing.id,
+      {
+        expiresAt: registration.expiresAt,
+        grantedBy: registration.grantedBy,
+      },
+      this.change('grant.updated', tenant.slug, context)
+    )
     if (!grant) {
       throw new AdministrationError('not_found', 'the grant does not exist')
     }
@@ -542,24 +639,30 @@ export class AdministrationService {
    * The call is idempotent: a grant that is already revoked answers the
    * same way. A grant that does not exist is a `404`.
    */
-  async revokeGrant(id: string): Promise<AuditEntry> {
+  async revokeGrant(id: string, context: AuditContext): Promise<AuditEntry> {
     const existing = await this.options.grants.findById(id)
     if (!existing) {
       throw new AdministrationError('not_found', 'the grant does not exist')
     }
-    await this.options.grants.revoke(id)
+    await this.options.grants.revoke(id, this.change('grant.revoked', existing.tenant, context))
     return { action: 'grant.revoked', id, tenant: existing.tenant }
   }
 
   /**
-   * Writes a row of the audit (spec §9.1).
+   * The audit of a change, with the facts of the call.
    *
-   * The row is written in the request that changed the thing. A write
-   * that fails is a failure of the request: the caller repeats the call,
-   * and a call of the administration is idempotent.
+   * The domain knows what happened and to whom; the application knows who
+   * made the call, from which address and in which request. The two
+   * together are the row of the audit.
    */
-  async recordAudit(entry: AuditWrite): Promise<void> {
-    await this.options.audit?.append(entry)
+  private change(action: string, tenant: string | null, context: AuditContext): ChangeAudit {
+    return {
+      action,
+      tenant,
+      operator: context.operator,
+      address: context.address,
+      requestId: context.requestId,
+    }
   }
 
   /**

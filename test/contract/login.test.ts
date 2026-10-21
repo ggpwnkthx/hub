@@ -110,6 +110,7 @@ beforeAll(async () => {
     idpRedirectUri: `${base}/oauth/tenant/callback`,
     clientId: 'shuttle-acme',
     clientSecret: 'the-secret-of-the-gateway',
+    clientRedirectUris: ['https://shuttle-acme.example.com/auth/callback'],
   })
   await admin('/v1/admin/users', 'POST', {
     tenant: 'acme',
@@ -133,6 +134,25 @@ describe('the login of Hub', () => {
     expect(location.origin + location.pathname).toBe(GATEWAY_REDIRECT)
     expect(location.searchParams.get('code')).toBeTruthy()
     expect(location.searchParams.get('state')).toBe('the-state-of-the-gateway')
+  })
+
+  test('a redirect uri that is not registered is refused', async () => {
+    // The url the browser comes back to is a value the caller controls:
+    // one that is not registered for the client is never sent a code, and
+    // the browser is not sent to it either.
+    const query = new URLSearchParams({
+      client_id: 'shuttle-acme',
+      redirect_uri: 'https://evil.example/steal',
+      response_type: 'code',
+      scope: 'openid',
+      state: 'the-state-of-the-gateway',
+    })
+    const response = await fetch(`${base}/oauth/authorize?${query.toString()}`, {
+      redirect: 'manual',
+    })
+    expect(response.status).toBe(400)
+    expect(response.headers.get('location')).toBeNull()
+    expect(await response.text()).toContain('invalid_request')
   })
 
   test('the state cookie is deleted by the callback', async () => {

@@ -3,7 +3,7 @@
 **Hub** is a Bun service that brokers the login of a caller against the
 OpenID Connect provider of a tenant, maps the external identity of the
 caller to a principal row, answers the decision requests of a gateway over
-a table of grants, and offers eight `curl` endpoints for the administration
+a table of grants, and offers nine `curl` endpoints for the administration
 of the whole thing, and one that reads the audit of the changes.
 
 Hub is **not** a feature of Shuttle. It is a separate deployable that sits
@@ -32,7 +32,7 @@ Status: 0.1.0. Runtime: Bun ≥ 1.4.3. Listener: HTTP on
 | **Brokers the login** | Hub is the OpenID Connect client of the provider of a tenant *and* the OpenID Connect provider of the gateway. The browser logs in at the provider of the tenant; the gateway sees a provider it already knows how to talk to. |
 | **Maps the identity** | The `(tenant, subject)` pair of the provider is mapped to exactly one **principal row**. The row is the identity of the platform; the external identity is only the way in. |
 | **Answers the decisions** | Hub implements the decision contract the gateway already speaks: `POST /v1/decisions`. The decision is computed over a table of **grants**. |
-| **Is administered with eight endpoints** | A tenant, a principal, a grant and a group are created, revoked and **listed** with eight `curl` calls, and the audit of the changes is read with a ninth. There is no console, no portal and no wizard. |
+| **Is administered with nine endpoints** | A tenant, a principal, a grant and a group are created, revoked and **listed** with nine `curl` calls, and the audit of the changes is read with a tenth. There is no console, no portal and no wizard. |
 
 ### 1.2 What Hub does not do
 
@@ -101,7 +101,7 @@ escape hatch (a shared client) and what it costs.
 | **grant** | The permission a principal holds, on a workspace, on a route, until it is revoked or it expires. |
 | **decision** | The answer of `POST /v1/decisions`: may this principal use this workspace on this route? |
 | **gateway** | A Shuttle deployment. It is a client of Hub and a consumer of the decisions. |
-| **operator** | The person who runs Hub and calls the eight administrative endpoints. |
+| **operator** | The person who runs Hub and calls the nine administrative endpoints. |
 
 ### 2.1 The invariants
 
@@ -120,12 +120,13 @@ test.
    cannot be reached produces a denial, never an allowance.
 5. **The administrative endpoints are the whole administration surface.**
    There is no second way to change a tenant, a principal or a grant.
-   Eight of them change something and one of them reads the audit of the
-   changes; nothing else writes.
+   Five of them change something, four read a list and one reads the
+   audit of the changes; nothing else writes.
 6. **Every change is audited, and the audit is durable.** The change and
-   the row of the audit are written by the same call, and the row names
-   the operator by the fingerprint of its credential. A log line is not
-   the audit: the audit is a table (§9.1).
+   the row of the audit are written by **one statement**, so they are
+   committed together or neither is: a change that is not audited does
+   not exist. The row names the operator by the fingerprint of its
+   credential. A log line is not the audit: the audit is a table (§9.1).
 7. **A secret is never returned, never logged and never travels in a
    browser.** The client secret of a provider, the client secret of a
    gateway and the tokens are write-only.
@@ -174,6 +175,7 @@ tenant and the registration of the gateway of the tenant.
 | `idp_scopes` | `text[]` | The scopes Hub asks the provider for. Default `['openid','email','profile']`. |
 | `idp_algorithms` | `text[]` | The algorithms a token of the provider may be signed with. Default `['RS256']`. |
 | `client_id` | `text` | The client id of the **gateway** of the tenant at Hub. Unique across the tenants. |
+| `client_redirect_uris` | `text[]` | The urls the gateway of the tenant is registered with. The browser is sent back to one of them with the code of the login; a url that is not in the list is never sent a code (§5.2). Default `[]`: a tenant that has registered no url refuses every login. |
 | `client_secret` | `bytea` | The secret of the gateway of the tenant, encrypted at rest (§4.3). |
 | `previous_client_secret` | `bytea` | The secret that the current one replaced, encrypted at rest. `null` when there was no rotation. |
 | `previous_client_secret_until` | `timestamptz` | The moment the previous secret stops being accepted. `null` when there was no rotation. |
@@ -379,7 +381,7 @@ readable list with the values of a development machine is in `.env.example`.
 | `HUB_DATABASE_URL` | The PostgreSQL of the five tables. A server in a deployment, the embedded one on a development machine (§3.8). |
 | `HUB_REDIS_URL` | The shared store of the authorization codes. Required when more than one replica runs. |
 | `HUB_ALLOW_MEMORY_STATE` | Replaces the shared store with the memory of the process. A single-node deployment only. |
-| `HUB_ADMIN_TOKEN` | The bearer token of the eight administrative endpoints. |
+| `HUB_ADMIN_TOKEN` | The bearer token of the nine administrative endpoints. |
 | `HUB_PREVIOUS_ADMIN_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it (§4.3.1). |
 | `HUB_ACCESS_TOKEN` | The bearer token the gateway presents on `POST /v1/decisions`. |
 | `HUB_PREVIOUS_ACCESS_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it (§4.3.1). |
@@ -467,7 +469,7 @@ in use and, during a rotation, the one it replaced:
 | --- | --- |
 | `HUB_ACCESS_TOKEN` | The token that the gateway presents on `POST /v1/decisions`. |
 | `HUB_PREVIOUS_ACCESS_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it. |
-| `HUB_ADMIN_TOKEN` | The token of the eight administrative endpoints. |
+| `HUB_ADMIN_TOKEN` | The token of the nine administrative endpoints. |
 | `HUB_PREVIOUS_ADMIN_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it. |
 
 A rotation is therefore a rolling change: the previous value is put in
@@ -492,7 +494,7 @@ down.
 | `HUB_DATABASE_URL` | The five tables live there. A production environment must name a server (§3.8). |
 | `HUB_ISSUER` | It is the `iss` of every token Hub issues and the issuer the gateway is configured with. |
 | `HUB_REDIS_URL` | The authorization codes have to be shared by the replicas, unless `HUB_ALLOW_MEMORY_STATE=true` names a deployment of a single node. |
-| `HUB_ADMIN_TOKEN` | It is the bearer token of the eight administrative endpoints. |
+| `HUB_ADMIN_TOKEN` | It is the bearer token of the nine administrative endpoints. |
 | `HUB_ACCESS_TOKEN` | It is the bearer token the gateway presents on `POST /v1/decisions`. |
 | `HUB_ACCESS_CONTEXT_TOKENS` | It holds the credentials of the access context contract (§8bis). A deployment that serves a data backend needs it. |
 | `HUB_STATE_SECRET` | It signs and encrypts the state of a login. At least 32 bytes. |
@@ -541,6 +543,7 @@ The bodies of the requests and of the answers are in [api.md](api.md).
 | `DELETE /v1/admin/grants/{id}` | Administration (§9.7). |
 | `GET /v1/admin/grants` | The list of the grants, paginated (§9.8). |
 | `POST /v1/admin/groups` | The group and its membership (§9.9). |
+| `GET /v1/admin/groups` | The list of the groups, paginated (§9.10). |
 | `GET /v1/admin/audit` | The audit of the changes, paginated (§9.1). It reads and it does not change. |
 
 Every other path is `404 not_found`.
@@ -571,6 +574,23 @@ A shared client is a deliberate weakening: the operator accepts that a
 login may be resolved to a tenant by a hint that the caller controls. It
 is refused by default and it is the reason a shared gateway is not the
 recommended topology.
+
+**The redirect uri of the request.** The url the browser comes back to
+is a value the caller controls, so it is checked against the ones the
+gateway of the client is registered with (`client_redirect_uris`,
+§3.1) before the tenant is resolved:
+
+- A `redirect_uri` that is not one of them → `400 invalid_request`, and
+  the browser is **not** sent to it. The refusal is a page of Hub, not a
+  redirection: a url that is not registered never receives a code.
+- A tenant that has registered no url refuses every login. A deployment
+  that has not registered its gateway yet does not log anyone in; it
+  registers the url and the logins work.
+
+The check is on the **client**, not on the tenant of the login: with a
+shared client the tenant of the login may be another one, but the url
+the browser comes back to always belongs to the gateway that presented
+the client id.
 
 ### 5.3 The state of a login
 
@@ -842,6 +862,11 @@ does not know: the request of the gateway is the request of the contract.
 - A missing or wrong credential → `401 unauthorized`. The two schemes of
   the credentials are in §8.8.
 - A body that is not JSON, or a `subject` that is not a string → `400 bad_request`.
+- A `subject` that is not the id of a principal → `400 bad_request`. The
+  id of a principal is a uuid: a value that is not one names no row, and
+  the request is refused instead of being asked of the database. The
+  database is never asked to cast a value it cannot cast, so a caller
+  cannot turn a malformed request into a failure of the storage.
 - A database that cannot be reached, or a query that takes longer than
   `HUB_DECISION_TIMEOUT_MS` → `503 service_unavailable`.
 
@@ -1043,7 +1068,10 @@ Content-Type: application/json
 
 The body is at most 64 KiB. A field that is not known, a field of the
 wrong type and a version that is not supported are refused with
-`400 bad_request`.
+`400 bad_request`. The `subject` and the `tenantId` are the ids of the
+rows of the platform, so they are uuids: a value that is not one names
+no row, and the request is refused instead of being asked of the
+database.
 
 The credential of the access context is **not** the credential of the
 gateway and it is not a credential of the administration. It is a
@@ -1131,10 +1159,10 @@ running. It is not a distributed transaction.
 
 ## 9. The administration
 
-Eight endpoints that change something, and one that reads the audit of
-the changes. That is the whole administration surface of Hub: there is
-no console, no portal and no second way to change a tenant, a principal
-or a grant (§2.1, invariant 5).
+Nine endpoints, and one that reads the audit of the changes. That is the
+whole administration surface of Hub: there is no console, no portal and
+no second way to change a tenant, a principal or a grant (§2.1,
+invariant 5).
 
 The bodies of the requests and of the answers are in [api.md](api.md).
 
@@ -1164,7 +1192,9 @@ The bodies of the requests and of the answers are in [api.md](api.md).
   operator is the **fingerprint** of the credential that made the call
   (the first twelve hexadecimal characters of the digest of the token):
   the audit names the operator and it never holds the secret. The row is
-  written by the call that changed the thing, and a write that fails is a
+  written by **the same statement** that writes the thing that changed,
+  so the change and its audit are committed together or neither is: a
+  change that is not audited does not exist. A write that fails is a
   failure of the call: the caller repeats it, and every call of the
   administration is idempotent. The audit is read with
   `GET /v1/admin/audit`, which is paginated like the other lists and
@@ -1260,12 +1290,23 @@ name a principal that does not exist.
 The key is the key of the row: the call is an **upsert**. `201` when the
 group was created, `200` when it was changed.
 
-### 9.10 The whole session, in eight calls
+### 9.10 `GET /v1/admin/groups`
 
-The eight calls of a tenant, from the registration to the revocation, are
-in [api.md](api.md) §"The session in eight calls".
+The list of the groups, paginated like the other lists (§9.1). It reads
+and it does not change.
 
-### 9.11 `GET /v1/admin/audit`
+The filters are `tenant` and `key`. A tenant that does not exist →
+`404 not_found`.
+
+The group carries the **external subjects** of its members (§9.9): the
+operator knows the `sub` of the provider, not the id of the row.
+
+### 9.11 The whole session, in nine calls
+
+The nine calls of a tenant, from the registration to the revocation, are
+in [api.md](api.md) §"The session in nine calls".
+
+### 9.12 `GET /v1/admin/audit`
 
 The audit of the changes, the newest first. It reads and it does not
 change, and it is paginated like the other lists.
@@ -1436,7 +1477,7 @@ Not "it seems useful", not "it is on the roadmap", not "it is standard".
 | --- | --- | --- |
 | **SAML** | A tenant whose provider speaks SAML instead of OpenID Connect. | A tenant whose provider is not an OIDC provider is not served. |
 | **Account linking** | One principal, several external identities (a second provider, a second subject). | The mapping key is `(tenant, subject)`, and it is one to one. A person with two accounts has two principals and two sets of grants. |
-| **The console** | A web interface for the administration. | The eight endpoints of §9 and `curl`. |
+| **The console** | A web interface for the administration. | The nine endpoints of §9 and `curl`. |
 | **SCIM** | The provisioning of the principals by a provider. | The principals are created by the endpoint of §9.4, or by the auto-provisioning of the tenant. |
 | **Directory sync** | The import of the directory of a tenant, on a schedule, from a source of truth. | The principals are created one at a time, by hand or by a script that calls the endpoints. |
 
@@ -1452,7 +1493,7 @@ A rule that has no test is a rule that is not implemented.
 | Kind | Where | What it proves |
 | --- | --- | --- |
 | Unit | `src/domains/*/*.test.ts` | The validation of the token of a provider, the mapping, the rule of the decision, the resolution of the tenant. |
-| Contract | `test/contract/` | The whole flow against the fixtures of Hub: the login of a browser, the exchange of the code, the decision, the eight administrative endpoints, the audit, the rotation of the secrets. |
+| Contract | `test/contract/` | The whole flow against the fixtures of Hub: the login of a browser, the exchange of the code, the decision, the nine administrative endpoints, the audit, the rotation of the secrets. |
 | Integration | `test/integration/` | The decisions against a real PostgreSQL and a real Redis, the isolation of the tenants, the migrations, the deadline of a statement, the rule of the decision against a policy that is built at random. |
 | Compatibility | `test/compatibility/` | **The gateway, unchanged, against Hub.** The fixtures of the Shuttle reference are replaced by Hub, and the contract suite of the gateway is run against it. |
 | Architecture | `test/architecture/` | The import boundaries of Hub, and the absence of the deferred features. |
@@ -1505,7 +1546,7 @@ The layout, the layers and the boundaries are in
 | `src/app/` | The HTTP application: thin handlers, the order of the pipeline, the mapping of the failures to the answers of the protocol. |
 | `src/domains/identity/` | The validation of the token of a provider, the mapping to a principal, the resolution of the tenant. |
 | `src/domains/authorization/` | The rule of the decision, the reading of the grants, the reasons. |
-| `src/domains/administration/` | The eight endpoints, the validation of their bodies, the audit of every change. |
+| `src/domains/administration/` | The nine endpoints, the validation of their bodies, the audit of every change. |
 | `src/domains/provider/` | The tokens of Hub, the JWKS, the discovery document, the exchange of the code. |
 | `src/platform/` | The adapters: PostgreSQL, Redis, the Bun listener, the HTTP client. |
 | `src/observability/` | The logs, the metrics, the comparison of the secrets. |
@@ -1523,7 +1564,7 @@ The layout, the layers and the boundaries are in
 | 4 | Is a principal created at the first login? | Only when the tenant has `auto_provision = true`, and it has no grant: the login succeeds and the access does not (§6.4). |
 | 5 | What decides an access? | The table of grants, and nothing else. The roles of the request are context, because they are a snapshot of the token and a policy that read them would allow a revoked grant until the next login (§8.4). |
 | 6 | Is a decision cached by Hub? | No. The table is the truth, the query is a single statement over indexed tables, and the latency of a revocation is the TTL of the cache of the gateway (§8.6). |
-| 7 | How many administrative endpoints? | Eight that change something, and one that reads the audit of the changes. They are the whole surface, and the reason a tenant, a principal and a grant can only be changed through them is that the audit is complete (§9). |
+| 7 | How many administrative endpoints? | Nine: five that change something, four that read a list, and one that reads the audit of the changes. They are the whole surface, and the reason a tenant, a principal and a grant can only be changed through them is that the audit is complete (§9). |
 | 8 | Why is the authorization code stored instead of being self-contained? | A self-contained code can be redeemed twice inside its life. The store makes it single use, which is the property the gateway relies on (§5.5). |
 | 9 | Why are there no refresh tokens? | The gateway does not use one. A refresh token is a credential to store, rotate and revoke; it is a feature, it is deferred (§7.2). |
 | 10 | Why is the reason of a denial free text? | The gateway hides it and only counts it. The vocabulary of the reasons is chosen so the count of the gateway separates a missing role from any other denial (§8.7). |

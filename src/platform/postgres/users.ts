@@ -7,7 +7,9 @@
  */
 
 import { withTenantScope } from './scope'
+import { auditedCte } from './audited'
 import type { SqlClient } from './database'
+import type { ChangeAudit } from '../../domains/administration'
 
 /** The status of a principal. */
 export type PrincipalStatus = 'active' | 'disabled'
@@ -212,30 +214,43 @@ export class UserRepository {
     return rows.map((row) => row.external_subject)
   }
 
-  /** Creates a principal. */
-  async create(input: NewUser): Promise<UserRow> {
+  /**
+   * Creates a principal.
+   *
+   * The row of the audit of the creation is written by the same statement
+   * as the principal: a principal that is not audited does not exist
+   * (spec §9.1).
+   */
+  async create(input: NewUser, audit?: ChangeAudit | null): Promise<UserRow> {
+    const params: unknown[] = [
+      input.tenantId,
+      input.externalSubject,
+      input.email ?? null,
+      input.displayName ?? null,
+      input.status ?? 'active',
+    ]
+    const audited = auditedCte('inserted', params, audit)
     const rows = await this.db.query<UserRecord>(
       `with inserted as (
          insert into users (tenant_id, external_subject, email, display_name, status)
          values ($1, $2, $3, $4, $5)
          returning id, tenant_id, external_subject, email, display_name, status, last_login_at,
            created_at, updated_at
-       )
+       )${audited}
        select inserted.*, tenants.slug as tenant_slug
        from inserted join tenants on tenants.id = inserted.tenant_id`,
-      [
-        input.tenantId,
-        input.externalSubject,
-        input.email ?? null,
-        input.displayName ?? null,
-        input.status ?? 'active',
-      ]
+      params
     )
     return toRow(rows[0]!)
   }
 
-  /** Changes a principal. */
-  async update(id: string, input: UserUpdate): Promise<UserRow | null> {
+  /**
+   * Changes a principal.
+   *
+   * The row of the audit of the change is written by the same statement
+   * as the principal (spec §9.1).
+   */
+  async update(id: string, input: UserUpdate, audit?: ChangeAudit | null): Promise<UserRow | null> {
     const assignments: string[] = []
     const params: unknown[] = []
     const set = (column: string, value: unknown): void => {
@@ -245,15 +260,26 @@ export class UserRepository {
     if (input.email !== undefined) set('email', input.email)
     if (input.displayName !== undefined) set('display_name', input.displayName)
     if (input.status !== undefined) set('status', input.status)
-    if (assignments.length === 0) return await this.findById(id)
-    set('updated_at', new Date())
+    if (assignments.length === 0) {
+      // The call changed nothing, but it is still a call of the
+      // administration: the row is rewritten with the values it has, so
+      // that the row of the audit is written by the same statement as
+      // the row it names.
+      assignments.push('id = id')
+    } else {
+      set('updated_at', new Date())
+    }
     params.push(id)
+    // The number of the id is read before the audit is appended: the
+    // parameters of the audit are always the last five.
+    const idParam = params.length
+    const audited = auditedCte('updated', params, audit)
     const rows = await this.db.query<UserRecord>(
       `with updated as (
-         update users set ${assignments.join(', ')} where id = $${params.length}
+         update users set ${assignments.join(', ')} where id = $${idParam}
          returning id, tenant_id, external_subject, email, display_name, status, last_login_at,
            created_at, updated_at
-       )
+       )${audited}
        select updated.*, tenants.slug as tenant_slug
        from updated join tenants on tenants.id = updated.tenant_id`,
       params

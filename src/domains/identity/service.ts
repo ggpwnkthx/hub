@@ -279,6 +279,7 @@ export class LoginService {
     try {
       return await resolveTenant(this.options.tenants, {
         clientId: request.clientId,
+        redirectUri: request.redirectUri,
         tenant: request.tenant,
         loginHint: request.loginHint,
       })

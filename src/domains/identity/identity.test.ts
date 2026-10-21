@@ -16,6 +16,9 @@ import {
   type TenantOfLogin,
 } from './index'
 
+/** The redirect uri the gateway of the tests is registered with. */
+const REDIRECT = 'https://shuttle-acme.example.com/auth/callback'
+
 /** A tenant of the tests. */
 function tenant(overrides: Partial<TenantOfLogin> = {}): TenantOfLogin {
   return {
@@ -30,6 +33,7 @@ function tenant(overrides: Partial<TenantOfLogin> = {}): TenantOfLogin {
     idpRedirectUri: 'https://hub.example.com/oauth/tenant/callback',
     emailDomain: 'acme.example',
     clientId: 'shuttle-acme',
+    clientRedirectUris: ['https://shuttle-acme.example.com/auth/callback'],
     scopes: ['openid', 'email', 'profile'],
     algorithms: ['RS256'],
     ...overrides,
@@ -50,19 +54,53 @@ function lookup(tenants: TenantOfLogin[]) {
 
 describe('the tenant of a login', () => {
   test('the client of the request names the tenant', async () => {
-    const resolved = await resolveTenant(lookup([tenant()]), { clientId: 'shuttle-acme' })
+    const resolved = await resolveTenant(lookup([tenant()]), {
+      clientId: 'shuttle-acme',
+      redirectUri: REDIRECT,
+    })
     expect(resolved.slug).toBe('acme')
   })
 
   test('a client that names no tenant is refused', async () => {
-    await expect(resolveTenant(lookup([tenant()]), { clientId: 'unknown' })).rejects.toThrow(
-      TenantResolutionError
-    )
+    await expect(
+      resolveTenant(lookup([tenant()]), { clientId: 'unknown', redirectUri: REDIRECT })
+    ).rejects.toThrow(TenantResolutionError)
+  })
+
+  test('a redirect uri that is not registered is refused', async () => {
+    // The url the browser comes back to is a value the caller controls:
+    // one that is not registered for the client is never sent a code.
+    await expect(
+      resolveTenant(lookup([tenant()]), {
+        clientId: 'shuttle-acme',
+        redirectUri: 'https://evil.example/steal',
+      })
+    ).rejects.toThrow(/redirect uri/)
+  })
+
+  test('a redirect uri that is registered is accepted', async () => {
+    const resolved = await resolveTenant(lookup([tenant()]), {
+      clientId: 'shuttle-acme',
+      redirectUri: REDIRECT,
+    })
+    expect(resolved.slug).toBe('acme')
+  })
+
+  test('a tenant with no registered redirect uri refuses every login', async () => {
+    await expect(
+      resolveTenant(lookup([tenant({ clientRedirectUris: [] })]), {
+        clientId: 'shuttle-acme',
+        redirectUri: REDIRECT,
+      })
+    ).rejects.toThrow(/redirect uri/)
   })
 
   test('a tenant that is disabled is refused', async () => {
     await expect(
-      resolveTenant(lookup([tenant({ enabled: false })]), { clientId: 'shuttle-acme' })
+      resolveTenant(lookup([tenant({ enabled: false })]), {
+        clientId: 'shuttle-acme',
+        redirectUri: REDIRECT,
+      })
     ).rejects.toThrow(/disabled/)
   })
 
@@ -70,6 +108,7 @@ describe('the tenant of a login', () => {
     const other = tenant({ slug: 'other', clientId: 'shuttle-other' })
     const resolved = await resolveTenant(lookup([tenant(), other]), {
       clientId: 'shuttle-acme',
+      redirectUri: REDIRECT,
       tenant: 'other',
     })
     expect(resolved.slug).toBe('acme')
@@ -80,6 +119,7 @@ describe('the tenant of a login', () => {
     const other = tenant({ slug: 'other', clientId: 'shuttle-other' })
     const resolved = await resolveTenant(lookup([shared, other]), {
       clientId: 'shuttle-acme',
+      redirectUri: REDIRECT,
       tenant: 'other',
     })
     expect(resolved.slug).toBe('other')
@@ -89,6 +129,7 @@ describe('the tenant of a login', () => {
     const other = tenant({ slug: 'other', clientId: 'shuttle-other', emailDomain: 'other.example' })
     const resolved = await resolveTenant(lookup([tenant(), other]), {
       clientId: 'shuttle-acme',
+      redirectUri: REDIRECT,
       loginHint: 'alice@other.example',
     })
     expect(resolved.slug).toBe('acme')
@@ -99,6 +140,7 @@ describe('the tenant of a login', () => {
     const other = tenant({ slug: 'other', clientId: 'shuttle-other', emailDomain: 'other.example' })
     const resolved = await resolveTenant(lookup([shared, other]), {
       clientId: 'shuttle-acme',
+      redirectUri: REDIRECT,
       loginHint: 'alice@other.example',
     })
     expect(resolved.slug).toBe('other')
@@ -107,7 +149,10 @@ describe('the tenant of a login', () => {
   test('the default tenant is the fallback of a shared client', async () => {
     const shared = tenant({ sharedClient: true })
     const fallback = tenant({ slug: 'fallback', clientId: 'shuttle-fallback', isDefault: true })
-    const resolved = await resolveTenant(lookup([shared, fallback]), { clientId: 'shuttle-acme' })
+    const resolved = await resolveTenant(lookup([shared, fallback]), {
+      clientId: 'shuttle-acme',
+      redirectUri: REDIRECT,
+    })
     expect(resolved.slug).toBe('fallback')
   })
 

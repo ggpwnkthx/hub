@@ -1,5 +1,5 @@
 /**
- * The access context of a principal (spec §9).
+ * The access context of a principal (spec §8bis).
  *
  * The gateway asks Hub whether a principal may use a workspace, and the
  * answer is a boolean. A service that owns data needs more than a

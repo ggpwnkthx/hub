@@ -90,6 +90,7 @@ beforeAll(async () => {
     idpRedirectUri: `${base}/oauth/tenant/callback`,
     clientId: 'shuttle-acme',
     clientSecret: 'the-secret-of-the-gateway',
+    clientRedirectUris: ['https://shuttle-acme.example.com/auth/callback'],
   })
   await admin('/v1/admin/users', 'POST', {
     tenant: 'acme',

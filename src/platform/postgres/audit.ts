@@ -33,16 +33,6 @@ export interface AuditRow {
   requestId: string | null
 }
 
-/** The entry of the audit: what is written. */
-export interface AuditEntry {
-  action: string
-  targetId?: string | null
-  tenant?: string | null
-  operator?: string | null
-  address?: string | null
-  requestId?: string | null
-}
-
 /** The filter of the list of the audit. */
 export interface AuditFilter {
   /** The slug of the tenant, or null for every tenant. */
@@ -90,33 +80,15 @@ function toRow(record: AuditRecord): AuditRow {
   }
 }
 
-/** The storage of the audit. */
+/**
+ * The storage of the audit.
+ *
+ * The repository **reads** the audit: the rows are written by the
+ * statements that make the changes, so that a change and its row of the
+ * audit are committed together (spec §9.1, `audited.ts`).
+ */
 export class AuditRepository {
   constructor(private readonly db: SqlClient) {}
-
-  /**
-   * Writes a row of the audit.
-   *
-   * The row is written in the request that changed the thing. A write
-   * that fails is a failure of the request: the caller repeats the call,
-   * and a call of the administration is idempotent.
-   */
-  async append(entry: AuditEntry): Promise<AuditRow> {
-    const rows = await this.db.query<AuditRecord>(
-      `insert into admin_audit (action, target_id, tenant, operator, address, request_id)
-       values ($1, $2, $3, $4, $5, $6)
-       returning ${COLUMNS}`,
-      [
-        entry.action,
-        entry.targetId ?? null,
-        entry.tenant ?? null,
-        entry.operator ?? null,
-        entry.address ?? null,
-        entry.requestId ?? null,
-      ]
-    )
-    return toRow(rows[0]!)
-  }
 
   /** The rows of the audit that match a filter, and their number. */
   async list(filter: AuditFilter): Promise<AuditPage> {

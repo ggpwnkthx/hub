@@ -10,6 +10,7 @@
 import { createHubApp, createHubHandler } from '../app/app'
 import type { AccessContextCredential } from '../app/access-context'
 import { LoginService, ProviderClient, createStateCipher } from '../domains/identity'
+import type { TenantOfLogin } from '../domains/identity'
 import { CodeService, ProviderService } from '../domains/provider'
 import { assertCallableAddress } from '../platform/bun/address'
 import { createFetchTransport } from '../platform/bun/http'
@@ -33,6 +34,7 @@ import {
   roleOf,
   runMigrations,
   TenantRepository,
+  type TenantRow,
   UserRepository,
   type Database,
   type SecretCipher,
@@ -216,84 +218,39 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
 
   // The login of the callers: the tenant of the login, the state of the
   // login, the provider of the tenant and the mapping of the identity.
+  //
+  // The tenant of the login is read four ways: by the client id of the
+  // gateway, by the slug, by the domain of an e-mail and as the default
+  // of the platform. Every way answers the same shape of the tenant.
+  const tenantOfLogin = (tenant: TenantRow | null): TenantOfLogin | null => {
+    if (!tenant) return null
+    return {
+      id: tenant.id,
+      slug: tenant.slug,
+      enabled: tenant.enabled,
+      sharedClient: tenant.sharedClient,
+      isDefault: tenant.isDefault,
+      autoProvision: tenant.autoProvision,
+      issuer: tenant.idpIssuer,
+      idpClientId: tenant.idpClientId,
+      idpRedirectUri: tenant.idpRedirectUri,
+      emailDomain: tenant.emailDomain,
+      clientId: tenant.clientId,
+      clientRedirectUris: tenant.clientRedirectUris,
+      scopes: tenant.idpScopes,
+      algorithms: tenant.idpAlgorithms,
+    }
+  }
+
   const login = new LoginService({
     tenants: {
-      findByClientId: async (clientId: string) => {
-        const tenant = await repositories.tenants.findByClientId(clientId)
-        if (!tenant) return null
-        return {
-          id: tenant.id,
-          slug: tenant.slug,
-          enabled: tenant.enabled,
-          sharedClient: tenant.sharedClient,
-          isDefault: tenant.isDefault,
-          autoProvision: tenant.autoProvision,
-          issuer: tenant.idpIssuer,
-          idpClientId: tenant.idpClientId,
-          idpRedirectUri: tenant.idpRedirectUri,
-          emailDomain: tenant.emailDomain,
-          clientId: tenant.clientId,
-          scopes: tenant.idpScopes,
-          algorithms: tenant.idpAlgorithms,
-        }
-      },
-      findBySlug: async (slug: string) => {
-        const tenant = await repositories.tenants.findBySlug(slug)
-        if (!tenant) return null
-        return {
-          id: tenant.id,
-          slug: tenant.slug,
-          enabled: tenant.enabled,
-          sharedClient: tenant.sharedClient,
-          isDefault: tenant.isDefault,
-          autoProvision: tenant.autoProvision,
-          issuer: tenant.idpIssuer,
-          idpClientId: tenant.idpClientId,
-          idpRedirectUri: tenant.idpRedirectUri,
-          emailDomain: tenant.emailDomain,
-          clientId: tenant.clientId,
-          scopes: tenant.idpScopes,
-          algorithms: tenant.idpAlgorithms,
-        }
-      },
-      findByEmailDomain: async (emailDomain: string) => {
-        const tenant = await repositories.tenants.findByEmailDomain(emailDomain)
-        if (!tenant) return null
-        return {
-          id: tenant.id,
-          slug: tenant.slug,
-          enabled: tenant.enabled,
-          sharedClient: tenant.sharedClient,
-          isDefault: tenant.isDefault,
-          autoProvision: tenant.autoProvision,
-          issuer: tenant.idpIssuer,
-          idpClientId: tenant.idpClientId,
-          idpRedirectUri: tenant.idpRedirectUri,
-          emailDomain: tenant.emailDomain,
-          clientId: tenant.clientId,
-          scopes: tenant.idpScopes,
-          algorithms: tenant.idpAlgorithms,
-        }
-      },
-      findDefault: async () => {
-        const tenant = await repositories.tenants.findDefault()
-        if (!tenant) return null
-        return {
-          id: tenant.id,
-          slug: tenant.slug,
-          enabled: tenant.enabled,
-          sharedClient: tenant.sharedClient,
-          isDefault: tenant.isDefault,
-          autoProvision: tenant.autoProvision,
-          issuer: tenant.idpIssuer,
-          idpClientId: tenant.idpClientId,
-          idpRedirectUri: tenant.idpRedirectUri,
-          emailDomain: tenant.emailDomain,
-          clientId: tenant.clientId,
-          scopes: tenant.idpScopes,
-          algorithms: tenant.idpAlgorithms,
-        }
-      },
+      findByClientId: async (clientId: string) =>
+        tenantOfLogin(await repositories.tenants.findByClientId(clientId)),
+      findBySlug: async (slug: string) =>
+        tenantOfLogin(await repositories.tenants.findBySlug(slug)),
+      findByEmailDomain: async (emailDomain: string) =>
+        tenantOfLogin(await repositories.tenants.findByEmailDomain(emailDomain)),
+      findDefault: async () => tenantOfLogin(await repositories.tenants.findDefault()),
     },
     principals: {
       findByExternalSubject: async (tenantId: string, externalSubject: string) => {
@@ -425,7 +382,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     accessContexts: new AccessContextRepository(traced),
     accessContextCredentials: readAccessContextCredentials(settings.access.contextTokens),
     metricsToken: settings.metrics.token,
-    // The administration of the platform: the eight endpoints of the
+    // The administration of the platform: the nine endpoints of the
     // specification, and nothing else.
     administration: createAdministrationService({
       tenants: repositories.tenants,

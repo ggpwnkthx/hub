@@ -27,6 +27,7 @@ function tenantOf(slug: string): NewTenant {
     emailDomain: `${slug}.example`,
     clientId: `shuttle-${slug}`,
     clientSecret: 'the-secret-of-the-gateway',
+    clientRedirectUris: ['https://shuttle-acme.example.com/auth/callback'],
   }
 }
 

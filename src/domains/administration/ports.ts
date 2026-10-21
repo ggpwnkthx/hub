@@ -1,7 +1,7 @@
 /**
  * The ports of the administration.
  *
- * The domain owns the rules of the eight endpoints; the storage is a port
+ * The domain owns the rules of the nine endpoints; the storage is a port
  * that the composition root fulfils. The domain knows nothing about
  * PostgreSQL and nothing about the shape of the rows.
  */
@@ -16,6 +16,12 @@ export interface Tenant {
   emailDomain: string | null
   /** The client id of the gateway of the tenant at Hub. */
   clientId: string
+  /**
+   * The urls the gateway of the tenant is registered with.
+   *
+   * The browser is sent back to one of them with the code of the login.
+   */
+  clientRedirectUris: string[]
   autoProvision: boolean
   sharedClient: boolean
   isDefault: boolean
@@ -42,6 +48,12 @@ export interface TenantRegistration {
   idpAlgorithms: string[]
   emailDomain: string | null
   clientId: string
+  /**
+   * The urls the gateway of the tenant is registered with.
+   *
+   * The browser is sent back to one of them with the code of the login.
+   */
+  clientRedirectUris: string[]
   /** The secret of the gateway of the tenant, in clear. */
   clientSecret: string
   autoProvision: boolean
@@ -85,6 +97,29 @@ export interface Permission {
   key: string
   description: string | null
   enabled: boolean
+}
+
+/** The filter of the list of the groups. */
+export interface GroupFilter {
+  /** The id of the tenant, or null for every tenant. */
+  tenantId: string | null
+  /** The key of the group, or null for every key. */
+  key: string | null
+  /** The size of the page. */
+  limit: number
+  /** The number of rows that are skipped. */
+  offset: number
+}
+
+/** A page of groups and the number of the groups that match. */
+export interface GroupPage {
+  groups: Group[]
+  /** The number of groups that match the filter, the page included. */
+  total: number
+  /** The size of the page that was asked for. */
+  limit: number
+  /** The number of rows that were skipped. */
+  offset: number
 }
 
 /** A group of principals (spec §3.5). */
@@ -225,20 +260,41 @@ export interface AuditRecord {
   requestId: string | null
 }
 
-/** The entry of the audit: what is written. */
-export interface AuditWrite {
-  /** What happened. */
+/**
+ * The audit of a change, as the storage writes it.
+ *
+ * The row of the audit and the row that changed are written by **one**
+ * statement, so a change that is not audited does not exist (spec §2.1,
+ * invariant 6). The identifier of the thing that changed is not here: the
+ * storage takes it from the row it has just written.
+ */
+export interface ChangeAudit {
+  /** What happened: `grant.created`, `grant.revoked`, and so on. */
   action: string
-  /** The identifier of the thing that changed. */
-  targetId?: string | null
   /** The slug of the tenant, when the change belongs to one. */
-  tenant?: string | null
+  tenant: string | null
   /** The fingerprint of the credential of the operator. */
-  operator?: string | null
+  operator: string | null
   /** The address of the socket of the call. */
-  address?: string | null
-  /** The identifier of the request. */
-  requestId?: string | null
+  address: string | null
+  /** The identifier of the request, as it is in the logs of the service. */
+  requestId: string | null
+}
+
+/**
+ * The facts of a call that the domain cannot know.
+ *
+ * The application layer knows them: who made the call, from which
+ * address and in which request. The domain adds what happened and to
+ * whom.
+ */
+export interface AuditContext {
+  /** The fingerprint of the credential of the operator. */
+  operator: string | null
+  /** The address of the socket of the call. */
+  address: string | null
+  /** The identifier of the request, as it is in the logs of the service. */
+  requestId: string | null
 }
 
 /** The filter of the list of the audit. */
@@ -267,12 +323,12 @@ export interface AuditPage {
 /**
  * The storage of the audit of the administration.
  *
- * The audit is a port like the others: the domain asks for a row to be
- * written and for the rows to be read, and it never sees the table.
+ * The audit is a port like the others: the domain asks for the rows to
+ * be read, and it never sees the table. The rows are written by the
+ * statements that make the changes, so a change and the row of its
+ * audit are written together.
  */
 export interface AuditStore {
-  /** Writes a row of the audit. */
-  append(entry: AuditWrite): Promise<void>
   /** The rows of the audit that match a filter, and their number. */
   list(filter: AuditFilter): Promise<AuditPage>
 }
@@ -285,10 +341,19 @@ export interface TenantStore {
   findByClientId(clientId: string): Promise<Tenant | null>
   /** The tenants of the platform, with their numbers. */
   list(): Promise<TenantSummary[]>
-  /** Creates a tenant. */
-  create(registration: TenantRegistration): Promise<Tenant>
-  /** Changes a tenant. */
-  update(id: string, registration: Partial<TenantRegistration>): Promise<Tenant | null>
+  /**
+   * Creates a tenant.
+   *
+   * The row of the audit of the change is written by the same statement
+   * as the tenant: a tenant that is not audited does not exist.
+   */
+  create(registration: TenantRegistration, audit: ChangeAudit): Promise<Tenant>
+  /** Changes a tenant, and writes the row of its audit with it. */
+  update(
+    id: string,
+    registration: Partial<TenantRegistration>,
+    audit: ChangeAudit
+  ): Promise<Tenant | null>
 }
 
 /** The storage of the principals. */
@@ -297,18 +362,27 @@ export interface PrincipalStore {
   findById(id: string): Promise<Principal | null>
   /** The principal of an external identity of a tenant. */
   findByExternalSubject(tenantId: string, externalSubject: string): Promise<Principal | null>
-  /** Creates a principal. */
-  create(registration: {
-    tenantId: string
-    externalSubject: string
-    email?: string | null
-    displayName?: string | null
-    status?: PrincipalStatus
-  }): Promise<Principal>
-  /** Changes a principal. */
+  /**
+   * Creates a principal.
+   *
+   * The row of the audit of the change is written by the same statement
+   * as the principal: a principal that is not audited does not exist.
+   */
+  create(
+    registration: {
+      tenantId: string
+      externalSubject: string
+      email?: string | null
+      displayName?: string | null
+      status?: PrincipalStatus
+    },
+    audit: ChangeAudit
+  ): Promise<Principal>
+  /** Changes a principal, and writes the row of its audit with it. */
   update(
     id: string,
-    changes: { email?: string | null; displayName?: string | null; status?: PrincipalStatus }
+    changes: { email?: string | null; displayName?: string | null; status?: PrincipalStatus },
+    audit: ChangeAudit
   ): Promise<Principal | null>
   /** The principals that match a filter, and their number. */
   list(filter: PrincipalFilter): Promise<PrincipalPage>
@@ -330,18 +404,29 @@ export interface PermissionStore {
 export interface GroupStore {
   /** The group of a key, in the scope of a tenant. */
   findByKey(tenantId: string, key: string): Promise<Group | null>
-  /** Creates a group. */
-  create(registration: {
-    tenantId: string
-    key: string
-    displayName?: string | null
-    /** The ids of the principals of the group. */
-    memberIds: string[]
-  }): Promise<Group>
-  /** Changes a group: the membership is replaced. */
+  /** The groups that match a filter, and their number. */
+  list(filter: GroupFilter): Promise<GroupPage>
+  /**
+   * Creates a group.
+   *
+   * The row of the audit of the change is written by the same statement
+   * as the group: a group that is not audited does not exist.
+   */
+  create(
+    registration: {
+      tenantId: string
+      key: string
+      displayName?: string | null
+      /** The ids of the principals of the group. */
+      memberIds: string[]
+    },
+    audit: ChangeAudit
+  ): Promise<Group>
+  /** Changes a group, and writes the row of its audit with it. */
   update(
     id: string,
-    changes: { displayName?: string | null; memberIds?: string[] }
+    changes: { displayName?: string | null; memberIds?: string[] },
+    audit: ChangeAudit
   ): Promise<Group | null>
 }
 
@@ -357,24 +442,33 @@ export interface GrantStore {
     workspaceId: string | null,
     routeId: string | null
   ): Promise<Grant | null>
-  /** Creates a grant. */
-  create(registration: {
-    tenantId: string
-    userId: string | null
-    groupId: string | null
-    permissionId: string
-    workspaceId: string | null
-    routeId: string | null
-    expiresAt: Date | null
-    grantedBy: string | null
-  }): Promise<Grant>
-  /** Changes the expiry of a grant. */
+  /**
+   * Creates a grant.
+   *
+   * The row of the audit of the change is written by the same statement
+   * as the grant: a grant that is not audited does not exist.
+   */
+  create(
+    registration: {
+      tenantId: string
+      userId: string | null
+      groupId: string | null
+      permissionId: string
+      workspaceId: string | null
+      routeId: string | null
+      expiresAt: Date | null
+      grantedBy: string | null
+    },
+    audit: ChangeAudit
+  ): Promise<Grant>
+  /** Changes the expiry of a grant, and writes the row of its audit with it. */
   update(
     id: string,
-    changes: { expiresAt?: Date | null; grantedBy?: string | null }
+    changes: { expiresAt?: Date | null; grantedBy?: string | null },
+    audit: ChangeAudit
   ): Promise<Grant | null>
-  /** Revokes a grant: the row is kept and stamped. */
-  revoke(id: string): Promise<Grant | null>
+  /** Revokes a grant, and writes the row of its audit with it. */
+  revoke(id: string, audit: ChangeAudit): Promise<Grant | null>
   /** The grants that match a filter, and their number. */
   list(filter: GrantFilter): Promise<GrantPage>
 }

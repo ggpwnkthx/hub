@@ -53,6 +53,26 @@ async function decide(
   }
 }
 
+/**
+ * Reads the value of a metric of the service.
+ *
+ * The value is the sum of the samples of the metric: the metrics of the
+ * service are counters and histograms.
+ */
+async function metric(name: string): Promise<number> {
+  const response = await fetch(`${base}/metrics`, {
+    headers: { authorization: `Bearer ${METRICS_TOKEN}` },
+  })
+  const text = await response.text()
+  let total = 0
+  for (const line of text.split('\n')) {
+    if (!line.startsWith(name)) continue
+    const value = Number(line.trim().split(/\s+/).at(-1))
+    if (Number.isFinite(value)) total += value
+  }
+  return total
+}
+
 /** The id of the principal of the tests. */
 let subject: string
 
@@ -283,6 +303,24 @@ describe('the decisions of the gateway', () => {
   test('a body with a subject that is not a string is refused', async () => {
     const answer = await decide({ subject: 42 })
     expect(answer.status).toBe(400)
+  })
+
+  test('a subject that is not the id of a principal is refused', async () => {
+    // The subject names a row of the platform: a value that is not an id
+    // is refused by the contract and never reaches the database, so it is
+    // not a failure of the storage.
+    const answer = await decide({ subject: 'not-a-principal' })
+    expect(answer.status).toBe(400)
+    expect(answer.body.error).toBe('bad_request')
+  })
+
+  test('a subject that is not an id does not fail the store', async () => {
+    // The metric of the failures of the stores counts the failures of the
+    // database: a malformed request is not one of them.
+    const before = await metric('hub_store_errors_total')
+    await decide({ subject: 'not-a-principal' })
+    const after = await metric('hub_store_errors_total')
+    expect(after).toBe(before)
   })
 
   test('a field that Hub does not know is ignored', async () => {

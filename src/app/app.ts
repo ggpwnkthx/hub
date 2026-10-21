@@ -13,6 +13,7 @@ import {
   grantHandler,
   grantsHandler,
   groupHandler,
+  groupsHandler,
   principalHandler,
   principalsHandler,
   revokeGrantHandler,
@@ -149,13 +150,14 @@ export function createHubApp(dependencies: HubDependencies): Hono<HubEnv> {
   // The metrics of the service.
   app.get('/metrics', async (context) => await metricsHandler(context, dependencies))
 
-  // The administration of the platform: eight endpoints, and they are the
+  // The administration of the platform: nine endpoints, and they are the
   // whole surface.
   app.post('/v1/admin/tenants', async (context) => await tenantHandler(context, dependencies))
   app.get('/v1/admin/tenants', async (context) => await tenantsHandler(context, dependencies))
   app.post('/v1/admin/users', async (context) => await principalHandler(context, dependencies))
   app.get('/v1/admin/users', async (context) => await principalsHandler(context, dependencies))
   app.post('/v1/admin/groups', async (context) => await groupHandler(context, dependencies))
+  app.get('/v1/admin/groups', async (context) => await groupsHandler(context, dependencies))
   app.put('/v1/admin/grants', async (context) => await grantHandler(context, dependencies))
   app.get('/v1/admin/grants', async (context) => await grantsHandler(context, dependencies))
   app.delete('/v1/admin/grants/:id', async (context) => revokeGrantHandler(context, dependencies))

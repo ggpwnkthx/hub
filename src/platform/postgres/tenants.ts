@@ -14,6 +14,8 @@
 import type { SqlClient } from './database'
 import { sameSecret } from '../../observability'
 import { SecretError, type SecretCipher } from './secrets'
+import { auditedCte } from './audited'
+import type { ChangeAudit } from '../../domains/administration'
 
 /** The row of a tenant. */
 export interface TenantRow {
@@ -34,6 +36,13 @@ export interface TenantRow {
   clientId: string
   /** The secret of the gateway of the tenant, encrypted at rest. */
   clientSecret: Uint8Array
+  /**
+   * The urls the gateway of the tenant is registered with.
+   *
+   * The browser is sent back to one of them with the code of the login:
+   * a url that is not in this list is never sent a code (spec §5.2).
+   */
+  clientRedirectUris: string[]
   /**
    * The secret that the current one replaced, encrypted at rest.
    *
@@ -71,6 +80,8 @@ export interface NewTenant {
   clientId: string
   /** The secret of the gateway of the tenant, in clear. */
   clientSecret: string
+  /** The urls the gateway of the tenant is registered with. */
+  clientRedirectUris?: string[]
   autoProvision?: boolean
   sharedClient?: boolean
   isDefault?: boolean
@@ -89,6 +100,7 @@ export interface TenantUpdate {
   emailDomain?: string | null
   clientId?: string
   clientSecret?: string
+  clientRedirectUris?: string[]
   autoProvision?: boolean
   sharedClient?: boolean
   isDefault?: boolean
@@ -112,6 +124,7 @@ interface TenantRecord {
   idp_algorithms: string[]
   client_id: string
   client_secret: Uint8Array
+  client_redirect_uris: string[]
   previous_client_secret: Uint8Array | null
   previous_client_secret_until: Date | null
   shared_client: boolean
@@ -122,8 +135,8 @@ interface TenantRecord {
 /** The columns of a tenant. */
 const COLUMNS = `id, slug, display_name, enabled, is_default, auto_provision, email_domain,
   idp_issuer, idp_client_id, idp_client_secret, idp_redirect_uri, idp_scopes, idp_algorithms,
-  client_id, client_secret, previous_client_secret, previous_client_secret_until, shared_client,
-  created_at, updated_at`
+  client_id, client_secret, client_redirect_uris, previous_client_secret,
+  previous_client_secret_until, shared_client, created_at, updated_at`
 
 /**
  * The window during which the secret that a rotation replaced is still
@@ -153,6 +166,7 @@ function toRow(record: TenantRecord): TenantRow {
     idpAlgorithms: record.idp_algorithms,
     clientId: record.client_id,
     clientSecret: record.client_secret,
+    clientRedirectUris: record.client_redirect_uris,
     previousClientSecret: record.previous_client_secret,
     previousClientSecretUntil: record.previous_client_secret_until,
     sharedClient: record.shared_client,
@@ -237,31 +251,43 @@ export class TenantRepository {
     }))
   }
 
-  /** Creates a tenant. */
-  async create(input: NewTenant): Promise<TenantRow> {
+  /**
+   * Creates a tenant.
+   *
+   * The row of the audit of the creation is written by the same
+   * statement as the tenant: a tenant that is not audited does not
+   * exist (spec §9.1).
+   */
+  async create(input: NewTenant, audit?: ChangeAudit | null): Promise<TenantRow> {
+    const params: unknown[] = [
+      input.slug,
+      input.displayName,
+      input.issuer,
+      input.idpClientId,
+      this.encrypted(input.idpClientSecret),
+      input.idpRedirectUri,
+      input.idpScopes,
+      input.idpAlgorithms,
+      input.emailDomain ?? null,
+      input.clientId,
+      this.encrypted(input.clientSecret),
+      input.clientRedirectUris ?? [],
+      input.autoProvision ?? false,
+      input.sharedClient ?? false,
+      input.isDefault ?? false,
+      input.enabled ?? true,
+    ]
+    const audited = auditedCte('inserted', params, audit)
     const rows = await this.db.query<TenantRecord>(
-      `insert into tenants (slug, display_name, idp_issuer, idp_client_id, idp_client_secret,
-         idp_redirect_uri, idp_scopes, idp_algorithms, email_domain, client_id, client_secret,
-         auto_provision, shared_client, is_default, enabled)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-       returning ${COLUMNS}`,
-      [
-        input.slug,
-        input.displayName,
-        input.issuer,
-        input.idpClientId,
-        this.encrypted(input.idpClientSecret),
-        input.idpRedirectUri,
-        input.idpScopes,
-        input.idpAlgorithms,
-        input.emailDomain ?? null,
-        input.clientId,
-        this.encrypted(input.clientSecret),
-        input.autoProvision ?? false,
-        input.sharedClient ?? false,
-        input.isDefault ?? false,
-        input.enabled ?? true,
-      ]
+      `with inserted as (
+         insert into tenants (slug, display_name, idp_issuer, idp_client_id, idp_client_secret,
+           idp_redirect_uri, idp_scopes, idp_algorithms, email_domain, client_id, client_secret,
+           client_redirect_uris, auto_provision, shared_client, is_default, enabled)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+         returning ${COLUMNS}
+       )${audited}
+       select ${COLUMNS} from inserted`,
+      params
     )
     return toRow(rows[0]!)
   }
@@ -271,8 +297,15 @@ export class TenantRepository {
    *
    * A secret that is not given keeps the one that is stored: a caller
    * that changes the name of a tenant does not have to know its secrets.
+   *
+   * The row of the audit of the change is written by the same statement
+   * as the tenant (spec §9.1).
    */
-  async update(id: string, input: TenantUpdate): Promise<TenantRow | null> {
+  async update(
+    id: string,
+    input: TenantUpdate,
+    audit?: ChangeAudit | null
+  ): Promise<TenantRow | null> {
     const assignments: string[] = []
     const params: unknown[] = []
     const set = (column: string, value: unknown): void => {
@@ -290,6 +323,9 @@ export class TenantRepository {
     if (input.idpAlgorithms !== undefined) set('idp_algorithms', input.idpAlgorithms)
     if (input.emailDomain !== undefined) set('email_domain', input.emailDomain)
     if (input.clientId !== undefined) set('client_id', input.clientId)
+    if (input.clientRedirectUris !== undefined) {
+      set('client_redirect_uris', input.clientRedirectUris)
+    }
     if (input.clientSecret !== undefined) {
       // The secret that is replaced is kept for the window of the
       // rotation: the two secrets are accepted until the window is over,
@@ -309,11 +345,26 @@ export class TenantRepository {
     if (input.sharedClient !== undefined) set('shared_client', input.sharedClient)
     if (input.isDefault !== undefined) set('is_default', input.isDefault)
     if (input.enabled !== undefined) set('enabled', input.enabled)
-    if (assignments.length === 0) return await this.findById(id)
-    set('updated_at', new Date())
+    if (assignments.length === 0) {
+      // The call changed nothing, but it is still a call of the
+      // administration: the row is rewritten with the values it has, so
+      // that the row of the audit is written by the same statement as
+      // the row it names.
+      assignments.push('id = id')
+    } else {
+      set('updated_at', new Date())
+    }
     params.push(id)
+    // The number of the id is read before the audit is appended: the
+    // parameters of the audit are always the last five.
+    const idParam = params.length
+    const audited = auditedCte('updated', params, audit)
     const rows = await this.db.query<TenantRecord>(
-      `update tenants set ${assignments.join(', ')} where id = $${params.length} returning ${COLUMNS}`,
+      `with updated as (
+         update tenants set ${assignments.join(', ')} where id = $${idParam}
+         returning ${COLUMNS}
+       )${audited}
+       select ${COLUMNS} from updated`,
       params
     )
     return rows[0] ? toRow(rows[0]) : null

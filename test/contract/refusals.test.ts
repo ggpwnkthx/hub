@@ -67,6 +67,7 @@ async function login(options: {
       idpRedirectUri: `${base}/oauth/tenant/callback`,
       clientId: 'shuttle-acme',
       clientSecret: 'the-secret-of-the-gateway',
+      clientRedirectUris: ['https://shuttle-acme.example.com/auth/callback'],
       autoProvision: options.autoProvision ?? false,
     })
     if (options.known) {
@@ -186,6 +187,7 @@ describe('the provider of a tenant that is down', () => {
           idpRedirectUri: `${base}/oauth/tenant/callback`,
           clientId: 'shuttle-acme',
           clientSecret: 'secret',
+          clientRedirectUris: [GATEWAY_REDIRECT],
         }),
       })
       const query = new URLSearchParams({

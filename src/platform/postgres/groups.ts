@@ -7,7 +7,9 @@
  */
 
 import { withTenantScope } from './scope'
+import { auditedCte } from './audited'
 import type { SqlClient } from './database'
+import type { ChangeAudit } from '../../domains/administration'
 
 /** The row of a group. */
 export interface GroupRow {
@@ -31,6 +33,18 @@ export interface NewGroup {
   displayName?: string | null
   /** The principals of the group. */
   members: string[]
+}
+
+/** The filter of the list of the groups. */
+export interface GroupListFilter {
+  /** The id of the tenant, or null for every tenant. */
+  tenantId: string | null
+  /** The key of the group, or null for every key. */
+  key: string | null
+  /** The size of the page. */
+  limit: number
+  /** The number of rows that are skipped. */
+  offset: number
 }
 
 /** The row of a group, as the database holds it. */
@@ -106,17 +120,60 @@ export class GroupRepository {
     return rows.map(toRow)
   }
 
-  /** Creates a group. */
-  async create(input: NewGroup): Promise<GroupRow> {
+  /**
+   * The groups that match a filter, and their number.
+   *
+   * The order is the newest first (`created_at desc, id desc`), and it is
+   * stable: two pages never show the same row twice and never skip one
+   * (spec §9.5).
+   */
+  async list(filter: GroupListFilter): Promise<{ rows: GroupRow[]; total: number }> {
+    const conditions: string[] = []
+    const params: unknown[] = []
+    if (filter.tenantId !== null) {
+      params.push(filter.tenantId)
+      conditions.push(`groups.tenant_id = $${params.length}`)
+    }
+    if (filter.key !== null) {
+      params.push(filter.key)
+      conditions.push(`groups.key = $${params.length}`)
+    }
+    const where = conditions.length > 0 ? `where ${conditions.join(' and ')}` : ''
+    const page = await withTenantScope(this.db, filter.tenantId, async (client) => {
+      const counted = await client.query<{ count: number }>(
+        `select count(*)::int as count from groups ${where}`,
+        params
+      )
+      const rows = await client.query<GroupRecord>(
+        `select ${COLUMNS} from groups join tenants on tenants.id = groups.tenant_id
+         ${where}
+         order by groups.created_at desc, groups.id desc
+         limit $${params.length + 1} offset $${params.length + 2}`,
+        [...params, filter.limit, filter.offset]
+      )
+      return { rows, total: counted[0]?.count ?? 0 }
+    })
+    return { rows: page.rows.map(toRow), total: page.total }
+  }
+
+  /**
+   * Creates a group.
+   *
+   * The row of the audit of the creation is written by the same statement
+   * as the group: a group that is not audited does not exist (spec §9.1).
+   */
+  async create(input: NewGroup, audit?: ChangeAudit | null): Promise<GroupRow> {
+    const params: unknown[] = [input.tenantId, input.key, input.displayName ?? null, input.members]
+    const audited = auditedCte('inserted', params, audit)
     const rows = await this.db.query<GroupRecord>(
       `with inserted as (
          insert into groups (tenant_id, key, display_name, members)
          values ($1, $2, $3, $4)
          returning id, tenant_id, key, display_name, members, created_at, updated_at
-       )
+       )${audited}
        select inserted.*, tenants.slug as tenant_slug
        from inserted join tenants on tenants.id = inserted.tenant_id`,
-      [input.tenantId, input.key, input.displayName ?? null, input.members]
+      params
     )
     return toRow(rows[0]!)
   }
@@ -127,10 +184,14 @@ export class GroupRepository {
    * The membership is replaced: the members of the list are the members
    * of the group, and the principals that are not in the list are not in
    * the group any more.
+   *
+   * The row of the audit of the change is written by the same statement
+   * as the group (spec §9.1).
    */
   async update(
     id: string,
-    input: { displayName?: string | null; members?: string[] }
+    input: { displayName?: string | null; members?: string[] },
+    audit?: ChangeAudit | null
   ): Promise<GroupRow | null> {
     const assignments: string[] = []
     const params: unknown[] = []
@@ -140,14 +201,25 @@ export class GroupRepository {
     }
     if (input.displayName !== undefined) set('display_name', input.displayName)
     if (input.members !== undefined) set('members', input.members)
-    if (assignments.length === 0) return await this.findById(id)
-    set('updated_at', new Date())
+    if (assignments.length === 0) {
+      // The call changed nothing, but it is still a call of the
+      // administration: the row is rewritten with the values it has, so
+      // that the row of the audit is written by the same statement as
+      // the row it names.
+      assignments.push('id = id')
+    } else {
+      set('updated_at', new Date())
+    }
     params.push(id)
+    // The number of the id is read before the audit is appended: the
+    // parameters of the audit are always the last five.
+    const idParam = params.length
+    const audited = auditedCte('updated', params, audit)
     const rows = await this.db.query<GroupRecord>(
       `with updated as (
-         update groups set ${assignments.join(', ')} where id = $${params.length}
+         update groups set ${assignments.join(', ')} where id = $${idParam}
          returning id, tenant_id, key, display_name, members, created_at, updated_at
-       )
+       )${audited}
        select updated.*, tenants.slug as tenant_slug
        from updated join tenants on tenants.id = updated.tenant_id`,
       params

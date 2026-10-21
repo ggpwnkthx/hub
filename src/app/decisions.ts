@@ -8,7 +8,13 @@
  */
 
 import type { Context } from 'hono'
-import { decide, isMissingRole, REASONS, type DecisionFacts } from '../domains/authorization'
+import {
+  decide,
+  isMissingRole,
+  isUuid,
+  REASONS,
+  type DecisionFacts,
+} from '../domains/authorization'
 import { sameSecret } from '../observability'
 import type { HubDependencies } from './dependencies'
 import { jsonError } from './errors'
@@ -41,6 +47,12 @@ async function readBody(context: Context<HubEnv>): Promise<DecisionBody> {
   const body = parsed as Record<string, unknown>
   if (typeof body.subject !== 'string' || body.subject.length === 0) {
     throw new InvalidRequestError('the subject is required and it is a string')
+  }
+  // The subject is the id of a principal: a value that is not one names
+  // no principal, and the request is refused instead of being asked of
+  // the database (spec §8.1).
+  if (!isUuid(body.subject)) {
+    throw new InvalidRequestError('the subject is the id of a principal')
   }
   if (body.workspaceId !== undefined && typeof body.workspaceId !== 'string') {
     throw new InvalidRequestError('the workspace is a string')

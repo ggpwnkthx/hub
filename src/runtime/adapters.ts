@@ -18,6 +18,7 @@ import {
   type GrantFilter,
   type GrantStore,
   type Group,
+  type GroupFilter,
   type GroupStore,
   type PermissionStore,
   type PrincipalFilter,
@@ -50,6 +51,7 @@ function toTenant(row: TenantRow): {
   issuer: string
   emailDomain: string | null
   clientId: string
+  clientRedirectUris: string[]
   autoProvision: boolean
   sharedClient: boolean
   isDefault: boolean
@@ -63,6 +65,7 @@ function toTenant(row: TenantRow): {
     issuer: row.idpIssuer,
     emailDomain: row.emailDomain,
     clientId: row.clientId,
+    clientRedirectUris: row.clientRedirectUris,
     autoProvision: row.autoProvision,
     sharedClient: row.sharedClient,
     isDefault: row.isDefault,
@@ -223,13 +226,13 @@ export function createAdministrationService(
         grantCount: row.grantCount,
       }))
     },
-    create: async (registration) => {
-      const row = await run(async () => await dependencies.tenants.create(registration))
+    create: async (registration, audit) => {
+      const row = await run(async () => await dependencies.tenants.create(registration, audit))
       dependencies.onTenantChanged?.(row.id)
       return toTenant(row)
     },
-    update: async (id, registration) => {
-      const row = await run(async () => await dependencies.tenants.update(id, registration))
+    update: async (id, registration, audit) => {
+      const row = await run(async () => await dependencies.tenants.update(id, registration, audit))
       if (row) dependencies.onTenantChanged?.(id)
       return row ? toTenant(row) : null
     },
@@ -246,12 +249,12 @@ export function createAdministrationService(
       )
       return row ? toPrincipal(row) : null
     },
-    create: async (registration) => {
-      const row = await run(async () => await dependencies.users.create(registration))
+    create: async (registration, audit) => {
+      const row = await run(async () => await dependencies.users.create(registration, audit))
       return toPrincipal(row)
     },
-    update: async (id, changes) => {
-      const row = await run(async () => await dependencies.users.update(id, changes))
+    update: async (id, changes, audit) => {
+      const row = await run(async () => await dependencies.users.update(id, changes, audit))
       return row ? toPrincipal(row) : null
     },
     list: async (filter: PrincipalFilter) => {
@@ -306,25 +309,44 @@ export function createAdministrationService(
           if (!row) return null
           return toGroup(row, await membersOf(row.members))
         },
-        create: async (registration) => {
+        list: async (filter: GroupFilter) => {
+          const page = await run(async () => await dependencies.groups!.list(filter))
+          const groups = await Promise.all(
+            page.rows.map(async (row: GroupRow) => toGroup(row, await membersOf(row.members)))
+          )
+          return {
+            groups,
+            total: page.total,
+            limit: filter.limit,
+            offset: filter.offset,
+          }
+        },
+        create: async (registration, audit) => {
           const row = await run(
             async () =>
-              await dependencies.groups!.create({
-                tenantId: registration.tenantId,
-                key: registration.key,
-                displayName: registration.displayName ?? null,
-                members: registration.memberIds,
-              })
+              await dependencies.groups!.create(
+                {
+                  tenantId: registration.tenantId,
+                  key: registration.key,
+                  displayName: registration.displayName ?? null,
+                  members: registration.memberIds,
+                },
+                audit
+              )
           )
           return toGroup(row, await membersOf(row.members))
         },
-        update: async (id, changes) => {
+        update: async (id, changes, audit) => {
           const row = await run(
             async () =>
-              await dependencies.groups!.update(id, {
-                displayName: changes.displayName,
-                ...(changes.memberIds ? { members: changes.memberIds } : {}),
-              })
+              await dependencies.groups!.update(
+                id,
+                {
+                  displayName: changes.displayName,
+                  ...(changes.memberIds ? { members: changes.memberIds } : {}),
+                },
+                audit
+              )
           )
           if (!row) return null
           return toGroup(row, await membersOf(row.members))
@@ -344,16 +366,16 @@ export function createAdministrationService(
       )
       return row ? toGrant(row) : null
     },
-    create: async (registration) => {
-      const row = await run(async () => await dependencies.grants.create(registration))
+    create: async (registration, audit) => {
+      const row = await run(async () => await dependencies.grants.create(registration, audit))
       return toGrant(row)
     },
-    update: async (id, changes) => {
-      const row = await run(async () => await dependencies.grants.update(id, changes))
+    update: async (id, changes, audit) => {
+      const row = await run(async () => await dependencies.grants.update(id, changes, audit))
       return row ? toGrant(row) : null
     },
-    revoke: async (id) => {
-      const row = await run(async () => await dependencies.grants.revoke(id))
+    revoke: async (id, audit) => {
+      const row = await run(async () => await dependencies.grants.revoke(id, audit))
       return row ? toGrant(row) : null
     },
     list: async (filter: GrantFilter) => {
@@ -381,9 +403,6 @@ export function createAdministrationService(
 
   const auditStore: AuditStore | undefined = dependencies.audit
     ? {
-        append: async (entry) => {
-          await run(async () => await dependencies.audit!.append(entry))
-        },
         list: async (filter: AuditFilter): Promise<AuditPage> => {
           const page = await run(async () => await dependencies.audit!.list(filter))
           return {

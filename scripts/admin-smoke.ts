@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 /**
- * The eight calls of the administration (spec §9.10).
+ * The nine calls of the administration (spec §9.11).
  *
  * The script is the smoke test of a deployment: it creates a tenant, it
- * lists the tenants, it lists the principals, it creates a principal, it
- * grants a permission, it lists the grants, it creates a group and it
- * revokes the grant. It reads the environment of the process: it is an
- * operator tool and not part of the service.
+ * lists the tenants, it creates a principal, it lists the principals, it
+ * grants a permission, it lists the grants, it creates a group, it lists
+ * the groups and it revokes the grant. It reads the environment of the
+ * process: it is an operator tool and not part of the service.
  *
  *   HUB_URL=https://hub.example.com HUB_ADMIN_TOKEN=… bun run scripts/admin-smoke.ts
  */
@@ -66,6 +66,9 @@ async function main(): Promise<void> {
     idpClientSecret: 'the-secret-of-the-provider',
     clientId: `shuttle-${slug}`,
     clientSecret: 'the-secret-of-the-gateway',
+    // The url the gateway sends the browser back to. A url that is not
+    // registered is refused: the tenant would refuse every login.
+    clientRedirectUris: [`https://${slug}.example.com/auth/callback`],
     emailDomain: 'smoke.example',
   })
   if (tenant.status !== 201 && tenant.status !== 200) {
@@ -129,14 +132,22 @@ async function main(): Promise<void> {
     fail('the group could not be created', group)
   }
 
-  // 8. the revocation, when the access has to end
+  // 8. the groups of the tenant
+  const groups = await call(`/v1/admin/groups?tenant=${slug}`, 'GET')
+  if (groups.status !== 200) fail('the groups could not be listed', groups)
+  const listedGroups = (groups.body.groups ?? []) as { key: string }[]
+  if (!listedGroups.some((row) => row.key === 'smoke-team')) {
+    fail('the group is not in the list', groups)
+  }
+
+  // 9. the revocation, when the access has to end
   const revoked = await call(`/v1/admin/grants/${grant.body.id}`, 'DELETE')
   if (revoked.status !== 204) fail('the grant could not be revoked', revoked)
 
   console.log(
     JSON.stringify({
       level: 'info',
-      msg: 'the eight calls of the administration answered',
+      msg: 'the nine calls of the administration answered',
       tenant: tenantId,
       principal: principal.body.id,
       grant: grant.body.id,

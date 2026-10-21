@@ -14,6 +14,7 @@ import {
   GroupBody,
   PrincipalBody,
   TenantBody,
+  type AuditContext,
   type AuditEntry,
 } from '../domains/administration'
 import type { HubDependencies } from './dependencies'
@@ -114,12 +115,26 @@ function failure(error: unknown): Response {
 }
 
 /**
+ * The facts of the call that the domain cannot know.
+ *
+ * The operator is the fingerprint of the credential that made the call:
+ * two operators that hold two tokens are two operators in the audit,
+ * and the token itself is never written.
+ */
+function auditContext(context: Context<HubEnv>, dependencies: HubDependencies): AuditContext {
+  return {
+    operator: operatorOf(context),
+    address: dependencies.peerAddress(context.req.raw),
+    requestId: context.get('requestId'),
+  }
+}
+
+/**
  * The answer of a change, with the audit of the change.
  *
- * The audit is written in the table of the audit and it is in the log of
- * the service. The row of the table names the operator by the
- * fingerprint of the credential that made the call: the secret itself
- * never reaches the table.
+ * The row of the audit is written by the statement that changed the
+ * thing: the change and its audit are committed together, or neither is
+ * (spec §9.1). What is left to the application is the log of the call.
  */
 async function answer(
   context: Context<HubEnv>,
@@ -130,16 +145,6 @@ async function answer(
   audit?: AuditEntry
 ): Promise<Response> {
   const address = dependencies.peerAddress(context.req.raw)
-  if (audit) {
-    await dependencies.administration.recordAudit({
-      action: audit.action,
-      targetId: audit.id,
-      tenant: audit.tenant ?? null,
-      operator: operatorOf(context),
-      address,
-      requestId: context.get('requestId'),
-    })
-  }
   dependencies.logger.info('the administrative call', {
     endpoint,
     status,
@@ -173,6 +178,7 @@ function tenantBody(tenant: {
   issuer: string
   emailDomain: string | null
   clientId: string
+  clientRedirectUris: string[]
   autoProvision: boolean
   sharedClient: boolean
   isDefault: boolean
@@ -186,6 +192,7 @@ function tenantBody(tenant: {
     issuer: tenant.issuer,
     emailDomain: tenant.emailDomain,
     clientId: tenant.clientId,
+    clientRedirectUris: tenant.clientRedirectUris,
     autoProvision: tenant.autoProvision,
     sharedClient: tenant.sharedClient,
     default: tenant.isDefault,
@@ -267,12 +274,16 @@ export async function tenantHandler(
       emailDomain: body.emailDomain ?? null,
       clientId: body.clientId,
       clientSecret: body.clientSecret,
+      clientRedirectUris: body.clientRedirectUris,
       autoProvision: body.autoProvision ?? false,
       sharedClient: body.sharedClient ?? false,
       isDefault: body.default ?? false,
       enabled: body.enabled ?? true,
     }
-    const result = await dependencies.administration.upsertTenant(registration)
+    const result = await dependencies.administration.upsertTenant(
+      registration,
+      auditContext(context, dependencies)
+    )
     return answer(
       context,
       dependencies,
@@ -316,13 +327,16 @@ export async function principalHandler(
   try {
     authenticate(context, dependencies)
     const body = await readBody(context, PrincipalBody)
-    const result = await dependencies.administration.upsertPrincipal({
-      tenant: body.tenant,
-      externalSubject: body.externalSubject,
-      email: body.email,
-      displayName: body.displayName,
-      status: body.status,
-    })
+    const result = await dependencies.administration.upsertPrincipal(
+      {
+        tenant: body.tenant,
+        externalSubject: body.externalSubject,
+        email: body.email,
+        displayName: body.displayName,
+        status: body.status,
+      },
+      auditContext(context, dependencies)
+    )
     return answer(
       context,
       dependencies,
@@ -352,6 +366,32 @@ function groupBody(group: {
     displayName: group.displayName,
     members: group.members,
     createdAt: group.createdAt.toISOString(),
+  }
+}
+
+/** `GET /v1/admin/groups`: the list of the groups. */
+export async function groupsHandler(
+  context: Context<HubEnv>,
+  dependencies: HubDependencies
+): Promise<Response> {
+  const endpoint = '/v1/admin/groups'
+  try {
+    authenticate(context, dependencies)
+    const query = context.req.query()
+    const page = await dependencies.administration.listGroups({
+      tenant: query.tenant ?? null,
+      key: query.key ?? null,
+      limit: query.limit ?? null,
+      offset: query.offset ?? null,
+    })
+    return answer(context, dependencies, endpoint, 200, {
+      groups: page.groups.map(groupBody),
+      total: page.total,
+      limit: page.limit,
+      offset: page.offset,
+    })
+  } catch (error) {
+    return failure(error)
   }
 }
 
@@ -391,16 +431,19 @@ export async function grantHandler(
   try {
     authenticate(context, dependencies)
     const body = await readBody(context, GrantBody)
-    const result = await dependencies.administration.upsertGrant({
-      tenant: body.tenant,
-      userId: body.userId ?? null,
-      group: body.group ?? null,
-      permission: body.permission,
-      workspaceId: body.workspaceId ?? null,
-      routeId: body.routeId ?? null,
-      expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
-      grantedBy: body.grantedBy ?? null,
-    })
+    const result = await dependencies.administration.upsertGrant(
+      {
+        tenant: body.tenant,
+        userId: body.userId ?? null,
+        group: body.group ?? null,
+        permission: body.permission,
+        workspaceId: body.workspaceId ?? null,
+        routeId: body.routeId ?? null,
+        expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+        grantedBy: body.grantedBy ?? null,
+      },
+      auditContext(context, dependencies)
+    )
     return answer(context, dependencies, endpoint, 200, grantBody(result.grant), result.audit)
   } catch (error) {
     return failure(error)
@@ -416,12 +459,15 @@ export async function groupHandler(
   try {
     authenticate(context, dependencies)
     const body = await readBody(context, GroupBody)
-    const result = await dependencies.administration.upsertGroup({
-      tenant: body.tenant,
-      key: body.key,
-      displayName: body.displayName,
-      members: body.members ?? [],
-    })
+    const result = await dependencies.administration.upsertGroup(
+      {
+        tenant: body.tenant,
+        key: body.key,
+        displayName: body.displayName,
+        members: body.members ?? [],
+      },
+      auditContext(context, dependencies)
+    )
     return answer(
       context,
       dependencies,
@@ -476,15 +522,10 @@ export async function revokeGrantHandler(
     if (!id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
       throw new AdministrationError('not_found', 'the grant does not exist')
     }
-    const audit = await dependencies.administration.revokeGrant(id)
-    await dependencies.administration.recordAudit({
-      action: audit.action,
-      targetId: audit.id,
-      tenant: audit.tenant ?? null,
-      operator: operatorOf(context),
-      address: dependencies.peerAddress(context.req.raw),
-      requestId: context.get('requestId'),
-    })
+    const audit = await dependencies.administration.revokeGrant(
+      id,
+      auditContext(context, dependencies)
+    )
     dependencies.logger.info('the administrative call', {
       endpoint,
       status: 204,

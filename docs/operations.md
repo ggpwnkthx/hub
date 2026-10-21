@@ -22,7 +22,7 @@ the deployment; **the operator** is the person who runs the deployment.
 | A signing key | The key of the tokens of Hub, in PEM. | `HUB_SIGNING_KEY`, `HUB_SIGNING_KID` |
 | A secret of the state | It signs and encrypts the state of a login. | `HUB_STATE_SECRET` |
 | A key of the secrets | It encrypts the client secrets of the tenants at rest. | `HUB_SECRET_ENCRYPTION_KEY` |
-| A token of the administration | It guards the eight administrative endpoints. | `HUB_ADMIN_TOKEN` |
+| A token of the administration | It guards the nine administrative endpoints. | `HUB_ADMIN_TOKEN` |
 | A token of the access service | The gateway presents it on the decisions. | `HUB_ACCESS_TOKEN` |
 
 The full list of the variables is in §4 of the spec; `.env.example` holds
@@ -96,7 +96,7 @@ promoted. The delivery of the image is in [release.md](release.md) §5.
      -d '{"slug":"acme","displayName":"Acme Inc","issuer":"https://login.acme.example",
           "idpClientId":"hub-acme","idpClientSecret":"…",
           "idpRedirectUri":"https://hub.example.com/oauth/tenant/callback",
-          "emailDomain":"acme.example","clientId":"shuttle-acme","clientSecret":"…"}'
+          "emailDomain":"acme.example","clientId":"shuttle-acme","clientSecret":"…","clientRedirectUris":["https://shuttle-acme.example.com/auth/callback"]}'
    ```
 2. **The principals** — one call per external identity:
    ```bash
@@ -123,7 +123,7 @@ promoted. The delivery of the image is in [release.md](release.md) §5.
    SHUTTLE_ACCESS_TOKEN=the-access-token-of-hub
    ```
    The two sides have to agree character for character (spec §12.2).
-5. **The check** — the eight calls of the session:
+5. **The check** — the nine calls of the session:
    ```bash
    HUB_URL=https://hub.example.com HUB_ADMIN_TOKEN=… bun run scripts/admin-smoke.ts
    ```

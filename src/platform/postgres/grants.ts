@@ -7,7 +7,9 @@
  */
 
 import { withTenantScope } from './scope'
+import { auditedCte } from './audited'
 import type { SqlClient } from './database'
+import type { ChangeAudit } from '../../domains/administration'
 
 /** The row of a grant. */
 export interface GrantRow {
@@ -293,8 +295,24 @@ export class GrantRepository {
     return { rows: page.rows.map(toRow), total: page.total }
   }
 
-  /** Creates a grant. */
-  async create(input: NewGrant): Promise<GrantRow> {
+  /**
+   * Creates a grant.
+   *
+   * The row of the audit of the creation is written by the same statement
+   * as the grant: a grant that is not audited does not exist (spec §9.1).
+   */
+  async create(input: NewGrant, audit?: ChangeAudit | null): Promise<GrantRow> {
+    const params: unknown[] = [
+      input.tenantId,
+      input.userId,
+      input.groupId,
+      input.permissionId,
+      input.workspaceId ?? null,
+      input.routeId ?? null,
+      input.expiresAt ?? null,
+      input.grantedBy ?? null,
+    ]
+    const audited = auditedCte('inserted', params, audit)
     const rows = await this.db.query<GrantRecord>(
       `with inserted as (
          insert into grants (tenant_id, user_id, group_id, permission_id, workspace_id, route_id,
@@ -302,30 +320,27 @@ export class GrantRepository {
          values ($1, $2, $3, $4, $5, $6, $7, $8)
          returning id, tenant_id, user_id, group_id, permission_id, workspace_id, route_id,
            expires_at, revoked_at, granted_by, created_at
-       )
+       )${audited}
        select inserted.*, tenants.slug as tenant_slug, permissions.key as permission_key,
          groups.key as group_key
        from inserted join tenants on tenants.id = inserted.tenant_id
        join permissions on permissions.id = inserted.permission_id
        left join groups on groups.id = inserted.group_id`,
-      [
-        input.tenantId,
-        input.userId,
-        input.groupId,
-        input.permissionId,
-        input.workspaceId ?? null,
-        input.routeId ?? null,
-        input.expiresAt ?? null,
-        input.grantedBy ?? null,
-      ]
+      params
     )
     return toRow(rows[0]!)
   }
 
-  /** Changes the scope of a grant: its expiry and the one who granted it. */
+  /**
+   * Changes the scope of a grant: its expiry and the one who granted it.
+   *
+   * The row of the audit of the change is written by the same statement
+   * as the grant (spec §9.1).
+   */
   async update(
     id: string,
-    input: { expiresAt?: Date | null; grantedBy?: string | null }
+    input: { expiresAt?: Date | null; grantedBy?: string | null },
+    audit?: ChangeAudit | null
   ): Promise<GrantRow | null> {
     const assignments: string[] = []
     const params: unknown[] = []
@@ -335,14 +350,24 @@ export class GrantRepository {
     }
     if (input.expiresAt !== undefined) set('expires_at', input.expiresAt)
     if (input.grantedBy !== undefined) set('granted_by', input.grantedBy)
-    if (assignments.length === 0) return await this.findById(id)
+    if (assignments.length === 0) {
+      // The call changed nothing, but it is still a call of the
+      // administration: the row is rewritten with the values it has, so
+      // that the row of the audit is written by the same statement as
+      // the row it names.
+      assignments.push('id = id')
+    }
     params.push(id)
+    // The number of the id is read before the audit is appended: the
+    // parameters of the audit are always the last five.
+    const idParam = params.length
+    const audited = auditedCte('updated', params, audit)
     const rows = await this.db.query<GrantRecord>(
       `with updated as (
-         update grants set ${assignments.join(', ')} where id = $${params.length}
+         update grants set ${assignments.join(', ')} where id = $${idParam}
          returning id, tenant_id, user_id, group_id, permission_id, workspace_id, route_id,
            expires_at, revoked_at, granted_by, created_at
-       )
+       )${audited}
        select updated.*, tenants.slug as tenant_slug, permissions.key as permission_key,
          groups.key as group_key
        from updated join tenants on tenants.id = updated.tenant_id
@@ -359,20 +384,25 @@ export class GrantRepository {
    * The row is kept and stamped: a revoked grant is not a grant that never
    * existed. The call is idempotent: a grant that is already revoked keeps
    * the moment of its first revocation.
+   *
+   * The row of the audit of the revocation is written by the same
+   * statement as the revocation (spec §9.1).
    */
-  async revoke(id: string): Promise<GrantRow | null> {
+  async revoke(id: string, audit?: ChangeAudit | null): Promise<GrantRow | null> {
+    const params: unknown[] = [id]
+    const audited = auditedCte('updated', params, audit)
     const rows = await this.db.query<GrantRecord>(
       `with updated as (
          update grants set revoked_at = coalesce(revoked_at, now()) where id = $1
          returning id, tenant_id, user_id, group_id, permission_id, workspace_id, route_id,
            expires_at, revoked_at, granted_by, created_at
-       )
+       )${audited}
        select updated.*, tenants.slug as tenant_slug, permissions.key as permission_key,
          groups.key as group_key
        from updated join tenants on tenants.id = updated.tenant_id
        join permissions on permissions.id = updated.permission_id
        left join groups on groups.id = updated.group_id`,
-      [id]
+      params
     )
     return rows[0] ? toRow(rows[0]) : null
   }

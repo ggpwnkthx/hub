@@ -60,7 +60,7 @@ export interface StoreSettings {
 
 /** The settings of the administration. */
 export interface AdminSettings {
-  /** The bearer token of the eight administrative endpoints. */
+  /** The bearer token of the nine administrative endpoints. */
   token?: string
   /**
    * The token that the current one replaced.

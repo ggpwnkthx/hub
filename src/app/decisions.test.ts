@@ -8,6 +8,9 @@ import { TimeoutError } from '../platform/postgres'
 /** The token of the gateway of the tests. */
 const TOKEN = 'the-access-token'
 
+/** The subject of the tests: the id of a principal. */
+const SUBJECT = '11111111-1111-4111-8111-111111111111'
+
 /** The dependencies of the tests. */
 function dependencies(decide: () => Promise<DecisionFacts>): HubDependencies {
   return {
@@ -44,7 +47,7 @@ async function ask(app: ReturnType<typeof createHubApp>): Promise<Response> {
     new Request('http://hub.example.com/v1/decisions', {
       method: 'POST',
       headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ subject: 'the-subject', workspaceId: 'w', routeId: 'r', roles: [] }),
+      body: JSON.stringify({ subject: SUBJECT, workspaceId: 'w', routeId: 'r', roles: [] }),
     })
   )
 }

@@ -87,6 +87,7 @@ describe('the schema of Hub', () => {
       '0005_group_members_index.sql',
       '0006_secret_rotation.sql',
       '0007_admin_audit.sql',
+      '0008_gateway_redirect_uris.sql',
     ])
 
     const second = await runMigrations({
@@ -103,6 +104,7 @@ describe('the schema of Hub', () => {
       '0005_group_members_index.sql',
       '0006_secret_rotation.sql',
       '0007_admin_audit.sql',
+      '0008_gateway_redirect_uris.sql',
     ])
   })
 

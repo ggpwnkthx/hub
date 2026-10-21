@@ -39,7 +39,7 @@ The authorization endpoint. The gateway sends the browser here.
 | Parameter | Rule |
 | --- | --- |
 | `client_id` | Required. Names the tenant (§5.2 of the spec). |
-| `redirect_uri` | Required. Must be the one registered for the tenant. |
+| `redirect_uri` | Required. Must be one of the `clientRedirectUris` registered for the tenant. A url that is not registered is refused with `400 invalid_request`, and the browser is not sent to it. |
 | `response_type` | Required. `code`. |
 | `scope` | Optional. `openid profile email groups`. |
 | `state` | Optional. Returned to the gateway. |
@@ -139,7 +139,7 @@ Content-Type: application/json
 
 | Field | Rule |
 | --- | --- |
-| `subject` | Required. The id of the principal. |
+| `subject` | Required. The id of a principal: a uuid. |
 | `workspaceId` | Optional. Absent → the empty string. |
 | `routeId` | Optional. Absent → the empty string. |
 | `roles` | Optional. Absent → an empty list. The roles are **context**, never the policy (spec §8.4). |
@@ -151,7 +151,8 @@ Content-Type: application/json
 
 The status is `200` for a decision, allow or deny. The refusals: `401
 unauthorized` (missing or wrong credential), `400 bad_request` (the body
-is not JSON, or the subject is not a string), `503 service_unavailable`
+is not JSON, or the subject is not a string, or the subject is not the
+id of a principal), `503 service_unavailable`
 (the database is down, or the decision took longer than
 `HUB_DECISION_TIMEOUT_MS`). All three are denials for the gateway, which
 fails closed.
@@ -206,8 +207,8 @@ Content-Type: application/json
 | Field | Rule |
 | --- | --- |
 | `version` | Required. `1`. Another version is `400 bad_request`. |
-| `subject` | Required. The id of the principal. |
-| `tenantId` | Required. The tenant of the request. |
+| `subject` | Required. The id of a principal: a uuid. |
+| `tenantId` | Required. The tenant of the request: a uuid. |
 | `workspaceId` | Required. The workspace of the request. |
 | `routeId` | Required. The route of the request. |
 
@@ -246,7 +247,7 @@ bad_request` (the body is not understood), `503 service_unavailable`
 
 ## The administration
 
-Eight endpoints, all under `/v1/admin`, all requiring
+Nine endpoints, all under `/v1/admin`, all requiring
 `Authorization: Bearer $HUB_ADMIN_TOKEN`. The rules they share — the
 limits, the pagination, the error codes, the audit — are in §9.1 of the
 spec.
@@ -269,6 +270,7 @@ curl -sS -X POST https://hub.example.com/v1/admin/tenants \
         "emailDomain": "acme.example",
         "clientId": "shuttle-acme",
         "clientSecret": "the-secret-of-the-gateway",
+        "clientRedirectUris": ["https://shuttle-acme.example.com/auth/callback"],
         "autoProvision": false,
         "sharedClient": false,
         "default": false,
@@ -289,6 +291,7 @@ curl -sS -X POST https://hub.example.com/v1/admin/tenants \
 | `emailDomain` | Optional. Unique when it is set. |
 | `clientId` | Required. The client id of the gateway of the tenant at Hub. Unique across the tenants. |
 | `clientSecret` | Required. Encrypted at rest, never returned. A secret that replaces another one is kept for 24 hours, and both are accepted until the window is over (the rotation of a secret). |
+| `clientRedirectUris` | Optional. Default `[]`. The urls the gateway is registered with: the browser is sent back to one of them with the code of the login. A url that is not in the list is refused with `400 invalid_request`. A tenant that has registered none refuses every login. |
 | `autoProvision` | Optional. Default `false`. |
 | `sharedClient` | Optional. Default `false`. |
 | `default` | Optional. Default `false`. At most one tenant is the default. |
@@ -302,7 +305,9 @@ tenant would become the default.
 {
   "id": "6f0f…", "slug": "acme", "displayName": "Acme Inc",
   "issuer": "https://login.acme.example", "emailDomain": "acme.example",
-  "clientId": "shuttle-acme", "autoProvision": false, "sharedClient": false,
+  "clientId": "shuttle-acme",
+  "clientRedirectUris": ["https://shuttle-acme.example.com/auth/callback"],
+  "autoProvision": false, "sharedClient": false,
   "default": false, "enabled": true,
   "createdAt": "2026-01-08T10:00:00.000Z"
 }
@@ -530,6 +535,41 @@ cannot name a principal that does not exist.
 }
 ```
 
+### `GET /v1/admin/groups`
+
+The list of the groups, the newest first. It reads and it does not change.
+
+```bash
+curl -sS "https://hub.example.com/v1/admin/groups?tenant=acme&limit=20" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+```
+
+| Query | Rule |
+| --- | --- |
+| `tenant` | Optional. The slug of a tenant. A tenant that does not exist → `404 not_found`. |
+| `key` | Optional. The key of a group. |
+| `limit` | Optional. Default `50`, maximum `200`. |
+| `offset` | Optional. Default `0`. |
+
+The group carries the **external subjects** of its members, like the
+answer of the creation does.
+
+```json
+{
+  "groups": [
+    {
+      "id": "e5f6…", "tenant": "acme", "key": "team-platform",
+      "displayName": "The platform team",
+      "members": ["00u1a2b3c4d5", "00u9z8y7x6w5"],
+      "createdAt": "2026-01-08T10:20:00.000Z"
+    }
+  ],
+  "total": 1,
+  "limit": 20,
+  "offset": 0
+}
+```
+
 ### `GET /v1/admin/audit`
 
 The audit of the changes, the newest first. It reads and it does not
@@ -550,6 +590,11 @@ curl -sS "https://hub.example.com/v1/admin/audit?tenant=acme&limit=20" \
 The actions are `tenant.created`, `tenant.updated`, `principal.created`,
 `principal.updated`, `group.created`, `group.updated`, `grant.created`,
 `grant.updated` and `grant.revoked`.
+
+The row of the audit is written by the statement that writes the thing
+that changed: the change and its audit are committed together, or
+neither is. A call that fails leaves no change behind, and the caller
+that repeats it writes the same row of the audit.
 
 ```json
 {
@@ -577,7 +622,7 @@ names the operator and it is not the token.
 
 ---
 
-## The session in eight calls
+## The session in nine calls
 
 The whole life of a tenant, from the registration to the revocation.
 
@@ -590,7 +635,8 @@ curl -sS -X POST $HUB/v1/admin/tenants \
   -H "authorization: Bearer $HUB_ADMIN_TOKEN" -H "content-type: application/json" \
   -d '{"slug":"acme","displayName":"Acme Inc","issuer":"https://login.acme.example",
        "idpClientId":"hub-acme","idpClientSecret":"…","clientId":"shuttle-acme",
-       "clientSecret":"…","emailDomain":"acme.example"}'
+       "clientSecret":"…","emailDomain":"acme.example",
+       "clientRedirectUris":["https://shuttle-acme.example.com/auth/callback"]}'
 
 # 2. the tenants, with their counts
 curl -sS $HUB/v1/admin/tenants -H "authorization: Bearer $HUB_ADMIN_TOKEN"
@@ -620,7 +666,11 @@ curl -sS -X POST $HUB/v1/admin/groups \
   -d '{"tenant":"acme","key":"team-platform","displayName":"The platform team",
        "members":["00u1a2b3c4d5"]}'
 
-# 8. the revocation, when the access has to end
+# 8. the groups of the tenant
+curl -sS "$HUB/v1/admin/groups?tenant=acme" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN"
+
+# 9. the revocation, when the access has to end
 curl -sS -X DELETE $HUB/v1/admin/grants/d3e4… -H "authorization: Bearer $HUB_ADMIN_TOKEN"
 ```
 

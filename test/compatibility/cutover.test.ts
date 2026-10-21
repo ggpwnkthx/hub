@@ -251,6 +251,9 @@ describe('the rehearsal of the cutover of a tenant', () => {
       idpRedirectUri: `${hubUrl}/oauth/tenant/callback`,
       clientId: 'shuttle-acme',
       clientSecret: 'the-secret-of-the-gateway',
+      // The url the gateway sends the browser back to is registered with
+      // the tenant: the gateway of the reference is at a port of the test.
+      clientRedirectUris: [`${gatewayUrl}/auth/callback`],
     })
     expect(tenant.status).toBe(201)
 

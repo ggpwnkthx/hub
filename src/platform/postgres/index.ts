@@ -25,7 +25,7 @@ export {
   runMigrations,
 } from './migrations'
 export type { AuditFilter, AuditPage } from './audit'
-export { AuditRepository, type AuditEntry, type AuditRow } from './audit'
+export { AuditRepository, type AuditRow } from './audit'
 export type { DecisionFacts, DecisionRequest } from '../../domains/authorization'
 export { AccessContextRepository } from './access-context'
 export { DecisionRepository, TimeoutError, withTimeout } from './decisions'

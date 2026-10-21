@@ -1,5 +1,5 @@
 /**
- * The contract of the access context (spec §9).
+ * The contract of the access context (spec §8bis).
  *
  * The contract has two methods. The discovery tells a consumer which
  * versions of the contract the service speaks and what its limits are.
@@ -18,6 +18,7 @@ import {
   type AccessContextFacts,
   type AccessContextRequest,
   type AccessContextStore,
+  isUuid,
   ACCESS_CONTEXT_VERSION,
   MAX_LIFETIME_MS,
   MAX_PERMISSION_KEYS,
@@ -113,6 +114,14 @@ async function readBody(context: Context<HubEnv>): Promise<AccessContextRequest>
   for (const field of ['subject', 'tenantId', 'workspaceId', 'routeId']) {
     if (typeof body[field] !== 'string' || (body[field] as string).length === 0) {
       throw new InvalidRequestError(`the field "${field}" is required and it is a string`)
+    }
+  }
+  // The subject and the tenant are the ids of the rows of the platform:
+  // a value that is not one names no row, and the request is refused
+  // instead of being asked of the database (spec §8bis.2).
+  for (const field of ['subject', 'tenantId']) {
+    if (!isUuid(body[field] as string)) {
+      throw new InvalidRequestError(`the field "${field}" is the id of a row of the platform`)
     }
   }
   return {

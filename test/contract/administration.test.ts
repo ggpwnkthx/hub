@@ -72,6 +72,7 @@ describe('the administration of Hub', () => {
       emailDomain: 'acme.example',
       clientId: 'shuttle-acme',
       clientSecret: 'the-secret-of-the-gateway',
+      clientRedirectUris: ['https://shuttle-acme.example.com/auth/callback'],
     })
     expect(response.status).toBe(201)
     expect(response.body.slug).toBe('acme')
@@ -92,6 +93,7 @@ describe('the administration of Hub', () => {
       idpClientSecret: 'the-secret-of-the-provider',
       clientId: 'shuttle-acme',
       clientSecret: 'the-secret-of-the-gateway',
+      clientRedirectUris: ['https://shuttle-acme.example.com/auth/callback'],
     })
     expect(response.status).toBe(200)
     expect(response.body.displayName).toBe('Acme Incorporated')
@@ -333,6 +335,29 @@ describe('the groups of the administration', () => {
     expect(response.status).toBe(201)
     expect(response.body.key).toBe('team-platform')
     expect(response.body.members).toEqual(['the-subject-of-a-member'])
+  })
+
+  test('the groups of a tenant are listed', async () => {
+    const response = await call('/v1/admin/groups?tenant=acme', 'GET')
+    expect(response.status).toBe(200)
+    const groups = response.body.groups as { key: string; members: string[] }[]
+    expect(Array.isArray(groups)).toBe(true)
+    expect(groups.some((row) => row.key === 'team-platform')).toBe(true)
+    expect(response.body.total).toBeGreaterThan(0)
+  })
+
+  test('the list of the groups is filtered by the key', async () => {
+    const response = await call('/v1/admin/groups?tenant=acme&key=team-platform', 'GET')
+    expect(response.status).toBe(200)
+    const groups = response.body.groups as { key: string }[]
+    expect(groups.length).toBe(1)
+    expect(groups[0]!.key).toBe('team-platform')
+  })
+
+  test('the list of the groups of a tenant that does not exist is a not found', async () => {
+    const response = await call('/v1/admin/groups?tenant=nowhere', 'GET')
+    expect(response.status).toBe(404)
+    expect(response.body.error).toBe('not_found')
   })
 
   test('the membership is replaced by the second call', async () => {

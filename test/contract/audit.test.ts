@@ -62,6 +62,7 @@ beforeAll(async () => {
     idpClientSecret: 'the-secret-of-the-provider',
     clientId: 'shuttle-acme',
     clientSecret: 'the-secret-of-the-gateway',
+    clientRedirectUris: ['https://shuttle-acme.example.com/auth/callback'],
   })
 })
 
@@ -121,6 +122,19 @@ describe('the audit of the administration', () => {
     const actions = (body.records as Record<string, unknown>[]).map((record) => record.action)
     expect(actions).toContain('grant.created')
     expect(actions).toContain('grant.revoked')
+  })
+
+  test('the row of the audit names the thing that changed', async () => {
+    const principal = await admin('/v1/admin/users', 'POST', {
+      tenant: 'acme',
+      externalSubject: 'the-subject-of-a-named-thing',
+    })
+    const body = await audit('?action=principal.created')
+    const records = body.records as Record<string, unknown>[]
+    expect(records.length).toBeGreaterThan(0)
+    // The target of the audit is the row that the change wrote: the
+    // identifier is never one that a caller named.
+    expect(records[0]!.targetId).toBe(principal.body.id)
   })
 
   test('the audit is filtered by the action', async () => {

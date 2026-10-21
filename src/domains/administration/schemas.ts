@@ -28,6 +28,7 @@ export const TenantBody = z.object({
   emailDomain: z.string().min(1).nullable().optional(),
   clientId: z.string().min(1, 'the client id of the gateway is required'),
   clientSecret: z.string().min(1, 'the secret of the gateway is required'),
+  clientRedirectUris: z.array(z.string().url('a redirect uri is a url')).optional().default([]),
   autoProvision: z.boolean().optional(),
   sharedClient: z.boolean().optional(),
   default: z.boolean().optional(),

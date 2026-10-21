@@ -15,6 +15,7 @@ export type {
   DecisionStore,
 } from './decision'
 export { decide, isMissingRole, REASONS } from './decision'
+export { isUuid } from './identifier'
 export type {
   AccessContextAnswer,
   AccessContextFacts,

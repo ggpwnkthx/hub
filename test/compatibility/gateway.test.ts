@@ -125,6 +125,9 @@ beforeAll(async () => {
     idpRedirectUri: `${hubUrl}/oauth/tenant/callback`,
     clientId: 'shuttle-acme',
     clientSecret: 'the-secret-of-the-gateway',
+    // The url the gateway sends the browser back to is registered with
+    // the tenant: the gateway of the reference is at a port of the test.
+    clientRedirectUris: [`${gatewayUrl}/auth/callback`],
   })
 
   // The principal that has a grant and the one that has none.

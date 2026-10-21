@@ -122,6 +122,18 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # The deployment of a production needs the store of the codes of the
+      # logins: the image connects to it at the start and refuses to start
+      # when it does not answer.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - '6379:6379'
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -183,48 +195,17 @@ jobs:
       - name: the role of the deployment is not a superuser
         run: |
           # A production deployment refuses a role that bypasses the
-          # isolation of the tenants (spec §3.8). The role of the image is
-          # demoted here, exactly as a deployment does it: it owns the
-          # tables of the platform and it is not a superuser.
+          # isolation of the tenants (spec §3.9). The role of the image is
+          # a role of its own, exactly as a deployment does it: it owns
+          # the tables of the platform and it is not a superuser. The
+          # bootstrap superuser of the image cannot be demoted, and it does
+          # not have to be: it is the role of the administration of the
+          # database, not the role of the service.
           docker run --rm --network host postgres:17-alpine \
-            psql "postgres://hub:hub@localhost:5432/hub" -v ON_ERROR_STOP=1 \
-            -c "alter role hub nosuperuser"
-
-      - name: the image refuses to start with a role that bypasses the isolation
-        run: |
-          # The role is a superuser again: the service has to refuse to
-          # start and to name the role.
-          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/hub-key.pem 2>/dev/null
-          docker run --rm --network host postgres:17-alpine \
-            psql "postgres://hub:hub@localhost:5432/hub" -v ON_ERROR_STOP=1 \
-            -c "alter role hub superuser"
-          set +e
-          output="$(docker run --rm --add-host host.docker.internal:host-gateway \
-            -e HUB_DATABASE_URL=postgres://hub:hub@host.docker.internal:5432/hub \
-            -e HUB_REDIS_URL=redis://redis:6379/0 \
-            -e HUB_ISSUER=https://hub.example.com \
-            -e HUB_ADMIN_TOKEN=ci-admin-token \
-            -e HUB_ACCESS_TOKEN=ci-access-token \
-            -e HUB_STATE_SECRET="$(printf 'a%.0s' {1..64})" \
-            -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b%.0s' {1..64})" \
-            -e HUB_SIGNING_KEY="$(cat /tmp/hub-key.pem)" \
-            -e HUB_SIGNING_KID=hub-ci \
-            hub:ci 2>&1)"
-          status=$?
-          set -e
-          echo "$output"
-          if [ "$status" -eq 0 ]; then
-            echo "the service started with a role that bypasses the isolation"
-            exit 1
-          fi
-          if ! echo "$output" | grep -q "bypasses the isolation of the tenants"; then
-            echo "the service did not name the reason of the refusal"
-            exit 1
-          fi
-          # The role of the deployment is demoted again for the test below.
-          docker run --rm --network host postgres:17-alpine \
-            psql "postgres://hub:hub@localhost:5432/hub" -v ON_ERROR_STOP=1 \
-            -c "alter role hub nosuperuser"
+            psql "postgres://hub:hub@localhost:5432/hub" -v ON_ERROR_STOP=1 <<'SQL'
+          create role hub_app login password 'hub_app';
+          grant usage, create on schema public to hub_app;
+          SQL
 
       - name: the image starts and answers the probes
         run: |
@@ -234,8 +215,8 @@ jobs:
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/hub-key.pem 2>/dev/null
           docker run -d --name hub -p 8081:8081 \
             --add-host host.docker.internal:host-gateway \
-            -e HUB_DATABASE_URL=postgres://hub:hub@host.docker.internal:5432/hub \
-            -e HUB_REDIS_URL=redis://redis:6379/0 \
+            -e HUB_DATABASE_URL=postgres://hub_app:hub_app@host.docker.internal:5432/hub \
+            -e HUB_REDIS_URL=redis://host.docker.internal:6379/0 \
             -e HUB_ISSUER=https://hub.example.com \
             -e HUB_ADMIN_TOKEN=ci-admin-token \
             -e HUB_ACCESS_TOKEN=ci-access-token \
@@ -258,6 +239,36 @@ jobs:
           if [ "$status" != "200" ]; then
             echo "the readiness answered $status"
             docker logs hub
+            exit 1
+          fi
+
+      - name: the image refuses to start with a role that bypasses the isolation
+        run: |
+          # The bootstrap superuser is not subject to the policies of the
+          # tables: the service has to refuse to start and to name the
+          # role.
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /tmp/hub-key.pem 2>/dev/null
+          set +e
+          output="$(docker run --rm --add-host host.docker.internal:host-gateway \
+            -e HUB_DATABASE_URL=postgres://hub:hub@host.docker.internal:5432/hub \
+            -e HUB_REDIS_URL=redis://host.docker.internal:6379/0 \
+            -e HUB_ISSUER=https://hub.example.com \
+            -e HUB_ADMIN_TOKEN=ci-admin-token \
+            -e HUB_ACCESS_TOKEN=ci-access-token \
+            -e HUB_STATE_SECRET="$(printf 'a%.0s' {1..64})" \
+            -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b%.0s' {1..64})" \
+            -e HUB_SIGNING_KEY="$(cat /tmp/hub-key.pem)" \
+            -e HUB_SIGNING_KID=hub-ci \
+            hub:ci 2>&1)"
+          status=$?
+          set -e
+          echo "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "the service started with a role that bypasses the isolation"
+            exit 1
+          fi
+          if ! echo "$output" | grep -q "bypasses the isolation of the tenants"; then
+            echo "the service did not name the reason of the refusal"
             exit 1
           fi
 

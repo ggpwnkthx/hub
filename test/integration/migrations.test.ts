@@ -7,6 +7,7 @@ import {
   createDatabase,
   MIGRATIONS_DIRECTORY,
   MIGRATIONS_TABLE,
+  readMigrations,
   runMigrations,
 } from '../../src/platform/postgres'
 import { againstServer, openTestDatabase } from './database'
@@ -91,8 +92,12 @@ describe('the runners that start at the same time', () => {
           runMigrations({ database: first, directory: MIGRATIONS_DIRECTORY, logger }),
           runMigrations({ database: second, directory: MIGRATIONS_DIRECTORY, logger }),
         ])
-        const applied = [...a.applied, ...b.applied]
-        expect(applied).toEqual(['0001_initial.sql'])
+        // Every migration is applied by one of the two runners, and by
+        // one of them only: the advisory lock is the whole point.
+        const applied = [...a.applied, ...b.applied].sort()
+        const migrations = (await readMigrations(MIGRATIONS_DIRECTORY)).map((m) => m.name)
+        expect(applied).toEqual(migrations)
+        expect(new Set(applied).size).toBe(applied.length)
         const rows = await first.query<{ count: number }>(
           `select count(*)::int as count from ${MIGRATIONS_TABLE}`
         )

@@ -4,7 +4,6 @@ import {
   UserRepository,
   bypassesRowLevelSecurity,
   createSecretCipher,
-  withTenantScope,
   type Database,
 } from '../../src/platform/postgres'
 import { againstServer, openTestDatabase } from './database'
@@ -20,6 +19,24 @@ import { againstServer, openTestDatabase } from './database'
 let database: Database
 let acme: string
 let other: string
+
+/**
+ * Drops a role of the test, with the privileges that were granted to it.
+ *
+ * The role is a role of the database and not of the schema of the test:
+ * a database that is used twice has to be able to run the test again.
+ */
+async function dropRole(name: string): Promise<void> {
+  await database.exec(`
+    do $$
+    begin
+      if exists (select 1 from pg_roles where rolname = '${name}') then
+        execute 'drop owned by ${name}';
+        execute 'drop role ${name}';
+      end if;
+    end $$;
+  `)
+}
 
 beforeAll(async () => {
   database = await openTestDatabase()
@@ -66,10 +83,11 @@ describe('the isolation of the tenants', () => {
       `select c.relname as table_name, c.relrowsecurity as enabled, c.relforcerowsecurity as forced
        from pg_class c
        join pg_namespace n on n.oid = c.relnamespace
-       where n.nspname = 'public' and c.relname in ('tenants', 'users', 'permissions', 'grants')
+       where n.nspname = current_schema()
+         and c.relname in ('tenants', 'users', 'permissions', 'grants', 'groups')
        order by c.relname`
     )
-    expect(rows).toHaveLength(4)
+    expect(rows).toHaveLength(5)
     for (const row of rows) {
       expect(row.enabled).toBe(true)
       expect(row.forced).toBe(true)
@@ -78,29 +96,41 @@ describe('the isolation of the tenants', () => {
 
   test('a scope of a tenant hides the rows of the other tenants', async () => {
     // The role of the test is not a superuser: the policies are the rules
-    // for it.
-    await database.exec(`drop role if exists hub_isolation_test`)
+    // for it. It needs the usage of the schema of the test: a role
+    // without it does not see the tables at all.
+    const schema = await database.query<{ name: string }>(`select current_schema() as name`)
+    const schemaName = schema[0]!.name
+    await dropRole('hub_isolation_test')
     await database.exec(`create role hub_isolation_test`)
-    await database.exec(`grant select on tenants, users, permissions, grants to hub_isolation_test`)
-    await database.exec(`set role hub_isolation_test`)
+    await database.exec(`grant usage on schema "${schemaName}" to hub_isolation_test`)
+    await database.exec(
+      `grant select on tenants, users, permissions, grants, groups to hub_isolation_test`
+    )
 
     try {
-      const everyone = await database.query<{ count: number }>(
-        `select count(*)::int as count from users`
-      )
-      expect(everyone[0]?.count).toBe(2)
+      // Everything in one transaction: the role and the statements are on
+      // the same connection of the pool.
+      await database.transaction(async (client) => {
+        await client.query(`set role hub_isolation_test`)
 
-      const scoped = await withTenantScope(database, acme, async (client) => {
+        const everyone = await client.query<{ count: number }>(
+          `select count(*)::int as count from users`
+        )
+        expect(everyone[0]?.count).toBe(2)
+
         await client.query(`select set_config('hub.tenant_id', $1, true)`, [acme])
         const users = await client.query<{ tenant_id: string }>(`select tenant_id from users`)
         const tenants = await client.query<{ slug: string }>(`select slug from tenants`)
-        return { users, tenants }
+        expect(users).toHaveLength(1)
+        expect(users[0]?.tenant_id).toBe(acme)
+        expect(tenants.map((row) => row.slug)).toEqual(['acme'])
+
+        // The role is given back before the transaction is committed: a
+        // committed `set role` would stay on the connection of the pool.
+        await client.query(`reset role`)
       })
-      expect(scoped.users).toHaveLength(1)
-      expect(scoped.users[0]?.tenant_id).toBe(acme)
-      expect(scoped.tenants.map((row) => row.slug)).toEqual(['acme'])
     } finally {
-      await database.exec(`reset role`)
+      await dropRole('hub_isolation_test')
     }
   })
 
@@ -109,13 +139,18 @@ describe('the isolation of the tenants', () => {
     // policies, and a production deployment refuses to start with it.
     expect(await bypassesRowLevelSecurity(database)).toBe(true)
 
-    await database.exec(`drop role if exists hub_not_super_test`)
+    await dropRole('hub_not_super_test')
     await database.exec(`create role hub_not_super_test nosuperuser nobypassrls`)
-    await database.exec(`set role hub_not_super_test`)
     try {
-      expect(await bypassesRowLevelSecurity(database)).toBe(false)
+      // The role and the statement are on the same connection of the
+      // pool: the role of the connection is a property of the session.
+      await database.transaction(async (client) => {
+        await client.query(`set role hub_not_super_test`)
+        expect(await bypassesRowLevelSecurity(client)).toBe(false)
+        await client.query(`reset role`)
+      })
     } finally {
-      await database.exec(`reset role`)
+      await dropRole('hub_not_super_test')
     }
   })
 })

@@ -232,13 +232,18 @@ jobs:
             fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:8081/healthz
+          # The logs of the container are always printed: a failure that
+          # does not say why is a failure that costs an afternoon.
+          docker logs hub || true
+          if ! curl -fsS http://127.0.0.1:8081/healthz; then
+            echo "the service does not answer the probe of the health"
+            exit 1
+          fi
           # The database answers and the migrations are applied: the
           # service is ready.
           status="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8081/readyz)"
           if [ "$status" != "200" ]; then
             echo "the readiness answered $status"
-            docker logs hub
             exit 1
           fi
 

@@ -98,10 +98,11 @@ describe('the runners that start at the same time', () => {
         const migrations = (await readMigrations(MIGRATIONS_DIRECTORY)).map((m) => m.name)
         expect(applied).toEqual(migrations)
         expect(new Set(applied).size).toBe(applied.length)
+        // Every migration is recorded once and only once.
         const rows = await first.query<{ count: number }>(
           `select count(*)::int as count from ${MIGRATIONS_TABLE}`
         )
-        expect(rows[0]?.count).toBe(1)
+        expect(rows[0]?.count).toBe(migrations.length)
       } finally {
         await first.close()
         await second.close()

@@ -14,6 +14,7 @@ import { startListener, type StartedListener } from '../platform/bun/listener'
 import {
   createDatabase,
   MIGRATIONS_DIRECTORY,
+  MIGRATIONS_TABLE,
   runMigrations,
   type Database,
 } from '../platform/postgres'
@@ -65,10 +66,11 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
   // The schema is applied before the listener accepts: Hub does not start
   // against a schema it does not understand.
   const migrations = await runMigrations({ database, directory: MIGRATIONS_DIRECTORY, logger })
+  const knownMigrations = migrations.applied.length + migrations.alreadyApplied.length
   logger.info('the schema is up to date', {
     driver: database.driver,
     applied: migrations.applied.length,
-    known: migrations.applied.length + migrations.alreadyApplied.length,
+    known: knownMigrations,
   })
 
   // The service stops accepting new work when it drains.
@@ -83,7 +85,10 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
       ready: async () => {
         try {
           await database.query('select 1')
-          return true
+          const rows = await database.query<{ count: number }>(
+            `select count(*)::int as count from ${MIGRATIONS_TABLE}`
+          )
+          return rows[0]?.count === knownMigrations
         } catch {
           return false
         }

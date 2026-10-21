@@ -7,7 +7,7 @@
  * that the composition root fulfils.
  */
 
-import { createHash, timingSafeEqual } from 'node:crypto'
+import { sameSecret } from '../../observability'
 import { AdministrationError } from './errors'
 import { FailedAuthenticationLimiter } from './limiter'
 import type {
@@ -62,19 +62,6 @@ export const DEFAULT_IDP_SCOPES = ['openid', 'email', 'profile']
 
 /** The defaults of the algorithms of a tenant. */
 export const DEFAULT_IDP_ALGORITHMS = ['RS256']
-
-/**
- * Compares two secrets in constant time.
- *
- * The two values are hashed first: the comparison of the digests does not
- * depend on the length of the secret, so the length of the token of the
- * deployment is not leaked by the time of the answer.
- */
-export function sameSecret(left: string, right: string): boolean {
-  const a = createHash('sha256').update(left, 'utf8').digest()
-  const b = createHash('sha256').update(right, 'utf8').digest()
-  return timingSafeEqual(a, b)
-}
 
 /** The administration of Hub. */
 export class AdministrationService {

@@ -37,7 +37,6 @@ export {
   AdministrationService,
   DEFAULT_IDP_ALGORITHMS,
   DEFAULT_IDP_SCOPES,
-  sameSecret,
   type AdministrationOptions,
   type AuditEntry,
 } from './service'

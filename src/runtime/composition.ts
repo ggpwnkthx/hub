@@ -10,12 +10,13 @@
 import { createHubApp, createHubHandler } from '../app/app'
 import type { HubDependencies } from '../app/dependencies'
 import { createAdministrationService } from './adapters'
-import { createLogger, type Logger } from '../observability'
+import { createLogger, MetricsStore, type Logger, type Observer } from '../observability'
 import { startListener, type StartedListener } from '../platform/bun/listener'
 import {
   createDatabase,
   createSecretCipher,
   createTracedClient,
+  DecisionRepository,
   GrantRepository,
   MIGRATIONS_DIRECTORY,
   MIGRATIONS_TABLE,
@@ -36,6 +37,8 @@ export interface HubRuntime {
   settings: RuntimeSettings
   /** The logger of the service. */
   logger: Logger
+  /** The observer of the service. */
+  observer: Observer
   /** The database of the four tables. */
   database: Database
   /** The cipher of the client secrets, when the deployment has a key. */
@@ -73,6 +76,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     level: settings.observability.logLevel,
     bindings: { service: 'hub' },
   })
+  const observer = new MetricsStore()
 
   // The database of the four tables. A deployment talks to a PostgreSQL
   // server and a development machine runs the embedded PostgreSQL of the
@@ -140,6 +144,12 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
       },
     },
     isDraining: () => state.draining,
+    observer,
+    // The decision of the gateway: one statement over the tables of the
+    // policy, with the deadline of the deployment.
+    decisions: new DecisionRepository(traced, settings.timeouts.decisionTimeoutMs),
+    accessToken: settings.access.token,
+    metricsToken: settings.metrics.token,
     // The administration of the platform: the five endpoints of the
     // specification, and nothing else.
     administration: createAdministrationService({
@@ -170,6 +180,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
   return {
     settings,
     logger,
+    observer,
     database,
     secrets,
     repositories,

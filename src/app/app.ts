@@ -16,7 +16,9 @@ import {
   tenantHandler,
   tenantsHandler,
 } from './administration'
+import { decisionHandler } from './decisions'
 import { healthHandler, readyHandler } from './endpoints'
+import { metricsHandler } from './metrics'
 import { jsonError } from './errors'
 import type { HubEnv, HubState } from './state'
 
@@ -96,6 +98,12 @@ export function createHubApp(dependencies: HubDependencies): Hono<HubEnv> {
   // The probes of the service.
   app.get('/healthz', (context) => healthHandler(context, dependencies))
   app.get('/readyz', async (context) => await readyHandler(context, dependencies))
+
+  // The decision contract of the gateway.
+  app.post('/v1/decisions', async (context) => await decisionHandler(context, dependencies))
+
+  // The metrics of the service.
+  app.get('/metrics', async (context) => await metricsHandler(context, dependencies))
 
   // The administration of the platform: five endpoints, and they are the
   // whole surface.

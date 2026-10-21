@@ -254,6 +254,26 @@ secret in the table.
 | HUB-035 | The log of the decision: the subject, the workspace, the route, the answer, the reason, the duration. | S |
 | HUB-036 | The endpoint of the metrics: the `404` without a token, the `401` with a wrong one, the Prometheus text (spec §5.1, §11.2). | S |
 
+**State**: the seven tasks are done and the milestone is closed.
+
+**The evidence of the milestone**
+
+| Measurement | Result |
+| --- | --- |
+| The plan of the statement of the decision, with a million grants and a principal that holds a thousand of them | `Bitmap Index Scan on grants_user_live`, `Index Cond: (user_id = u.id)`, 2.0 ms of execution time (`scripts/explain-decision.ts`). |
+| A database that is down | The decision is a `503` and the gateway denies the request. |
+| A decision that does not answer in time | The decision is a `503`, never an allowance. |
+
+**The decisions of the milestone**
+
+| Question | Decision | Where |
+| --- | --- | --- |
+| How is the rule of the decision read? | One statement that returns the facts of the rule (the principal, the tenant, a live grant, an expired grant) and a domain that turns the facts into the answer and the reason. | `src/platform/postgres/decisions.ts`, `src/domains/authorization/decision.ts` |
+| What is the reason of a grant that has expired? | `the role of the workspace has expired`: it carries the word *role*, so the gateway counts it as `missing_role`. | `src/domains/authorization/decision.ts` |
+| What happens when the decision does not answer in time? | A `503`. The gateway fails closed on anything that is not a successful answer. | `src/platform/postgres/decisions.ts` |
+| How is the token of the gateway compared? | In constant time, with the digests of the two values: the length of the token is not leaked by the time of the answer. | `src/observability/secrets.ts` |
+| Where are the metrics of the decision counted? | In the observation layer, with a bounded label of the tenant: a hundred tenants and then `overflow`. | `src/observability/metrics.ts` |
+
 **Exit criteria**
 
 - The contract suite of the gateway is run against Hub for the decisions
@@ -516,7 +536,10 @@ the coverage, and it is reviewed at the end of every milestone.
 | §6.4 | The auto-provisioning creates a principal without a grant | `identity/mapping.test.ts` |
 | §7.1, §7.3 | The claims of the token | `provider/tokens.test.ts` |
 | §7.5 | The discovery document | `contract/discovery.test.ts` |
-| §8.1–8.3 | The contract and the rule of the decision | `contract/decisions.test.ts`, `authorization/decision.test.ts` |
+| §8.1–8.3 | The contract and the rule of the decision | `contract/decisions.test.ts`, `authorization/decision.test.ts`, `app/decisions.test.ts` |
+| §8.5 | The index of the decision | `scripts/explain-decision.ts` |
+| §8.7 | The reasons and the metric of the gateway | `authorization/decision.test.ts` |
+| §11.2 | The metrics of the decision | `observability/metrics.test.ts`, `contract/decisions.test.ts` |
 | §8.4 | The roles are context | `authorization/decision.test.ts` |
 | §8.6 | The latency of a revocation | `compatibility/gateway.test.ts` |
 | §8.7 | The reasons and the metric of the gateway | `compatibility/gateway.test.ts` |

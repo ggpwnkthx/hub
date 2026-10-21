@@ -18,6 +18,8 @@ export {
 export { createDatabase } from './factory'
 export type { Migration, MigrationResult } from './migrations'
 export { MIGRATIONS_DIRECTORY, MIGRATIONS_TABLE, readMigrations, runMigrations } from './migrations'
+export type { DecisionFacts, DecisionRequest } from '../../domains/authorization'
+export { DecisionRepository, TimeoutError, withTimeout } from './decisions'
 export type { GrantRow, NewGrant } from './grants'
 export { GrantRepository } from './grants'
 export type { PermissionRow, NewPermission } from './permissions'

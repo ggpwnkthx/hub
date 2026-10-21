@@ -70,6 +70,12 @@ export interface AccessSettings {
   token?: string
 }
 
+/** The settings of the metrics. */
+export interface MetricsSettings {
+  /** The bearer token that guards the metrics endpoint. */
+  token?: string
+}
+
 /** The settings of the secrets of the process. */
 export interface SecretSettings {
   /** The secret that signs and encrypts the state of a login. */
@@ -114,6 +120,7 @@ export interface RuntimeSettings {
   store: StoreSettings
   admin: AdminSettings
   access: AccessSettings
+  metrics: MetricsSettings
   secrets: SecretSettings
   signing: SigningSettings
   timeouts: TimeoutSettings
@@ -182,6 +189,7 @@ const EnvSchema = z.object({
 
   HUB_ADMIN_TOKEN: z.string().optional(),
   HUB_ACCESS_TOKEN: z.string().optional(),
+  HUB_METRICS_TOKEN: z.string().optional(),
 
   HUB_STATE_SECRET: z.string().optional(),
   HUB_SECRET_ENCRYPTION_KEY: z.string().optional(),
@@ -388,6 +396,9 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
     },
     access: {
       token: parsed.HUB_ACCESS_TOKEN,
+    },
+    metrics: {
+      token: parsed.HUB_METRICS_TOKEN,
     },
     secrets: {
       stateSecret: parsed.HUB_STATE_SECRET,

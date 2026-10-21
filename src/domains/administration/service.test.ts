@@ -1,9 +1,9 @@
 import { describe, expect, test } from 'bun:test'
+import { sameSecret } from '../../observability'
 import {
   AdministrationError,
   AdministrationService,
   FailedAuthenticationLimiter,
-  sameSecret,
   type Grant,
   type GrantStore,
   type Permission,

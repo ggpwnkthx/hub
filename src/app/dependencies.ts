@@ -7,7 +7,8 @@
  */
 
 import type { AdministrationService } from '../domains/administration'
-import type { Logger } from '../observability'
+import type { DecisionStore } from '../domains/authorization'
+import type { Logger, Observer } from '../observability'
 
 /**
  * The probe of the readiness.
@@ -33,6 +34,14 @@ export interface HubDependencies {
   isDraining: () => boolean
   /** The administration of the platform. */
   administration: AdministrationService
+  /** The decision of the gateway. */
+  decisions: DecisionStore
+  /** The bearer token the gateway presents on the decisions. */
+  accessToken?: string
+  /** The observer of the service. */
+  observer: Observer
+  /** The bearer token that guards the metrics endpoint. */
+  metricsToken?: string
   /** The public url of Hub, for the default callback of a tenant. */
   publicUrl: string
   /** The address of the peer of a request: the address of the socket. */

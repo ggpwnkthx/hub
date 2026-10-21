@@ -201,7 +201,10 @@ jobs:
           # bootstrap superuser of the image cannot be demoted, and it does
           # not have to be: it is the role of the administration of the
           # database, not the role of the service.
-          docker run --rm --network host postgres:17-alpine \
+          # The `-i` is what gives the statements of the heredoc to psql:
+          # without it, the container reads nothing and the step is green
+          # with nothing done.
+          docker run -i --rm --network host postgres:17-alpine \
             psql "postgres://hub:hub@localhost:5432/hub" -v ON_ERROR_STOP=1 <<'SQL'
           create role hub_app login password 'hub_app';
           grant usage, create on schema public to hub_app;

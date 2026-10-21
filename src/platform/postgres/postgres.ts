@@ -7,7 +7,7 @@
  */
 
 import { Pool, type PoolClient } from 'pg'
-import type { Database, MigrationLock, SqlClient } from './database'
+import { normalizeError, type Database, type MigrationLock, type SqlClient } from './database'
 
 /** The key of the advisory lock of the migrations. */
 export const MIGRATION_LOCK_KEY = 8_675_309
@@ -38,12 +38,20 @@ class PostgresClient implements SqlClient {
   }
 
   async query<T>(text: string, params: readonly unknown[] = []): Promise<T[]> {
-    const result = await this.runner.query(text, [...params])
-    return result.rows as T[]
+    try {
+      const result = await this.runner.query(text, [...params])
+      return result.rows as T[]
+    } catch (error) {
+      throw normalizeError(error)
+    }
   }
 
   async exec(text: string): Promise<void> {
-    await this.runner.query(text)
+    try {
+      await this.runner.query(text)
+    } catch (error) {
+      throw normalizeError(error)
+    }
   }
 
   async transaction<T>(fn: (client: SqlClient) => Promise<T>): Promise<T> {
@@ -55,7 +63,7 @@ class PostgresClient implements SqlClient {
       return result
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined)
-      throw error
+      throw normalizeError(error)
     } finally {
       client.release()
     }

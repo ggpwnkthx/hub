@@ -155,9 +155,9 @@ encrypted at rest.
 | HUB-014 | The repositories of the four tables: one method per rule, no SQL in the application layer. | L |
 | HUB-015 | The trace of the queries: the duration of every statement, the number of the rows, a warning above a threshold. | S |
 
-**State**: HUB-010, HUB-011 and HUB-012 are done. HUB-013, HUB-014 and
-HUB-015 are open, and the milestone is not closed: the secrets at rest,
-the repositories and the trace of the queries are missing.
+**State**: HUB-010, HUB-011, HUB-012, HUB-013 and HUB-014 are done.
+HUB-015 is open: the trace of the queries is missing, and the milestone is
+not closed until it is.
 
 **The decisions of the milestone**
 
@@ -168,6 +168,9 @@ the repositories and the trace of the queries are missing.
 | How does the runner know what the schema is? | A table of the infrastructure, `hub_schema_migrations`, that holds the name of the applied migrations. It is not a table of the domain model. | spec §3.6, `src/platform/postgres/migrations.ts` |
 | Which client of PostgreSQL? | `pg` for the server and `pglite` for the embedded one, behind one port. `bun:sql` is not available in the runtime of the release (1.4.3), so the driver of the server is a dependency. | `src/platform/postgres/` |
 | Where does the embedded database of a development machine live? | In `./.hub/pglite`, so the tenants and the principals survive the restarts of the process. `pglite://memory://` keeps it in the memory. | spec §3.7, `src/runtime/env.ts` |
+| What is the format of the stored secret? | The version (one byte), the nonce (twelve bytes), the body and the tag. The key is derived with HKDF-SHA256, so the secret of the deployment may be of any form. | spec §4.3, `src/platform/postgres/secrets.ts` |
+| How is the key of the secrets rotated? | By `scripts/rotate-secrets.ts`: the two columns of every tenant are re-encrypted in one transaction, and the deployment is restarted with the new key. | spec §4.3, `scripts/rotate-secrets.ts` |
+| Where do the repositories of the four tables live? | In the platform, one file per table. They are the storage of the rows and they hold no policy: the rules live in the domains that use them. | `src/platform/postgres/` |
 
 **Exit criteria**
 
@@ -485,12 +488,13 @@ the coverage, and it is reviewed at the end of every milestone.
 | §3.1–3.4 | The constraints of the four tables | `integration/schema.test.ts` |
 | §3.6 | The migrations and the schema of the database | `integration/schema.test.ts` |
 | §3.7 | The database of a development machine | `runtime/env.test.ts`, `integration/schema.test.ts` |
+| §3.1–3.4 | The storage of the four tables | `integration/tenants.test.ts`, `integration/users.test.ts`, `integration/permissions.test.ts`, `integration/grants.test.ts` |
 | §4 | The environment is validated as a whole | `runtime/env.test.ts` |
 | §11.1 | The probes | `contract/probes.test.ts` |
 | §11.3 | No secret reaches a log line | `observability/logging.test.ts` |
 | §11.4 | The drain | `runtime/lifecycle.test.ts`, `contract/lifecycle.test.ts` |
 | §15 | The import boundaries of Hub | `architecture/imports.test.ts` |
-| §4.3 | The secrets are encrypted at rest | `integration/secrets.test.ts` |
+| §4.3 | The secrets are encrypted at rest | `postgres/secrets.test.ts`, `integration/rotation.test.ts` |
 | §5.2 | The resolution of the tenant | `identity/tenant.test.ts` |
 | §5.3 | The state is single use | `identity/login-state.test.ts` |
 | §5.5 | The code is single use and bound | `provider/code.test.ts` |

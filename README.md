@@ -45,7 +45,7 @@ and drains on a signal.
 
 ```bash
 bun install
-bun run src/main.ts
+HUB_SECRET_ENCRYPTION_KEY=$(printf 'a%.0s' {1..64}) bun run src/main.ts
 ```
 
 Without a database in the environment, a development machine runs the
@@ -70,6 +70,11 @@ The tests run on the embedded PostgreSQL too:
 bun test
 HUB_TEST_DATABASE_URL=postgres://hub:hub@localhost:5432/hub bun test test/integration
 ```
+
+The client secrets of the tenants are encrypted at rest under
+`HUB_SECRET_ENCRYPTION_KEY`; without it the service refuses to write a
+tenant rather than storing the secrets in clear. The rotation of the key
+is `scripts/rotate-secrets.ts`.
 
 The image is built with `docker build -f Dockerfile .`: it runs as a user
 that is not root and the base image is pinned by digest.

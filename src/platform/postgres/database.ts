@@ -10,6 +10,56 @@
 /** The driver of the database. */
 export type SqlDriver = 'postgres' | 'pglite'
 
+/** The failure of a unique constraint. */
+export const UNIQUE_VIOLATION = '23505'
+
+/** The failure of a foreign key. */
+export const FOREIGN_KEY_VIOLATION = '23503'
+
+/** The failure of a check constraint. */
+export const CHECK_VIOLATION = '23514'
+
+/**
+ * The failure of a statement of the database.
+ *
+ * The code is the one of PostgreSQL: the domains turn it into the answer
+ * of the protocol (`409 conflict` for a unique violation, `403 forbidden`
+ * for a foreign key) without reading the message of the driver.
+ */
+export class DatabaseError extends Error {
+  constructor(
+    message: string,
+    /** The code of the failure of PostgreSQL. */
+    readonly code: string,
+    /** The constraint that was broken, when the failure is a constraint. */
+    readonly constraint?: string
+  ) {
+    super(message)
+    this.name = 'DatabaseError'
+  }
+}
+
+/**
+ * Turns the error of a driver into the failure of the database.
+ *
+ * The two drivers report the failures of PostgreSQL the same way: the
+ * error carries a code and, for a constraint, the name of the constraint.
+ */
+export function normalizeError(error: unknown): unknown {
+  if (error instanceof DatabaseError) return error
+  if (error && typeof error === 'object') {
+    const candidate = error as { code?: unknown; constraint?: unknown; message?: unknown }
+    if (typeof candidate.code === 'string' && typeof candidate.message === 'string') {
+      return new DatabaseError(
+        candidate.message,
+        candidate.code,
+        typeof candidate.constraint === 'string' ? candidate.constraint : undefined
+      )
+    }
+  }
+  return error
+}
+
 /** A client of the database. */
 export interface SqlClient {
   /** The driver behind the client. */

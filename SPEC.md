@@ -355,6 +355,27 @@ Changing `HUB_SECRET_ENCRYPTION_KEY` makes every stored secret
 unreadable. The migration is a re-encryption of the two columns, done by
 the operator, in one transaction.
 
+The key of the encryption is derived from the secret of the deployment
+with HKDF-SHA256, so the secret may be a passphrase, a hexadecimal string
+or a base64 string, and the key of the encryption is always 32 bytes.
+
+The stored ciphertext carries the version of its format, so a change of
+the format is a version and not a migration of the column:
+
+| Bytes    | What they hold                              |
+| -------- | ------------------------------------------- |
+| `1`      | The version of the format (currently `1`).  |
+| `12`     | The nonce of the encryption.                |
+| The rest | The body and the tag of the encryption.     |
+
+A service without `HUB_SECRET_ENCRYPTION_KEY` does not store the client
+secrets in clear: it refuses to write a tenant and says so.
+
+`scripts/rotate-secrets.ts` is the tool of the rotation: it reads the key
+that is in use and the new one, re-encrypts the two columns of every
+tenant in one transaction and the deployment is then restarted with the
+new key.
+
 ### 4.4 What a production deployment needs
 
 A production deployment (`HUB_ENVIRONMENT=production`) refuses to start

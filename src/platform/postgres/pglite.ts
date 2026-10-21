@@ -12,7 +12,7 @@
 
 import type { PGlite, Transaction } from '@electric-sql/pglite'
 import { mkdir } from 'node:fs/promises'
-import type { Database, MigrationLock, SqlClient } from './database'
+import { normalizeError, type Database, type MigrationLock, type SqlClient } from './database'
 
 /** The key of the advisory lock of the migrations. */
 export const MIGRATION_LOCK_KEY = 8_675_309
@@ -24,18 +24,30 @@ class PgliteClient implements SqlClient {
   constructor(private readonly db: PGlite) {}
 
   async query<T>(text: string, params: readonly unknown[] = []): Promise<T[]> {
-    const result = await this.db.query(text, [...params])
-    return result.rows as T[]
+    try {
+      const result = await this.db.query(text, [...params])
+      return result.rows as T[]
+    } catch (error) {
+      throw normalizeError(error)
+    }
   }
 
   async exec(text: string): Promise<void> {
-    await this.db.exec(text)
+    try {
+      await this.db.exec(text)
+    } catch (error) {
+      throw normalizeError(error)
+    }
   }
 
   async transaction<T>(fn: (client: SqlClient) => Promise<T>): Promise<T> {
-    return await this.db.transaction(
-      async (tx: Transaction) => await fn(new PgliteClient(tx as unknown as PGlite))
-    )
+    try {
+      return await this.db.transaction(
+        async (tx: Transaction) => await fn(new PgliteClient(tx as unknown as PGlite))
+      )
+    } catch (error) {
+      throw normalizeError(error)
+    }
   }
 }
 

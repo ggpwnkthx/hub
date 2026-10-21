@@ -13,10 +13,12 @@ import { createLogger, type Logger } from '../observability'
 import { startListener, type StartedListener } from '../platform/bun/listener'
 import {
   createDatabase,
+  createSecretCipher,
   MIGRATIONS_DIRECTORY,
   MIGRATIONS_TABLE,
   runMigrations,
   type Database,
+  type SecretCipher,
 } from '../platform/postgres'
 import type { RuntimeSettings } from './env'
 import { drain as drainRuntime } from './lifecycle'
@@ -30,6 +32,8 @@ export interface HubRuntime {
   logger: Logger
   /** The database of the four tables. */
   database: Database
+  /** The cipher of the client secrets, when the deployment has a key. */
+  secrets?: SecretCipher
   /** The listener of the service. */
   listener: StartedListener
   /** True while the service is draining. */
@@ -73,6 +77,17 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     known: knownMigrations,
   })
 
+  // The cipher of the client secrets at rest. Without a key the service
+  // cannot store the secrets of a tenant: the administration answers that
+  // the deployment is not configured for it, and it does not store them in
+  // clear.
+  const secrets = settings.secrets.encryptionKey
+    ? createSecretCipher(settings.secrets.encryptionKey)
+    : undefined
+  if (!secrets) {
+    logger.warn('the client secrets cannot be encrypted: the key of the deployment is not set')
+  }
+
   // The service stops accepting new work when it drains.
   const state = { draining: false }
 
@@ -113,6 +128,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     settings,
     logger,
     database,
+    secrets,
     listener,
     setDraining: (draining: boolean) => {
       state.draining = draining

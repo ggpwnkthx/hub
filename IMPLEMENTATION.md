@@ -421,6 +421,16 @@ are exercised by the same fixture with two issuers.
 | HUB-071 | The comparison in shadow: a tool that asks Hub and the fixture of the access service the same decision and reports the differences. It is run before the cutover. | M |
 | HUB-072 | The runbook of the cutover (§12 of this guide). | M |
 
+**State**: the three tasks are done and the milestone is closed. The
+comparison in shadow asks the two access services the same decisions and
+reports the answers that differ; the period of shadow does not end
+before the difference is empty.
+
+| Tool | What it does |
+| --- | --- |
+| `scripts/shadow.ts` | Asks Hub and the access service that is in production the same decisions and reports the differences, with the fingerprint of the set of the differences. |
+| `docs/cutover.md` | The runbook of the cutover of a tenant, with the checklist of every phase. |
+
 **State**: the three tasks are done and the milestone is closed.
 
 **The evidence of the milestone**

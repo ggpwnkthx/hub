@@ -30,6 +30,8 @@ The documents of the operations:
 | [docs/security.md](docs/security.md) | The security review, item by item, with the findings. |
 | [docs/backup.md](docs/backup.md) | The dump, the restore and the rehearsal. |
 | [docs/delivery.md](docs/delivery.md) | The image, the scan, the promotion and the rollback. |
+| [docs/cutover.md](docs/cutover.md) | The cutover of a tenant, phase by phase, with the gate of every phase. |
+| [docs/readiness.md](docs/readiness.md) | The checklist of production readiness, answered item by item. |
 
 ## The reference
 

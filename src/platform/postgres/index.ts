@@ -18,10 +18,14 @@ export {
 export { createDatabase } from './factory'
 export type { Migration, MigrationResult } from './migrations'
 export {
+  FIRST_MIGRATION,
   MIGRATION_STATEMENT_TIMEOUT_MS,
   MIGRATIONS_DIRECTORY,
   MIGRATIONS_TABLE,
+  migrationsDirectoryCandidates,
+  migrationsDirectoryOf,
   readMigrations,
+  resolveMigrationsDirectory,
   runMigrations,
 } from './migrations'
 export type { AuditFilter, AuditPage } from './audit'

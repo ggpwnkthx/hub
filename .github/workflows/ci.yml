@@ -53,6 +53,9 @@ jobs:
       - name: format
         run: bun run format:check
 
+      - name: the versions of the project agree
+        run: bun run versions
+
       - name: import boundaries
         run: |
           bun run architecture

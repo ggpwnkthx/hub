@@ -28,9 +28,9 @@ import {
   DecisionRepository,
   GrantRepository,
   GroupRepository,
-  MIGRATIONS_DIRECTORY,
   MIGRATIONS_TABLE,
   PermissionRepository,
+  resolveMigrationsDirectory,
   roleOf,
   runMigrations,
   TenantRepository,
@@ -109,7 +109,11 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
 
   // The schema is applied before the listener accepts: Hub does not start
   // against a schema it does not understand.
-  const migrations = await runMigrations({ database, directory: MIGRATIONS_DIRECTORY, logger })
+  const migrations = await runMigrations({
+    database,
+    directory: resolveMigrationsDirectory(),
+    logger,
+  })
   const knownMigrations = migrations.applied.length + migrations.alreadyApplied.length
   logger.info('the schema is up to date', {
     driver: database.driver,

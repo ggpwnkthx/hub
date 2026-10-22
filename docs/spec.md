@@ -311,6 +311,13 @@ the schema of the database is: a database that holds a migration this
 version of Hub does not know is a schema Hub does not understand, and the
 process refuses to start against it.
 
+The runner reads the schema from the directory of the migrations of the
+tree (`src/platform/postgres/migrations/`), and, when that directory is
+not there, from the directory `migrations/` next to the executable: a
+compiled binary carries no directory, and the schema of the release is
+deployed with it. A service that does not find the schema refuses to
+start and names the directory it looked in.
+
 ### 3.8 The database of a development machine
 
 The database of Hub is PostgreSQL. The driver is named by

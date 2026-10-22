@@ -74,7 +74,7 @@ should be fine" is not an answer.
 | Item | Answer |
 | --- | --- |
 | The image is built once and promoted by digest | §5 below. |
-| The CI runs the type check, the lint, the tests, the architecture test, the compatibility test and the scan | The jobs `check`, `compatibility` and `image` of `.github/workflows/ci.yml`. |
+| The CI runs the type check, the lint, the tests, the architecture test, the compatibility test, the check of the version of the release and the scan | The jobs `check`, `compatibility` and `image` of `.github/workflows/ci.yml`. |
 | The rollback of the image is rehearsed | The rehearsal is the moment of the cutover. |
 | The version of the service is in the answer of `/healthz` and in the log of the start | `src/app/endpoints.ts` and the log `the listener started`. |
 
@@ -243,6 +243,43 @@ The base image is pinned by digest (`oven/bun:1.4.3-alpine@sha256:…`): a
 tag is a name that moves, and the image of a release has to be the image
 that was built, scanned and promoted.
 
+### The release
+
+A release is a tag. The tag names the version of the package, and the
+workflows refuse a tag that does not:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+Two workflows run on the tag, and both of them check that the version of
+the package, the version of the image, the version of the service and the
+status of the specification are the same (`bun run versions`):
+
+| Workflow | What it does |
+| --- | --- |
+| `release.yml` | It builds the image of the release, starts it with the configuration of a deployment, proves that it answers the decisions of a gateway and that it refuses to start without a secret, publishes it on the registry with its provenance and its SBOM, and exports it as an artifact of the run. |
+| `release-binaries.yml` | It compiles the service for every supported platform, proves that the binary of the runner starts, applies the schema of the release and serves, and publishes the archives on the release of the tag. |
+
+The image of the release is published with two tags, the tag of the
+release (`v0.1.0`) and the version itself (`0.1.0`), and it is promoted by
+its digest.
+
+The binaries are the service and nothing else: the runtime of the release
+is inside the binary. **The schema of the release travels with the
+binary**: the directory `migrations/` is deployed next to the executable,
+and the binary finds it there. An archive holds the two, and the archive
+of a platform is extracted in the directory of the deployment:
+
+```bash
+tar -xzf hub-0.1.0-linux-x64.tar.gz -C /opt/hub
+/opt/hub/hub-0.1.0-linux-x64
+```
+
+A binary that does not find the schema refuses to start and says where
+it looked: a service that starts against a schema it does not understand
+is worse than a service that does not start.
+
 ### The scan and the SBOM
 
 The CI builds the image, scans it and writes its SBOM. A finding of a
@@ -289,7 +326,7 @@ The CI of the repository runs, on every push:
 
 | Job | What it runs |
 | --- | --- |
-| `check` | The types, the lint, the format, the import boundaries, the unit and contract tests, the integration tests on the embedded PostgreSQL and on a PostgreSQL server. |
+| `check` | The types, the lint, the format, the import boundaries, the version of the release, the unit and contract tests, the integration tests on the embedded PostgreSQL and on a PostgreSQL server. |
 | `compatibility` | The gateway of the reference, unchanged, against Hub, and the proof that the tree of the reference is the one of `shuttle.ref`. |
 | `image` | The build of the image, the scan, the SBOM, the user it runs as, its size, its refusal to start without a secret, its refusal to start with a role that bypasses the isolation, its start with a deployment and its drain. |
 

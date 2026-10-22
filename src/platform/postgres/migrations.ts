@@ -9,8 +9,9 @@
  * schema it does not understand.
  */
 
+import { existsSync } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { Logger } from '../../observability'
 import type { Database } from './database'
@@ -30,6 +31,51 @@ export const MIGRATION_STATEMENT_TIMEOUT_MS = 600_000
 
 /** The directory the migrations of the schema are read from. */
 export const MIGRATIONS_DIRECTORY = fileURLToPath(new URL('./migrations/', import.meta.url))
+
+/**
+ * The name of the first migration of the schema.
+ *
+ * It is the name of the directory of the migrations: a directory that does
+ * not hold it is not the directory of the migrations.
+ */
+export const FIRST_MIGRATION = '0001_initial.sql'
+
+/**
+ * The directories the migrations of the schema are looked for in.
+ *
+ * The first one is the directory next to this module: it is the one of the
+ * source tree and of the image. The second one is the directory next to
+ * the executable: a compiled binary carries no directory, and the schema
+ * is deployed with it.
+ */
+export function migrationsDirectoryCandidates(): string[] {
+  return [MIGRATIONS_DIRECTORY, join(dirname(process.execPath), 'migrations')]
+}
+
+/**
+ * The first of the candidates that holds the migrations of the schema.
+ *
+ * The first candidate is the answer when none of them holds them: the
+ * runner then says which file it could not read, and the operator knows
+ * that the schema was not deployed.
+ */
+export function migrationsDirectoryOf(candidates: readonly string[]): string {
+  for (const candidate of candidates) {
+    if (existsSync(join(candidate, FIRST_MIGRATION))) return candidate
+  }
+  return candidates[0] ?? MIGRATIONS_DIRECTORY
+}
+
+/**
+ * The directory of the migrations of the schema of the running Hub.
+ *
+ * The source tree and the image carry the directory next to the module.
+ * A compiled binary carries the directory next to the executable: the
+ * schema of the release is deployed with the binary.
+ */
+export function resolveMigrationsDirectory(): string {
+  return migrationsDirectoryOf(migrationsDirectoryCandidates())
+}
 
 /** A migration of the schema. */
 export interface Migration {
@@ -62,7 +108,17 @@ export interface MigrationResult {
  * named after the moment it was written.
  */
 export async function readMigrations(directory: string): Promise<Migration[]> {
-  const entries = await readdir(directory)
+  let entries: string[]
+  try {
+    entries = await readdir(directory)
+  } catch {
+    // The name of the directory is in the failure: the operator has to
+    // know that the schema of the release was not deployed with the
+    // service.
+    throw new Error(
+      `the migrations of the schema are not in "${directory}": the schema of the release is deployed with the service, and the directory of the migrations is the one next to the executable`
+    )
+  }
   const migrations: Migration[] = []
   for (const name of entries.filter((entry) => entry.endsWith('.sql')).sort()) {
     migrations.push({ name, sql: await readFile(join(directory, name), 'utf8') })

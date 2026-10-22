@@ -14,7 +14,8 @@
     "lint": "biome lint",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "architecture": "bun run scripts/architecture.ts"
+    "architecture": "bun run scripts/architecture.ts",
+    "versions": "bun run scripts/version.ts"
   },
   "dependencies": {
     "hono": "4.13.13",

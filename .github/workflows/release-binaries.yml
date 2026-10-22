@@ -1,0 +1,361 @@
+name: release-binaries
+
+# The release of the standalone binaries.
+#
+# The workflow runs on a tag: it checks that the tag names the version of
+# the package, it compiles the service for every supported platform, it
+# proves that the binary of the runner starts and serves, and it publishes
+# the binaries on the release of the tag.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# The binaries are the service and nothing else: the fixtures of the
+# development stack are not part of them. The container image of the same
+# release is built by the workflow of the release (release.yml).
+#
+# A binary carries the runtime of the release inside it, and it carries the
+# schema of the release next to it: the migrations of the schema are the
+# directory `migrations/`, and a binary finds them next to itself. The
+# archive of a platform holds the two.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag of the release'
+        required: true
+        type: string
+
+permissions:
+  # The release is created by the job that publishes it: the jobs that
+  # only build the binaries need nothing but the source.
+  contents: read
+
+env:
+  # The version of the runtime the binaries are built and released with.
+  # It is the version of the release: the boundaries the specification
+  # relies on are only observable on it.
+  BUN_VERSION: '1.4.3'
+
+jobs:
+  version:
+    name: the version of the release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: the tag names the version of the package
+        id: version
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          tag="${tag#v}"
+          expected=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$expected" ]; then
+            echo "the tag $tag does not name the version $expected of the package"
+            exit 1
+          fi
+          echo "version=$expected" >> "$GITHUB_OUTPUT"
+          echo "tag=v$expected" >> "$GITHUB_OUTPUT"
+
+      - name: the versions of the project agree
+        run: bun run versions
+
+  binaries:
+    name: the binary of ${{ matrix.platform }}
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      # One platform that fails does not hide the state of the others.
+      fail-fast: false
+      matrix:
+        include:
+          - target: 'bun-linux-x64'
+            platform: 'linux-x64'
+          - target: 'bun-linux-x64-musl'
+            platform: 'linux-x64-musl'
+          - target: 'bun-linux-arm64'
+            platform: 'linux-arm64'
+          - target: 'bun-darwin-x64'
+            platform: 'darwin-x64'
+          - target: 'bun-darwin-arm64'
+            platform: 'darwin-arm64'
+          - target: 'bun-windows-x64'
+            platform: 'windows-x64'
+          - target: 'bun-windows-arm64'
+            platform: 'windows-arm64'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.version.outputs.tag }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: install the dependencies of the service
+        run: bun install --frozen-lockfile --production
+
+      - name: compile
+        run: |
+          set -euo pipefail
+          name="hub-${{ needs.version.outputs.version }}-${{ matrix.platform }}"
+          case "${{ matrix.target }}" in
+            bun-windows-*) name="${name}.exe" ;;
+          esac
+          bun build src/main.ts --compile \
+            --target=${{ matrix.target }} \
+            --outfile "dist/${name}"
+          ls -la dist
+
+      - name: the binary is of the expected format
+        run: |
+          set -euo pipefail
+          name="hub-${{ needs.version.outputs.version }}-${{ matrix.platform }}"
+          case "${{ matrix.target }}" in
+            bun-windows-*) name="${name}.exe" ;;
+          esac
+          binary="dist/${name}"
+          magic=$(head -c 4 "${binary}" | od -An -tx1 | tr -d ' \n')
+          case "${{ matrix.target }}" in
+            bun-windows-*) expected="4d5a7800" ;;
+            bun-darwin-*) expected="cffaedfe" ;;
+            *) expected="7f454c46" ;;
+          esac
+          if [ "${magic}" != "${expected}" ]; then
+            echo "the binary of ${{ matrix.target }} starts with ${magic} and not with ${expected}"
+            exit 1
+          fi
+          echo "the binary of ${{ matrix.target }} is of the expected format"
+
+      - name: the schema of the release travels with the binary
+        run: |
+          set -euo pipefail
+          # The schema of the release is applied by the service when it
+          # starts: a binary that does not carry it starts against a
+          # schema it does not understand. The migrations are the
+          # directory next to the executable.
+          mkdir -p dist/migrations
+          cp src/platform/postgres/migrations/*.sql dist/migrations/
+          ls -la dist/migrations
+
+      - name: the archive of the platform
+        run: |
+          set -euo pipefail
+          name="hub-${{ needs.version.outputs.version }}-${{ matrix.platform }}"
+          case "${{ matrix.target }}" in
+            bun-windows-*) name="${name}.exe" ;;
+          esac
+          # The archive holds the binary and the schema of the release:
+          # the two are deployed in the same directory.
+          tar -czf "${name%.exe}.tar.gz" -C dist "${name}" migrations
+          tar -tzf "${name%.exe}.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hub-${{ matrix.platform }}
+          path: hub-${{ needs.version.outputs.version }}-${{ matrix.platform }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+  smoke:
+    name: the binary of the runner starts and serves
+    needs: [version, binaries]
+    runs-on: ubuntu-latest
+    services:
+      # The binary of a deployment talks to a PostgreSQL server: the
+      # engine of a deployment is the one of the tests.
+      postgres:
+        image: postgres:17-alpine
+        ports:
+          - '5432:5432'
+        env:
+          POSTGRES_USER: hub
+          POSTGRES_PASSWORD: hub
+          POSTGRES_DB: hub
+        options: >-
+          --health-cmd "pg_isready -U hub"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      # The store of the codes of the logins is shared: a deployment that
+      # has no shared store is refused at the start.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - '6379:6379'
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: hub-linux-x64
+          path: dist
+
+      - name: the role of the deployment
+        run: |
+          docker run -i --rm --network host postgres:17-alpine \
+            psql "postgres://hub:hub@localhost:5432/hub" -v ON_ERROR_STOP=1 <<'SQL'
+          create role hub_app login password 'hub_app';
+          grant usage, create on schema public to hub_app;
+          SQL
+
+      - name: the key of the identity signature
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+            -out "$RUNNER_TEMP/hub-key.pem" 2>/dev/null
+          {
+            echo "HUB_SIGNING_KEY<<EOF"
+            cat "$RUNNER_TEMP/hub-key.pem"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: the compiled binary starts, serves and stops
+        run: |
+          set -euo pipefail
+          tar -xzf "dist/hub-${{ needs.version.outputs.version }}-linux-x64.tar.gz" -C dist
+          cd dist
+          ./"hub-${{ needs.version.outputs.version }}-linux-x64" > hub.log 2>&1 &
+          pid=$!
+          ready=0
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18099/healthz > /dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "${ready}" != "1" ]; then
+            echo "the compiled binary did not answer the health probe:"
+            cat hub.log
+            kill "${pid}" 2>/dev/null || true
+            exit 1
+          fi
+          # The schema is applied by the binary: the readiness answers
+          # only when the database answers and the migrations are done.
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18099/readyz > /dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -fsS http://127.0.0.1:18099/readyz > /dev/null 2>&1; then
+            echo "the compiled binary did not answer the readiness probe:"
+            cat hub.log
+            kill "${pid}" 2>/dev/null || true
+            exit 1
+          fi
+          # The binary is a service of a deployment: it reads the
+          # environment of the deployment and it refuses to start when
+          # the environment is not the one of a production.
+          kill "${pid}" 2>/dev/null || true
+          wait "${pid}" 2>/dev/null || true
+          echo "the compiled binary starts, serves the probes and stops"
+        env:
+          HUB_ENVIRONMENT: production
+          HUB_HOST: 127.0.0.1
+          HUB_PORT: 18099
+          HUB_DATABASE_URL: postgres://hub_app:hub_app@127.0.0.1:5432/hub
+          HUB_REDIS_URL: redis://127.0.0.1:6379/0
+          HUB_ISSUER: https://hub.example.com
+          HUB_ADMIN_TOKEN: release-admin-token
+          HUB_ACCESS_TOKEN: release-access-token
+          HUB_STATE_SECRET: '0000000000000000000000000000000000000000000000000000000000000000'
+          HUB_SECRET_ENCRYPTION_KEY: '1111111111111111111111111111111111111111111111111111111111111111'
+          HUB_SIGNING_KID: hub-release
+
+  release:
+    name: the release of the binaries
+    needs: [version, binaries, smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      # The release of the tag is created here.
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: 'hub-*'
+          merge-multiple: true
+
+      - name: the binaries of the release
+        run: |
+          ls -la dist
+          test -n "$(ls dist/hub-*.tar.gz)"
+
+      - name: the checksums of the binaries
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum hub-*.tar.gz > checksums.txt
+          cat checksums.txt
+
+      - name: the notes of the release
+        run: |
+          cat > notes.md <<EOF
+          Hub, as a standalone executable. The runtime is inside the binary:
+          nothing else has to be installed. The schema of the release travels
+          with the binary: the directory \`migrations/\` is deployed next to
+          the executable, and the binary finds it there.
+
+          | Platform | Archive |
+          | --- | --- |
+          | Linux x64 (glibc) | \`hub-${{ needs.version.outputs.version }}-linux-x64.tar.gz\` |
+          | Linux x64 (musl, Alpine) | \`hub-${{ needs.version.outputs.version }}-linux-x64-musl.tar.gz\` |
+          | Linux arm64 | \`hub-${{ needs.version.outputs.version }}-linux-arm64.tar.gz\` |
+          | macOS x64 | \`hub-${{ needs.version.outputs.version }}-darwin-x64.tar.gz\` |
+          | macOS arm64 | \`hub-${{ needs.version.outputs.version }}-darwin-arm64.tar.gz\` |
+          | Windows x64 | \`hub-${{ needs.version.outputs.version }}-windows-x64.tar.gz\` |
+          | Windows arm64 | \`hub-${{ needs.version.outputs.version }}-windows-arm64.tar.gz\` |
+
+          The archives carry the runtime of the release (Bun ${{ env.BUN_VERSION }}) and
+          the version of the service (${{ needs.version.outputs.version }}). The service
+          reads its environment at the start, validates it as a whole, and
+          refuses to start when the environment of a production is not
+          complete. The environment is described in [the documentation](https://github.com/ggpwnkthx/hub/blob/${{ needs.version.outputs.tag }}/docs/operations.md).
+
+          The checksums are in \`checksums.txt\`:
+
+          \`\`\`bash
+          sha256sum --check checksums.txt
+          \`\`\`
+
+          The container image of the same release is on the registry of the
+          repository:
+          \`\`\`bash
+          docker pull ghcr.io/ggpwnkthx/hub:${{ needs.version.outputs.version }}
+          \`\`\`
+          EOF
+
+      - name: publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+          # The job does not check the repository out: the name of the
+          # repository is given to the command, or it cannot tell which
+          # repository it publishes to.
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # The release is created once: a run that is repeated uploads the
+          # binaries again and replaces them.
+          if ! gh release view "${TAG}" --repo "${REPOSITORY}" > /dev/null 2>&1; then
+            gh release create "${TAG}" \
+              --repo "${REPOSITORY}" \
+              --title "Hub ${TAG}" \
+              --notes-file notes.md \
+              --verify-tag
+          fi
+          gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber
+          gh release view "${TAG}" --repo "${REPOSITORY }}"

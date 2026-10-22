@@ -88,7 +88,7 @@ a half-built feature in a service that carries a customer is a liability
 | `src/platform/redis/` | The store of the authorization codes. |
 | `src/platform/bun/` | The listener, the request and the response of the platform, the guard of the addresses. |
 | `src/observability/` | The logs and the redaction, the metrics, the comparison of the secrets. |
-| `scripts/` | The operator tools: the smoke test, the shadow comparison, the load, the plan of the decision, the rotation of the secrets, the architecture checker. |
+| `scripts/` | The operator tools: the smoke test, the shadow comparison, the load, the plan of the decision, the rotation of the secrets, the architecture checker, the checker of the version of the release. |
 
 ## The two flows
 

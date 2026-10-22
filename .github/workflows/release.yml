@@ -1,0 +1,330 @@
+name: release
+
+# The release of the image.
+#
+# The workflow runs on a tag: it checks that the tag names the version of
+# the package, it builds the image of the release, it starts it with the
+# configuration of a deployment, it publishes it to the registry and it
+# exports it as an artifact of the run.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# The image is published with two tags: the tag of the release (`v0.1.0`)
+# and the version itself (`0.1.0`). A deployment that pins a version pins
+# the image of that release, and the digest of the image is what it pins.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  # The image is published to the registry of the repository.
+  packages: write
+
+env:
+  # The version of the runtime the service is built and released with.
+  BUN_VERSION: '1.4.3'
+
+jobs:
+  image:
+    name: the image of the release
+    runs-on: ubuntu-latest
+    services:
+      # A deployment talks to a PostgreSQL server: the image applies the
+      # migrations of the schema before it accepts a request.
+      postgres:
+        image: postgres:17-alpine
+        ports:
+          - '5432:5432'
+        env:
+          POSTGRES_USER: hub
+          POSTGRES_PASSWORD: hub
+          POSTGRES_DB: hub
+        options: >-
+          --health-cmd "pg_isready -U hub"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      # The deployment of a production needs the store of the codes of the
+      # logins: the image connects to it at the start and refuses to start
+      # when it does not answer.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - '6379:6379'
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      # The outputs of this step are the tag and the version of the
+      # release. They are written by the **same** step: an output that is
+      # written by another step of the job is not readable here, the
+      # expression is empty, and the build of the image fails with an
+      # empty tag.
+      - name: the version of the release
+        id: version
+        run: |
+          expected=$(node -p "require('./package.json').version")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "$expected" ]; then
+            echo "the tag $GITHUB_REF_NAME does not name the version $expected of the package"
+            exit 1
+          fi
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=$expected" >> "$GITHUB_OUTPUT"
+
+      - name: the version of the release is known
+        run: |
+          if [ -z "${{ steps.version.outputs.tag }}" ] || [ -z "${{ steps.version.outputs.version }}" ]; then
+            echo "the version of the release is empty: the step that computes it did not write its outputs"
+            exit 1
+          fi
+          echo "the release is ${{ steps.version.outputs.tag }} (${{ steps.version.outputs.version }})"
+
+      - name: the versions of the project agree
+        run: bun run versions
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: the login in the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          load: true
+          tags: |
+            ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}
+            ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.version }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            REVISION=${{ github.sha }}
+          # The attestations are added when the image is published: the
+          # docker exporter of a local build cannot carry a manifest list,
+          # and an attestation is one.
+          provenance: false
+          sbom: false
+
+      - name: the role of the deployment
+        run: |
+          # A production deployment refuses a role that bypasses the
+          # isolation of the tenants (spec §3.9). The role of the image is
+          # a role of its own, exactly as a deployment does it: it owns
+          # the tables of the platform and it is not a superuser.
+          # The `-i` is what gives the statements of the heredoc to psql:
+          # without it, the container reads nothing and the step is green
+          # with nothing done.
+          docker run -i --rm --network host postgres:17-alpine \
+            psql "postgres://hub:hub@localhost:5432/hub" -v ON_ERROR_STOP=1 <<'SQL'
+          create role hub_app login password 'hub_app';
+          grant usage, create on schema public to hub_app;
+          SQL
+
+      - name: the key of the identity signature
+        run: |
+          # The private key that signs the tokens of Hub. It comes from
+          # the secret manager of the deployment and never from the
+          # image: a key that is generated at the start of a process
+          # invalidates every token that is alive.
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+            -out "$RUNNER_TEMP/hub-key.pem" 2>/dev/null
+          {
+            echo "HUB_SIGNING_KEY<<EOF"
+            cat "$RUNNER_TEMP/hub-key.pem"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: the image starts with the configuration of a deployment
+        run: |
+          # The state of the deployment is shared: the image reaches the
+          # PostgreSQL server and the Redis of the job through the host of
+          # the runner.
+          docker run -d --name hub -p 8081:8081 \
+            --add-host host.docker.internal:host-gateway \
+            -e HUB_DATABASE_URL=postgres://hub_app:hub_app@host.docker.internal:5432/hub \
+            -e HUB_REDIS_URL=redis://host.docker.internal:6379/0 \
+            -e HUB_ISSUER=https://hub.example.com \
+            -e HUB_ADMIN_TOKEN=release-admin-token \
+            -e HUB_ACCESS_TOKEN=release-access-token \
+            -e HUB_STATE_SECRET="$(printf 'a%.0s' {1..64})" \
+            -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b%.0s' {1..64})" \
+            -e HUB_SIGNING_KEY \
+            -e HUB_SIGNING_KID=hub-release \
+            "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}"
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8081/healthz > /dev/null; then
+              echo "the service is healthy"
+              curl -fsS http://127.0.0.1:8081/healthz
+              echo
+              break
+            fi
+            sleep 1
+          done
+          # The logs of the container are always printed: a failure that
+          # does not say why is a failure that costs an afternoon.
+          docker logs hub || true
+          if ! curl -fsS http://127.0.0.1:8081/healthz > /dev/null; then
+            echo "the service does not answer the probe of the health"
+            exit 1
+          fi
+          # The database answers and the migrations are applied: the
+          # service is ready.
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8081/readyz > /dev/null; then
+              echo "the service is ready"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -fsS http://127.0.0.1:8081/readyz > /dev/null; then
+            echo "the service does not answer the probe of the readiness"
+            docker logs hub || true
+            exit 1
+          fi
+
+      - name: the image answers the decision of a gateway
+        run: |
+          set -euo pipefail
+          # The service is a broker: it answers the decisions of a
+          # gateway over the table of the grants. A tenant, a principal
+          # and a decision: the image of the release serves the contract
+          # that the gateway of the reference speaks.
+          curl -fsS -X POST http://127.0.0.1:8081/v1/admin/tenants \
+            -H 'authorization: Bearer release-admin-token' \
+            -H 'content-type: application/json' \
+            -d '{"slug":"acme","displayName":"Acme Inc","issuer":"https://login.acme.example","idpClientId":"hub-acme","idpClientSecret":"the-secret-of-the-provider","clientId":"shuttle-acme","clientSecret":"the-secret-of-the-gateway"}' \
+            > /dev/null
+          principal="$(curl -fsS -X POST http://127.0.0.1:8081/v1/admin/users \
+            -H 'authorization: Bearer release-admin-token' \
+            -H 'content-type: application/json' \
+            -d '{"tenant":"acme","externalSubject":"00u1a2b3c4d5","email":"alice@acme.example"}' \
+            | jq -r '.id')"
+          answer="$(curl -fsS -X POST http://127.0.0.1:8081/v1/decisions \
+            -H 'authorization: Bearer release-access-token' \
+            -H 'content-type: application/json' \
+            -d "{\"subject\":\"${principal}\",\"workspaceId\":\"\",\"routeId\":\"\",\"roles\":[]}")"
+          echo "the decision of the gateway: ${answer}"
+          if ! echo "${answer}" | jq -e '.allow == false' > /dev/null; then
+            echo "the service did not deny the decision of a principal without a grant"
+            docker logs hub || true
+            exit 1
+          fi
+
+      - name: the image refuses to start with an empty environment
+        run: |
+          # The environment of a production deployment is the one of the
+          # image: the service has to refuse to start and to name the
+          # secrets it misses.
+          if docker run --rm "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}"; then
+            echo "the service started with an empty environment"
+            exit 1
+          fi
+
+      - name: the image refuses to start without a secret
+        run: |
+          if docker run --rm \
+            -e HUB_DATABASE_URL=postgres://hub_app:hub_app@host.docker.internal:5432/hub \
+            -e HUB_REDIS_URL=redis://host.docker.internal:6379/0 \
+            "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}"; then
+            echo "the service started without a secret"
+            exit 1
+          fi
+
+      - name: the image refuses to start with a role that bypasses the isolation
+        run: |
+          # The bootstrap superuser is not subject to the policies of the
+          # tables: the service has to refuse to start and to name the
+          # role.
+          set +e
+          output="$(docker run --rm --add-host host.docker.internal:host-gateway \
+            -e HUB_DATABASE_URL=postgres://hub:hub@host.docker.internal:5432/hub \
+            -e HUB_REDIS_URL=redis://host.docker.internal:6379/0 \
+            -e HUB_ISSUER=https://hub.example.com \
+            -e HUB_ADMIN_TOKEN=release-admin-token \
+            -e HUB_ACCESS_TOKEN=release-access-token \
+            -e HUB_STATE_SECRET="$(printf 'a%.0s' {1..64})" \
+            -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b%.0s' {1..64})" \
+            -e HUB_SIGNING_KEY \
+            -e HUB_SIGNING_KID=hub-release \
+            "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}" 2>&1)"
+          status=$?
+          set -e
+          echo "$output"
+          if [ "$status" -eq 0 ]; then
+            echo "the service started with a role that bypasses the isolation"
+            exit 1
+          fi
+          if ! echo "$output" | grep -q "bypasses the isolation of the tenants"; then
+            echo "the service did not name the reason of the refusal"
+            exit 1
+          fi
+
+      - name: a signal drains the service and the service exits
+        run: |
+          start="$(date +%s)"
+          docker stop --time 10 hub
+          elapsed="$(( $(date +%s) - start ))"
+          if [ "$elapsed" -gt 10 ]; then
+            echo "the service took $elapsed seconds to stop"
+            exit 1
+          fi
+          docker logs hub
+
+      - name: the scan of the image
+        run: |
+          # A finding of a severity above high fails the release.
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$PWD:/work" aquasec/trivy:latest \
+            image --severity HIGH,CRITICAL --exit-code 1 --no-progress \
+            "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}"
+
+      - name: publish the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: |
+            ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}
+            ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.version }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            REVISION=${{ github.sha }}
+          # The provenance of the image: what was built and from what.
+          # The registry carries the attestations, the local build cannot:
+          # the docker exporter does not support the manifest list of an
+          # attestation.
+          provenance: true
+          sbom: true
+
+      - name: export the image
+        run: |
+          # The exported image is the published one: a deployment that
+          # unpacks the artifact runs the image of the release, digest
+          # for digest, with its attestations.
+          docker pull "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.version }}"
+          docker save "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.version }}" \
+            | gzip > hub-${{ steps.version.outputs.tag }}.tar.gz
+          # The digest of the image: it is what a deployment pins.
+          docker image inspect "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.version }}" \
+            --format '{{index .RepoDigests 0}}'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hub-image-${{ steps.version.outputs.tag }}
+          path: hub-${{ steps.version.outputs.tag }}.tar.gz
+          retention-days: 30

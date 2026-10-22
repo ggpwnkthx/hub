@@ -14,6 +14,7 @@ export const ERROR_CODES = [
   'conflict',
   'forbidden',
   'too_many_requests',
+  'service_unavailable',
 ] as const
 
 /** The code of a failure. */
@@ -27,6 +28,7 @@ const STATUS: Record<ErrorCode, number> = {
   conflict: 409,
   forbidden: 403,
   too_many_requests: 429,
+  service_unavailable: 503,
 }
 
 /** A failure of the administration. */

@@ -9,7 +9,7 @@
 
 import { sameSecret } from '../../observability'
 import { AdministrationError } from './errors'
-import { FailedAuthenticationLimiter } from './limiter'
+import type { FailedAuthenticationLimiter } from './limiter'
 import type {
   AuditContext,
   AuditPage,
@@ -62,8 +62,14 @@ export interface AdministrationOptions {
   previousToken?: string
   /** The public url of Hub, for the default callback of a tenant. */
   publicUrl: string
-  /** The limiter of the failed authentications. */
-  limiter?: FailedAuthenticationLimiter
+  /**
+   * The limiter of the failed authentications.
+   *
+   * It is required: the composition root holds the count of the failures
+   * (the shared store of the deployment, or the memory of the process of
+   * a single node), and the domain never chooses where the count lives.
+   */
+  limiter: FailedAuthenticationLimiter
   /** The storage of the audit of the administration. */
   audit?: AuditStore
 }
@@ -156,7 +162,7 @@ export class AdministrationService {
   private readonly limiter: FailedAuthenticationLimiter
 
   constructor(private readonly options: AdministrationOptions) {
-    this.limiter = options.limiter ?? new FailedAuthenticationLimiter()
+    this.limiter = options.limiter
   }
 
   /**
@@ -169,7 +175,7 @@ export class AdministrationService {
    * Two tokens are accepted during a rotation: the one of the deployment
    * and the one it replaced.
    */
-  authenticate(header: string | undefined, address: string): void {
+  async authenticate(header: string | undefined, address: string): Promise<void> {
     const expected = this.options.token
     const previous = this.options.previousToken
     const match = /^Bearer\s+(.+)$/i.exec((header ?? '').trim())
@@ -177,11 +183,12 @@ export class AdministrationService {
 
     // An address that used up its budget is refused, whatever it
     // presents.
-    if (this.limiter.blocked(address)) {
+    const blocked = await this.limiter.blocked(address)
+    if (blocked.blocked) {
       throw new AdministrationError(
         'too_many_requests',
         'too many failed authentications from this address',
-        this.limiter.retryAfterMs(address)
+        blocked.retryAfterMs
       )
     }
 
@@ -192,7 +199,7 @@ export class AdministrationService {
       ((expected !== undefined && sameSecret(presented, expected)) ||
         (previous !== undefined && sameSecret(presented, previous)))
     if (!accepted) {
-      const failure = this.limiter.fail(address)
+      const failure = await this.limiter.fail(address)
       if (!failure.allowed) {
         throw new AdministrationError(
           'too_many_requests',
@@ -202,7 +209,7 @@ export class AdministrationService {
       }
       throw new AdministrationError('unauthorized', 'a valid administration token is required')
     }
-    this.limiter.succeed(address)
+    await this.limiter.succeed(address)
   }
 
   /**

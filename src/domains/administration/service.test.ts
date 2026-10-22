@@ -4,8 +4,10 @@ import {
   AdministrationError,
   AdministrationService,
   FailedAuthenticationLimiter,
+  type AuthenticationFailures,
   type AuditContext,
   type ChangeAudit,
+  type FailureCount,
   type Grant,
   type GrantFilter,
   type GrantStore,
@@ -389,8 +391,47 @@ const PERMISSIONS = new FakePermissions()
 const GRANTS = new FakeGrants()
 const GROUPS = new FakeGroups()
 
+/**
+ * The count of the failed authentications, in the memory of the tests.
+ *
+ * The domain owns the rule and the storage is a port: the tests bring
+ * their own count, and the platform brings the one of the deployment.
+ */
+class FakeFailures implements AuthenticationFailures {
+  private readonly failures = new Map<string, { count: number; since: number }>()
+  private readonly now = () => Date.now()
+
+  async fail(address: string, windowMs: number): Promise<FailureCount> {
+    const now = this.now()
+    const failure = this.failures.get(address)
+    if (!failure || now - failure.since >= windowMs) {
+      this.failures.set(address, { count: 1, since: now })
+      return { count: 1, retryAfterMs: windowMs }
+    }
+    failure.count += 1
+    return { count: failure.count, retryAfterMs: windowMs - (now - failure.since) }
+  }
+
+  async count(address: string, windowMs: number): Promise<FailureCount> {
+    const now = this.now()
+    const failure = this.failures.get(address)
+    if (!failure || now - failure.since >= windowMs) return { count: 0, retryAfterMs: 0 }
+    return { count: failure.count, retryAfterMs: windowMs - (now - failure.since) }
+  }
+
+  async succeed(address: string): Promise<void> {
+    this.failures.delete(address)
+  }
+}
+
 /** The service of the tests. */
-function service(options: { token?: string; limiter?: FailedAuthenticationLimiter } = {}) {
+function service(
+  options: {
+    token?: string
+    limiter?: FailedAuthenticationLimiter
+    failures?: AuthenticationFailures
+  } = {}
+) {
   return new AdministrationService({
     tenants: TENANTS,
     principals: PRINCIPALS,
@@ -399,7 +440,8 @@ function service(options: { token?: string; limiter?: FailedAuthenticationLimite
     groups: GROUPS,
     token: options.token ?? 'the-admin-token',
     publicUrl: 'https://hub.example.com',
-    limiter: options.limiter,
+    limiter:
+      options.limiter ?? new FailedAuthenticationLimiter(options.failures ?? new FakeFailures()),
   })
 }
 
@@ -430,59 +472,68 @@ describe('the authentication of the administration', () => {
     expect(sameSecret('the-token', 'the-toke')).toBe(false)
   })
 
-  test('a missing token is refused', () => {
-    expect(() => service().authenticate(undefined, '10.0.0.1')).toThrow(AdministrationError)
-    expect(() => service().authenticate('Bearer wrong', '10.0.0.1')).toThrow(
+  test('a missing token is refused', async () => {
+    await expect(service().authenticate(undefined, '10.0.0.1')).rejects.toThrow(AdministrationError)
+    await expect(service().authenticate('Bearer wrong', '10.0.0.1')).rejects.toThrow(
       /a valid administration token/
     )
   })
 
-  test('the right token is accepted', () => {
-    expect(() => service().authenticate('Bearer the-admin-token', '10.0.0.1')).not.toThrow()
+  test('the right token is accepted', async () => {
+    await expect(
+      service().authenticate('Bearer the-admin-token', '10.0.0.1')
+    ).resolves.toBeUndefined()
   })
 
-  test('a deployment without a token has no administrative surface', () => {
+  test('a deployment without a token has no administrative surface', async () => {
     const administration = new AdministrationService({
       tenants: TENANTS,
       principals: PRINCIPALS,
       permissions: PERMISSIONS,
       grants: GRANTS,
       publicUrl: 'https://hub.example.com',
+      limiter: new FailedAuthenticationLimiter(new FakeFailures()),
     })
-    expect(() => administration.authenticate('Bearer the-admin-token', '10.0.0.1')).toThrow(
+    await expect(administration.authenticate('Bearer the-admin-token', '10.0.0.1')).rejects.toThrow(
       /a valid administration token/
     )
   })
 
-  test('a burst of failed authentications is refused', () => {
-    const administration = service({ limiter: new FailedAuthenticationLimiter({ max: 3 }) })
+  test('a burst of failed authentications is refused', async () => {
+    const administration = service({
+      limiter: new FailedAuthenticationLimiter(new FakeFailures(), { max: 3 }),
+    })
     for (let attempt = 0; attempt < 3; attempt += 1) {
-      expect(() => administration.authenticate('Bearer wrong', '10.0.0.2')).toThrow(
+      await expect(administration.authenticate('Bearer wrong', '10.0.0.2')).rejects.toThrow(
         AdministrationError
       )
     }
     let refused = false
     try {
-      administration.authenticate('Bearer wrong', '10.0.0.2')
+      await administration.authenticate('Bearer wrong', '10.0.0.2')
     } catch (error) {
       refused = error instanceof AdministrationError && error.code === 'too_many_requests'
     }
     expect(refused).toBe(true)
     // The right token does not open the door of an address that is
     // hammering the endpoint.
-    expect(() => administration.authenticate('Bearer the-admin-token', '10.0.0.2')).toThrow(
+    await expect(administration.authenticate('Bearer the-admin-token', '10.0.0.2')).rejects.toThrow(
       /too many failed authentications/
     )
     // Another address is not affected.
-    expect(() => administration.authenticate('Bearer the-admin-token', '10.0.0.3')).not.toThrow()
+    await expect(
+      administration.authenticate('Bearer the-admin-token', '10.0.0.3')
+    ).resolves.toBeUndefined()
   })
 
-  test('a success clears the failures of the address', () => {
-    const limiter = new FailedAuthenticationLimiter({ max: 2 })
+  test('a success clears the failures of the address', async () => {
+    const limiter = new FailedAuthenticationLimiter(new FakeFailures(), { max: 2 })
     const administration = service({ limiter })
-    expect(() => administration.authenticate('Bearer wrong', '10.0.0.4')).toThrow()
-    expect(() => administration.authenticate('Bearer the-admin-token', '10.0.0.4')).not.toThrow()
-    expect(limiter.count('10.0.0.4')).toBe(0)
+    await expect(administration.authenticate('Bearer wrong', '10.0.0.4')).rejects.toThrow()
+    await expect(
+      administration.authenticate('Bearer the-admin-token', '10.0.0.4')
+    ).resolves.toBeUndefined()
+    expect(await limiter.count('10.0.0.4')).toBe(0)
   })
 })
 

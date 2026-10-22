@@ -46,6 +46,11 @@ The work that the release `1.0.0` carries, before the tag.
   with, was refused with `invalid_grant`. The shared client — the
   escape hatch of the topology of one gateway for several tenants — did
   not work at all. (spec §5.2)
+- **The rate limit of the administration is the limit of the
+  deployment.** The count of the failed authentications is held by the
+  shared store and not by the memory of the process: a deployment of
+  several replicas does not accept five times the budget. The second
+  open finding of the security review is closed. (spec §10.1)
 
 ### The release
 

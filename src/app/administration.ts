@@ -79,10 +79,13 @@ export class BodyTooLargeError extends Error {
  * The address of the caller is the key of the limiter: it is the address
  * of the socket, not the one of a header the caller controls.
  */
-function authenticate(context: Context<HubEnv>, dependencies: HubDependencies): void {
+async function authenticate(
+  context: Context<HubEnv>,
+  dependencies: HubDependencies
+): Promise<void> {
   const address = dependencies.peerAddress(context.req.raw)
   try {
-    dependencies.administration.authenticate(context.req.header('authorization'), address)
+    await dependencies.administration.authenticate(context.req.header('authorization'), address)
   } catch (error) {
     if (error instanceof AdministrationError) {
       dependencies.logger.warn('the administrative call was refused', {
@@ -92,7 +95,18 @@ function authenticate(context: Context<HubEnv>, dependencies: HubDependencies): 
       })
       throw error
     }
-    throw error
+    // The count of the failed authentications is held by the shared store
+    // of the deployment: a store that is down is a call that cannot be
+    // authenticated, and the answer says so (spec §10.1).
+    dependencies.logger.error('the administrative call could not be authenticated', {
+      endpoint: context.req.path,
+      address,
+      error,
+    })
+    throw new AdministrationError(
+      'service_unavailable',
+      'the count of the failed authentications could not be read'
+    )
   }
 }
 
@@ -260,7 +274,7 @@ export async function tenantHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/tenants'
   try {
-    authenticate(context, dependencies)
+    await authenticate(context, dependencies)
     const body = await readBody(context, TenantBody)
     const registration = {
       slug: body.slug,
@@ -304,7 +318,7 @@ export async function tenantsHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/tenants'
   try {
-    authenticate(context, dependencies)
+    await authenticate(context, dependencies)
     const tenants = await dependencies.administration.listTenants()
     return answer(context, dependencies, endpoint, 200, {
       tenants: tenants.map((tenant) => ({
@@ -325,7 +339,7 @@ export async function principalHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/users'
   try {
-    authenticate(context, dependencies)
+    await authenticate(context, dependencies)
     const body = await readBody(context, PrincipalBody)
     const result = await dependencies.administration.upsertPrincipal(
       {
@@ -376,7 +390,7 @@ export async function groupsHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/groups'
   try {
-    authenticate(context, dependencies)
+    await authenticate(context, dependencies)
     const query = context.req.query()
     const page = await dependencies.administration.listGroups({
       tenant: query.tenant ?? null,
@@ -402,7 +416,7 @@ export async function principalsHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/users'
   try {
-    authenticate(context, dependencies)
+    await authenticate(context, dependencies)
     const query = context.req.query()
     const page = await dependencies.administration.listPrincipals({
       tenant: query.tenant ?? null,
@@ -429,7 +443,7 @@ export async function grantHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/grants'
   try {
-    authenticate(context, dependencies)
+    await authenticate(context, dependencies)
     const body = await readBody(context, GrantBody)
     const result = await dependencies.administration.upsertGrant(
       {
@@ -457,7 +471,7 @@ export async function groupHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/groups'
   try {
-    authenticate(context, dependencies)
+    await authenticate(context, dependencies)
     const body = await readBody(context, GroupBody)
     const result = await dependencies.administration.upsertGroup(
       {
@@ -488,7 +502,7 @@ export async function grantsHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/grants'
   try {
-    authenticate(context, dependencies)
+    await authenticate(context, dependencies)
     const query = context.req.query()
     const page = await dependencies.administration.listGrants({
       tenant: query.tenant ?? null,
@@ -515,7 +529,7 @@ export async function revokeGrantHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/grants'
   try {
-    authenticate(context, dependencies)
+    await authenticate(context, dependencies)
     const id = context.req.param('id')
     // An id that is not an id names no grant: the answer is the same as
     // the one of an id that does not exist.
@@ -575,7 +589,7 @@ export async function auditHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/audit'
   try {
-    authenticate(context, dependencies)
+    await authenticate(context, dependencies)
     const query = context.req.query()
     const page = await dependencies.administration.listAudit({
       tenant: query.tenant ?? null,

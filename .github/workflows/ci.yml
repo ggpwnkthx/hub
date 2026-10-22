@@ -34,6 +34,18 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # The shared store of the deployment: the count of the failed
+      # authentications is held by it, and the tests of it run against a
+      # real Redis.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - '6379:6379'
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -65,6 +77,9 @@ jobs:
         # suite is not among them: it needs the gateway of the reference,
         # and it is the job of the `compatibility` job below.
         run: bun run test
+        env:
+          # The tests of the shared store run against a real Redis.
+          HUB_TEST_REDIS_URL: redis://localhost:6379/0
 
       - name: the integration tests against a PostgreSQL server
         run: bun test test/integration

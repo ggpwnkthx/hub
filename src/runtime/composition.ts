@@ -14,7 +14,13 @@ import type { TenantOfLogin } from '../domains/identity'
 import { CodeService, ProviderService } from '../domains/provider'
 import { assertCallableAddress } from '../platform/bun/address'
 import { createFetchTransport } from '../platform/bun/http'
-import { createStoreClient, MemoryCodeStore, RedisCodeStore } from '../platform/redis/store'
+import {
+  createStoreClient,
+  MemoryAuthenticationFailures,
+  MemoryCodeStore,
+  RedisAuthenticationFailures,
+  RedisCodeStore,
+} from '../platform/redis/store'
 import type { HubDependencies } from '../app/dependencies'
 import { createAdministrationService } from './adapters'
 import { createLogger, MetricsStore, type Logger, type Observer } from '../observability'
@@ -182,6 +188,16 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     : undefined
   const codes = new MemoryCodeStore()
   const codeStore = storeClient ? new RedisCodeStore(storeClient) : codes
+
+  // The count of the failed authentications of the administration. It is
+  // the shared store when the deployment has one: the window of the
+  // limiter is the window of the deployment and not the window of a
+  // replica (spec §10.1). A deployment that keeps its state in the
+  // process is a single node, and its count is the count of the
+  // deployment.
+  const failures = storeClient
+    ? new RedisAuthenticationFailures(storeClient)
+    : new MemoryAuthenticationFailures()
 
   // The provider of the gateway: the keys, the discovery document and the
   // tokens of the principal.
@@ -394,6 +410,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
       groups: new GroupRepository(traced),
       permissions: repositories.permissions,
       grants: repositories.grants,
+      failures,
       // The audit of the administration: a table of the infrastructure,
       // like the table of the migrations.
       audit: new AuditRepository(traced),

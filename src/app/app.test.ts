@@ -40,3 +40,25 @@ describe('the application of Hub', () => {
     expect(response.status).toBe(200)
   })
 })
+
+describe('the administration of the application', () => {
+  test('a store that is down refuses the call', async () => {
+    const deps = dependencies()
+    deps.administration = {
+      authenticate: async () => {
+        throw new Error('the shared store is not reachable')
+      },
+    } as unknown as HubDependencies['administration']
+    const app = createHubApp(deps)
+    const response = await app.fetch(
+      new Request('http://hub.example.com/v1/admin/tenants', {
+        method: 'POST',
+        headers: { authorization: 'Bearer the-admin-token', 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: 'acme' }),
+      })
+    )
+    expect(response.status).toBe(503)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body.error).toBe('service_unavailable')
+  })
+})

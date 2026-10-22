@@ -11,10 +11,12 @@
 import {
   AdministrationError,
   AdministrationService,
+  FailedAuthenticationLimiter,
   type AuditFilter,
   type AuditPage,
   type AuditRecord,
   type AuditStore,
+  type AuthenticationFailures,
   type GrantFilter,
   type GrantStore,
   type Group,
@@ -185,6 +187,14 @@ export interface AdministrationDependencies {
   grants: GrantRepository
   /** The storage of the audit of the administration. */
   audit?: AuditRepository
+  /**
+   * The count of the failed authentications.
+   *
+   * It is the shared store of the deployment when it has one, so the
+   * window of the limiter is the window of the deployment and not the
+   * window of a replica (spec §10.1).
+   */
+  failures: AuthenticationFailures
   /** The bearer token of the administration. */
   token?: string
   /** The token that the current one replaced, during a rotation. */
@@ -429,5 +439,6 @@ export function createAdministrationService(
     token: dependencies.token,
     previousToken: dependencies.previousToken,
     publicUrl: dependencies.publicUrl,
+    limiter: new FailedAuthenticationLimiter(dependencies.failures),
   })
 }

@@ -10,6 +10,11 @@
 export { AdministrationError, ERROR_CODES, type ErrorCode } from './errors'
 export { FailedAuthenticationLimiter, MAX_FAILURES, WINDOW_MS } from './limiter'
 export type {
+  AuthenticationFailures,
+  FailureCount,
+  LimiterOptions,
+} from './limiter'
+export type {
   AuditContext,
   AuditFilter,
   AuditPage,

@@ -122,6 +122,39 @@ Two variables are about the run itself:
 | --- | --- |
 | `COMPAT_WORKSPACE` | The directory the checkout is created in. It is a temporary directory by default. |
 | `COMPAT_KEEP` | When it is set, the checkout is kept after the run: the tree of the reference is then inspected by hand. |
+| `COMPAT_TESTS` | The test files of the suite, separated by spaces. The whole of `test/compatibility` by default. It is the way to run one file of the suite. |
+
+### The Hub of the suite
+
+The suite runs against a Hub that it starts itself, in the process of
+the test. It can also run against a Hub that is **already running** —
+the image of a release, for instance — when the environment names it:
+
+| Variable | What it is |
+| --- | --- |
+| `HUB_EXTERNAL_URL` | The url the callers reach that Hub at. The suite then never starts a Hub of its own. |
+| `HUB_EXTERNAL_ADMIN_TOKEN` | The token of the administration of that Hub. |
+| `HUB_EXTERNAL_ACCESS_TOKEN` | The token of the decisions of that Hub: the gateway of the reference asks it for the roles of the principal. |
+
+```bash
+# A Hub that is already running, and the gateway of the reference
+# against it.
+HUB_EXTERNAL_URL=http://127.0.0.1:8081 \
+HUB_EXTERNAL_ADMIN_TOKEN=the-admin-token \
+HUB_EXTERNAL_ACCESS_TOKEN=the-access-token-of-hub \
+bun run test:compat
+```
+
+The suite never creates what the environment names: a suite that is
+supposed to prove the image of a release has to talk to that image, and
+a suite that talks to another Hub proves nothing about it. The suite is
+**repeatable** against a Hub that keeps its rows: the rehearsal of the
+cutover names its tenant after the run, so that it is a creation every
+time.
+
+This is the mode the release uses: the job `compatibility` of
+`.github/workflows/release.yml` starts the **published image** of the
+release and runs the suite against it, by its digest.
 
 ### A prepared checkout
 
@@ -221,3 +254,9 @@ of its own.
 
 The job is **blocking**: a red compatibility job is a red build,
 whatever the rest says.
+
+The release runs the suite **again**, against the published image of
+the release and not against the source: the job `compatibility` of
+`.github/workflows/release.yml` starts the image by its digest and
+points the suite at it with `HUB_EXTERNAL_URL`. The bytes that the
+gateway of the reference talks to are the bytes that are published.

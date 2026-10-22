@@ -17,7 +17,7 @@ should be fine" is not an answer.
 | Item | Answer |
 | --- | --- |
 | Every rule of the specification has a test | The kinds of tests are in [architecture.md](architecture.md) §"The tests". `bun run test` runs the tests of this repository, and `bun run test:compat` runs the compatibility suite. |
-| The compatibility suite passes and the diff of the gateway is empty | `test/compatibility/gateway.test.ts` runs the gateway of the reference, unchanged, against Hub. The runner (`bun run test:compat`) prepares the revision that [`compatibility.json`](../compatibility.json) pins, and the CI checks that the tree of the reference is the one of that commit. |
+| The compatibility suite passes and the diff of the gateway is empty | `test/compatibility/gateway.test.ts` runs the gateway of the reference, unchanged, against Hub. The runner (`bun run test:compat`) prepares the revision that [`compatibility.json`](../compatibility.json) pins, and the CI checks that the tree of the reference is the one of that commit. The release runs the suite **again**, against the published image of the release and not against the source. |
 | The migration applies on an empty database and on a database of the previous release | `test/integration/migrations.test.ts`: the migration applies on an empty database, it is idempotent and it refuses a database that holds a migration the code does not know. |
 | A failure of every dependency is a denial, and it was tested with the dependency really down | The database that is down (a contract test), the decision that does not answer in time, the provider that is not reachable, the store that is down. |
 | The reason of a denial reaches neither the caller nor a log line that a caller can read | The reason is in the log of the decision and in the answer of the contract; the gateway hides it from the caller. |
@@ -73,7 +73,7 @@ should be fine" is not an answer.
 
 | Item | Answer |
 | --- | --- |
-| The image is built once and promoted by digest | §5 below. |
+| The image is built once and promoted by digest | §5 below. The workflow of the release builds it once, publishes it, and every gate of the release runs against its digest. |
 | The CI runs the type check, the lint, the tests, the architecture test, the compatibility test, the check of the version of the release and the scan | The jobs `check`, `compatibility` and `image` of `.github/workflows/ci.yml`. |
 | The rollback of the image is rehearsed | The rehearsal is the moment of the cutover. |
 | The version of the service is in the answer of `/healthz` and in the log of the start | `src/app/endpoints.ts` and the log `the listener started`. |
@@ -246,7 +246,7 @@ that was built, scanned and promoted.
 ### The release
 
 A release is a tag. The tag names the version of the package, and the
-workflows refuse a tag that does not:
+workflows refuse a tag that does not.
 
 ```bash
 git tag v0.2.0 && git push origin v0.2.0
@@ -258,12 +258,24 @@ status of the specification are the same (`bun run versions`):
 
 | Workflow | What it does |
 | --- | --- |
-| `release.yml` | It builds the image of the release, starts it with the configuration of a deployment, proves that it answers the decisions of a gateway and that it refuses to start without a secret, publishes it on the registry with its provenance and its SBOM, and exports it as an artifact of the run. |
+| `release.yml` | It **builds the image of the release once** and publishes it with its provenance and its SBOM. Every gate of the release then runs against the **digest** of that build: it starts it with the configuration of a deployment, proves that it answers the decisions of a gateway and that it refuses to start without a secret and with a role that bypasses the isolation, drains it, scans it, and runs the **gateway of the reference against it**. It exports the published image as an artifact of the run, and it withdraws the image from the registry when a gate fails. |
 | `release-binaries.yml` | It compiles the service for every supported platform, proves that the binary of the runner starts, applies the schema of the release and serves, and publishes the archives on the release of the tag. |
 
 The image of the release is published with two tags, the tag of the
 release (`v0.2.0`) and the version itself (`0.2.0`), and it is promoted by
 its digest.
+
+**The image is built once.** The build is published, and every gate of
+the release — the probes, the decisions, the refusals, the drain, the
+scan and the gateway of the reference — runs against the **digest** of
+that build, never against a tag and never against a second build. The
+image that was tested is the image that runs: the digest that the gates
+proved is the digest that the deployment pins.
+
+The image is published **before** the gates run, because the gates have
+to run against the bytes that ship. A release whose gates failed does
+not ship: the job `withdraw` removes the image from the registry, and
+the tag of the release points at nothing.
 
 The binaries are the service and nothing else: the runtime of the release
 is inside the binary. **The schema of the release travels with the
@@ -336,6 +348,7 @@ The CI of the repository runs, on every push:
 
 The `compatibility` job is the one that may never be skipped: a red
 compatibility job is a red build, whatever the rest says.
+
 
 ---
 

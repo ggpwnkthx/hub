@@ -65,4 +65,28 @@ describe('the version of the release', () => {
       { file: 'package.json', message: 'the package does not hold a version' },
     ])
   })
+
+  test('a version that is not the version of a release is reported', () => {
+    const findings = checkVersionConsistency({
+      'package.json': JSON.stringify({ version: '1.0' }),
+    })
+    expect(findings).toEqual([
+      {
+        file: 'package.json',
+        message: 'the version "1.0" is not the version of a release: three numbers, "1.0.0"',
+      },
+    ])
+  })
+
+  test('a pre-release is not the version of a release', () => {
+    const findings = checkVersionConsistency({
+      'package.json': JSON.stringify({ version: '1.0.0-rc.1' }),
+    })
+    expect(findings).toEqual([
+      {
+        file: 'package.json',
+        message: 'the version "1.0.0-rc.1" is not the version of a release: three numbers, "1.0.0"',
+      },
+    ])
+  })
 })

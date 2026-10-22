@@ -116,6 +116,22 @@ export interface RunnerResult {
 /** The default command of the suite. */
 export const DEFAULT_COMMAND = ['bun', 'test', 'test/compatibility']
 
+/**
+ * The command of the suite, from the environment.
+ *
+ * `COMPAT_TESTS` names the test files of the suite: a list of paths,
+ * separated by spaces, relative to the root of the repository. It is
+ * empty by default, and the suite is then the whole of
+ * `test/compatibility`.
+ */
+export function commandFromEnv(env: Record<string, string | undefined>): string[] {
+  const tests = env.COMPAT_TESTS?.trim()
+  if (!tests) return DEFAULT_COMMAND
+  const files = tests.split(/\s+/).filter((file) => file.length > 0)
+  if (files.length === 0) return DEFAULT_COMMAND
+  return ['bun', 'test', ...files]
+}
+
 /** The process of the suite, when it runs: it is killed on a signal. */
 let runningChild: Subprocess | null = null
 
@@ -484,6 +500,7 @@ export async function main(): Promise<number> {
     const result = await runCompatibility({
       root,
       env: process.env,
+      command: commandFromEnv(process.env),
       ...(workspace ? { workspace } : {}),
     })
     if (result.status !== 0) {

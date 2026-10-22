@@ -2,10 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { generateKeyPairSync } from 'node:crypto'
-import { createRuntime, type HubRuntime } from '../../src/runtime/composition'
-import { readEnv } from '../../src/runtime/env'
 import { startProviderFixture, type ProviderFixture } from '../fixtures/provider'
+import { freePort, startHubUnderTest, type HubUnderTest } from './hub'
 import { referenceRoot } from './reference'
 
 /**
@@ -21,23 +19,13 @@ import { referenceRoot } from './reference'
 /** The root of the reference: it is prepared by `bun run test:compat`. */
 let reference: string
 
-/** The token of the administration of the tests. */
-const ADMIN_TOKEN = 'the-admin-token'
-/** The token of the access service of the tests. */
-const ACCESS_TOKEN = 'the-access-token-of-hub'
 /** The token of the metrics of the gateway. */
 const METRICS_TOKEN = 'the-metrics-token-of-the-gateway'
 /** The workspace of the tests. */
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111'
 
-/** The private key of the service of the tests. */
-const SIGNING_KEY = generateKeyPairSync('rsa', {
-  modulusLength: 2048,
-  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-  publicKeyEncoding: { type: 'spki', format: 'pem' },
-}).privateKey
-
-let hub: HubRuntime
+/** The Hub under test: the one of the process, or the one of the environment. */
+let hubUnderTest: HubUnderTest
 let hubUrl: string
 let provider: ProviderFixture
 let gateway: Bun.Subprocess<'ignore', 'pipe', 'pipe'>
@@ -58,20 +46,15 @@ const upstream = Bun.serve({
 async function admin(path: string, method: string, body: Record<string, unknown>): Promise<void> {
   const response = await fetch(`${hubUrl}${path}`, {
     method,
-    headers: { authorization: `Bearer ${ADMIN_TOKEN}`, 'content-type': 'application/json' },
+    headers: {
+      authorization: `Bearer ${hubUnderTest.adminToken}`,
+      'content-type': 'application/json',
+    },
     body: JSON.stringify(body),
   })
   if (!response.ok) {
     throw new Error(`the administration answered ${response.status}: ${await response.text()}`)
   }
-}
-
-/** Finds a free port. */
-async function freePort(): Promise<number> {
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('ok') })
-  const port = server.port ?? 0
-  await server.stop(true)
-  return port
 }
 
 /** Waits for a url to answer. */
@@ -94,24 +77,11 @@ beforeAll(async () => {
   upstreamUrl = `http://127.0.0.1:${upstream.port}`
   provider = await startProviderFixture()
 
-  const hubPort = await freePort()
-  hubUrl = `http://127.0.0.1:${hubPort}`
+  // The Hub under test: the one of the process of the test, or the one
+  // that the environment names — the image of a release, for instance.
+  hubUnderTest = await startHubUnderTest()
+  hubUrl = hubUnderTest.url
 
-  hub = await createRuntime(
-    readEnv({
-      HUB_HOST: '127.0.0.1',
-      HUB_PORT: String(hubPort),
-      HUB_ISSUER: hubUrl,
-      HUB_PUBLIC_URL: hubUrl,
-      HUB_DATABASE_URL: 'pglite://memory://',
-      HUB_ADMIN_TOKEN: ADMIN_TOKEN,
-      HUB_ACCESS_TOKEN: ACCESS_TOKEN,
-      HUB_SECRET_ENCRYPTION_KEY: 'a'.repeat(64),
-      HUB_STATE_SECRET: 'b'.repeat(64),
-      HUB_SIGNING_KEY: SIGNING_KEY,
-      HUB_SIGNING_KID: 'hub-1',
-    })
-  )
   // The issuer of Hub is the url the gateway reaches: the discovery
   // document of the provider is read at that address.
   const gatewayPort = await freePort()
@@ -134,7 +104,10 @@ beforeAll(async () => {
   // The principal that has a grant and the one that has none.
   const withGrant = await fetch(`${hubUrl}/v1/admin/users`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${ADMIN_TOKEN}`, 'content-type': 'application/json' },
+    headers: {
+      authorization: `Bearer ${hubUnderTest.adminToken}`,
+      'content-type': 'application/json',
+    },
     body: JSON.stringify({
       tenant: 'acme',
       externalSubject: provider.subject,
@@ -145,7 +118,10 @@ beforeAll(async () => {
   const principal = (await withGrant.json()) as { id: string }
   await fetch(`${hubUrl}/v1/admin/users`, {
     method: 'POST',
-    headers: { authorization: `Bearer ${ADMIN_TOKEN}`, 'content-type': 'application/json' },
+    headers: {
+      authorization: `Bearer ${hubUnderTest.adminToken}`,
+      'content-type': 'application/json',
+    },
     body: JSON.stringify({
       tenant: 'acme',
       externalSubject: 'the-subject-without-a-grant',
@@ -213,7 +189,7 @@ beforeAll(async () => {
       SHUTTLE_OIDC_REDIRECT_URI: `${gatewayUrl}/auth/callback`,
       SHUTTLE_OIDC_ALLOW_INSECURE: 'true',
       SHUTTLE_ACCESS_URL: hubUrl,
-      SHUTTLE_ACCESS_TOKEN: ACCESS_TOKEN,
+      SHUTTLE_ACCESS_TOKEN: hubUnderTest.accessToken,
       SHUTTLE_ACCESS_CACHE_TTL_MS: '0',
       SHUTTLE_SESSION_SECRET: 'the-session-secret',
       SHUTTLE_SESSION_URL: 'memory://local',
@@ -234,8 +210,7 @@ beforeAll(async () => {
 afterAll(async () => {
   gateway?.kill('SIGTERM')
   await gateway?.exited
-  await hub?.listener.stop(true)
-  await hub?.database.close()
+  await hubUnderTest?.stop()
   await provider?.stop()
   await upstream.stop(true)
   if (directory) await rm(directory, { recursive: true, force: true })

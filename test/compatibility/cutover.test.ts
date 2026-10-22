@@ -2,10 +2,8 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { generateKeyPairSync } from 'node:crypto'
-import { createRuntime, type HubRuntime } from '../../src/runtime/composition'
-import { readEnv } from '../../src/runtime/env'
 import { startProviderFixture, type ProviderFixture } from '../fixtures/provider'
+import { freePort, startHubUnderTest, type HubUnderTest } from './hub'
 import { referenceRoot } from './reference'
 
 /**
@@ -29,17 +27,21 @@ import { referenceRoot } from './reference'
 /** The root of the reference: it is prepared by `bun run test:compat`. */
 let reference: string
 
-const ADMIN_TOKEN = 'the-admin-token'
-const ACCESS_TOKEN = 'the-access-token-of-hub'
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111'
 
-const SIGNING_KEY = generateKeyPairSync('rsa', {
-  modulusLength: 2048,
-  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-  publicKeyEncoding: { type: 'spki', format: 'pem' },
-}).privateKey
+/**
+ * The tenant of the rehearsal.
+ *
+ * The name of the tenant is unique per run: the rehearsal is a
+ * *creation*, and a Hub that keeps its rows between two runs would
+ * answer "200, updated" instead of "201, created". The client of the
+ * gateway is named after it: a client id belongs to one tenant.
+ */
+const TENANT_SLUG = `acme-cutover-${crypto.randomUUID().slice(0, 8)}`
+const CLIENT_ID = `shuttle-${TENANT_SLUG}`
 
-let hub: HubRuntime
+/** The Hub under test: the one of the process, or the one of the environment. */
+let hubUnderTest: HubUnderTest
 let hubUrl: string
 let provider: ProviderFixture
 let gateway: Bun.Subprocess<'ignore', 'pipe', 'pipe'>
@@ -63,7 +65,10 @@ async function admin(
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const response = await fetch(`${hubUrl}${path}`, {
     method,
-    headers: { authorization: `Bearer ${ADMIN_TOKEN}`, 'content-type': 'application/json' },
+    headers: {
+      authorization: `Bearer ${hubUnderTest.adminToken}`,
+      'content-type': 'application/json',
+    },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
   const text = await response.text()
@@ -71,14 +76,6 @@ async function admin(
     status: response.status,
     body: (text ? JSON.parse(text) : {}) as Record<string, unknown>,
   }
-}
-
-/** Finds a free port. */
-async function freePort(): Promise<number> {
-  const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('ok') })
-  const port = server.port ?? 0
-  await server.stop(true)
-  return port
 }
 
 /** Waits for a url to answer. */
@@ -150,24 +147,10 @@ beforeAll(async () => {
   upstreamUrl = `http://127.0.0.1:${upstream.port}`
   provider = await startProviderFixture()
 
-  const hubPort = await freePort()
-  hubUrl = `http://127.0.0.1:${hubPort}`
-
-  hub = await createRuntime(
-    readEnv({
-      HUB_HOST: '127.0.0.1',
-      HUB_PORT: String(hubPort),
-      HUB_ISSUER: hubUrl,
-      HUB_PUBLIC_URL: hubUrl,
-      HUB_DATABASE_URL: 'pglite://memory://',
-      HUB_ADMIN_TOKEN: ADMIN_TOKEN,
-      HUB_ACCESS_TOKEN: ACCESS_TOKEN,
-      HUB_SECRET_ENCRYPTION_KEY: 'a'.repeat(64),
-      HUB_STATE_SECRET: 'b'.repeat(64),
-      HUB_SIGNING_KEY: SIGNING_KEY,
-      HUB_SIGNING_KID: 'hub-1',
-    })
-  )
+  // The Hub under test: the one of the process of the test, or the one
+  // that the environment names — the image of a release, for instance.
+  hubUnderTest = await startHubUnderTest()
+  hubUrl = hubUnderTest.url
 
   const gatewayPort = await freePort()
   gatewayUrl = `http://127.0.0.1:${gatewayPort}`
@@ -208,12 +191,12 @@ beforeAll(async () => {
       SHUTTLE_GATEWAY_HOST: '127.0.0.1',
       SHUTTLE_GATEWAY_PORT: String(gatewayPort),
       SHUTTLE_OIDC_ISSUER: hubUrl,
-      SHUTTLE_OIDC_CLIENT_ID: 'shuttle-acme',
+      SHUTTLE_OIDC_CLIENT_ID: CLIENT_ID,
       SHUTTLE_OIDC_CLIENT_SECRET: 'the-secret-of-the-gateway',
       SHUTTLE_OIDC_REDIRECT_URI: `${gatewayUrl}/auth/callback`,
       SHUTTLE_OIDC_ALLOW_INSECURE: 'true',
       SHUTTLE_ACCESS_URL: hubUrl,
-      SHUTTLE_ACCESS_TOKEN: ACCESS_TOKEN,
+      SHUTTLE_ACCESS_TOKEN: hubUnderTest.accessToken,
       SHUTTLE_ACCESS_CACHE_TTL_MS: '0',
       SHUTTLE_SESSION_SECRET: 'the-session-secret',
       SHUTTLE_SESSION_URL: 'memory://local',
@@ -233,8 +216,7 @@ beforeAll(async () => {
 afterAll(async () => {
   gateway?.kill('SIGTERM')
   await gateway?.exited
-  await hub?.listener.stop(true)
-  await hub?.database.close()
+  await hubUnderTest?.stop()
   await provider?.stop()
   await upstream.stop(true)
   if (directory) await rm(directory, { recursive: true, force: true })
@@ -244,13 +226,13 @@ describe('the rehearsal of the cutover of a tenant', () => {
   test('the tenant, its principal and its grant are registered', async () => {
     // Phase 1: the tenant is registered.
     const tenant = await admin('/v1/admin/tenants', 'POST', {
-      slug: 'acme',
+      slug: TENANT_SLUG,
       displayName: 'Acme Inc',
       issuer: provider.issuer,
       idpClientId: provider.clientId,
       idpClientSecret: provider.clientSecret,
       idpRedirectUri: `${hubUrl}/oauth/tenant/callback`,
-      clientId: 'shuttle-acme',
+      clientId: CLIENT_ID,
       clientSecret: 'the-secret-of-the-gateway',
       // The url the gateway sends the browser back to is registered with
       // the tenant: the gateway of the reference is at a port of the test.
@@ -260,7 +242,7 @@ describe('the rehearsal of the cutover of a tenant', () => {
 
     // Phase 2: the principals are registered.
     const principal = await admin('/v1/admin/users', 'POST', {
-      tenant: 'acme',
+      tenant: TENANT_SLUG,
       externalSubject: provider.subject,
       email: 'alice@shuttle.test',
       displayName: 'Alice',
@@ -269,7 +251,7 @@ describe('the rehearsal of the cutover of a tenant', () => {
 
     // Phase 3: the grants are registered.
     const grant = await admin('/v1/admin/grants', 'PUT', {
-      tenant: 'acme',
+      tenant: TENANT_SLUG,
       userId: principal.body.id,
       permission: 'workspace.read',
       workspaceId: WORKSPACE_ID,
@@ -280,12 +262,14 @@ describe('the rehearsal of the cutover of a tenant', () => {
     // The checklist of the cutover: the tenant, its principals and its
     // grants are registered, and the operator can read them.
     const tenants = await admin('/v1/admin/tenants', 'GET')
-    expect((tenants.body.tenants as { slug: string }[]).map((row) => row.slug)).toContain('acme')
-    const principals = await admin('/v1/admin/users?tenant=acme', 'GET')
+    expect((tenants.body.tenants as { slug: string }[]).map((row) => row.slug)).toContain(
+      TENANT_SLUG
+    )
+    const principals = await admin(`/v1/admin/users?tenant=${TENANT_SLUG}`, 'GET')
     expect((principals.body.principals as { id: string }[]).map((row) => row.id)).toContain(
       principal.body.id as string
     )
-    const grants = await admin('/v1/admin/grants?tenant=acme', 'GET')
+    const grants = await admin(`/v1/admin/grants?tenant=${TENANT_SLUG}`, 'GET')
     expect((grants.body.grants as { id: string }[]).map((row) => row.id)).toContain(
       grant.body.id as string
     )
@@ -301,7 +285,7 @@ describe('the rehearsal of the cutover of a tenant', () => {
   })
 
   test('the way back: the revocation of the grant ends the access', async () => {
-    const grants = await admin('/v1/admin/grants?tenant=acme', 'GET')
+    const grants = await admin(`/v1/admin/grants?tenant=${TENANT_SLUG}`, 'GET')
     const grant = (grants.body.grants as { id: string }[])[0]!
     const revoked = await admin(`/v1/admin/grants/${grant.id}`, 'DELETE')
     expect(revoked.status).toBe(204)
@@ -315,10 +299,10 @@ describe('the rehearsal of the cutover of a tenant', () => {
   test('the tenant is switched again without registering anything', async () => {
     // The data of Hub stays: the principal and the tenant are still
     // there, and the access is given again by a grant.
-    const principals = await admin('/v1/admin/users?tenant=acme', 'GET')
+    const principals = await admin(`/v1/admin/users?tenant=${TENANT_SLUG}`, 'GET')
     const principal = (principals.body.principals as { id: string }[])[0]!
     const grant = await admin('/v1/admin/grants', 'PUT', {
-      tenant: 'acme',
+      tenant: TENANT_SLUG,
       userId: principal.id,
       permission: 'workspace.read',
       workspaceId: WORKSPACE_ID,

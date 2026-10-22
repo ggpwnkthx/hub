@@ -1,0 +1,25 @@
+# The context of the build carries what the image needs and nothing else.
+#
+# Without this file, the whole working tree is sent to the daemon of the
+# build: the dependencies of the development (217 MB), the history of the
+# repository and the documents. The image copies `src`, `package.json`
+# and `bun.lock`, and nothing else.
+
+.git
+.github
+node_modules
+dist
+coverage
+.hub
+*.log
+
+# The secrets of a development machine never enter a build.
+.env
+.env.*
+
+# The tests, the scripts and the documents are not part of the image.
+test
+scripts
+docs
+*.md
+LICENSE

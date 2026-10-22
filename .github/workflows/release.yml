@@ -3,22 +3,31 @@ name: release
 # The release of the image.
 #
 # The workflow runs on a tag: it checks that the tag names the version of
-# the package, it builds the image of the release, it starts it with the
-# configuration of a deployment, it publishes it to the registry and it
-# exports it as an artifact of the run.
+# the package, it builds the image of the release **once**, it publishes
+# it, it proves that the published bytes are the bytes that answer, it
+# runs the gateway of the reference against them, and it exports the
+# image as an artifact of the run.
 #
 #   git tag v0.2.0 && git push origin v0.2.0
 #
 # The image is published with two tags: the tag of the release (`v0.2.0`)
 # and the version itself (`0.2.0`). A deployment that pins a version pins
 # the image of that release, and the digest of the image is what it pins.
+#
+# **The image is built once.** The build is published, and every gate of
+# the release — the probes, the decisions, the refusals, the drain, the
+# scan and the compatibility suite — runs against the **digest** of that
+# build, never against a tag and never against a second build. The image
+# that was tested is the image that runs: the digest that the gates
+# proved is the digest that the deployment pins.
 on:
   push:
     tags: ['v*']
 
 permissions:
   contents: read
-  # The image is published to the registry of the repository.
+  # The image is published to the registry of the repository, and it is
+  # withdrawn from it when a gate of the release fails.
   packages: write
 
 env:
@@ -26,37 +35,15 @@ env:
   BUN_VERSION: '1.4.3'
 
 jobs:
-  image:
-    name: the image of the release
+  build:
+    name: the image of the release is built and published
     runs-on: ubuntu-latest
-    services:
-      # A deployment talks to a PostgreSQL server: the image applies the
-      # migrations of the schema before it accepts a request.
-      postgres:
-        image: postgres:17-alpine
-        ports:
-          - '5432:5432'
-        env:
-          POSTGRES_USER: hub
-          POSTGRES_PASSWORD: hub
-          POSTGRES_DB: hub
-        options: >-
-          --health-cmd "pg_isready -U hub"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      # The deployment of a production needs the store of the codes of the
-      # logins: the image connects to it at the start and refuses to start
-      # when it does not answer.
-      redis:
-        image: redis:7-alpine
-        ports:
-          - '6379:6379'
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 10
+    outputs:
+      # The digest of the published image: every other job of the release
+      # runs against it.
+      digest: ${{ steps.build.outputs.digest }}
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -101,23 +88,85 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: build the image
+      # The one build of the release. It is published with its provenance
+      # and its SBOM: the registry carries the attestations, and the
+      # digest of what it carries is the digest of the release.
+      - name: build and publish the image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: Dockerfile
-          load: true
+          push: true
           tags: |
             ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}
             ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.version }}
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
             REVISION=${{ github.sha }}
-          # The attestations are added when the image is published: the
-          # docker exporter of a local build cannot carry a manifest list,
-          # and an attestation is one.
-          provenance: false
-          sbom: false
+          provenance: true
+          sbom: true
+
+      - name: the digest of the image is known
+        run: |
+          # Every gate of the release runs against the digest, and the
+          # digest is what a deployment pins: a gate that ran against
+          # something else proves nothing about what is deployed.
+          digest="${{ steps.build.outputs.digest }}"
+          if [ -z "$digest" ]; then
+            echo "the build did not write its digest: the release cannot be proven"
+            exit 1
+          fi
+          echo "the image of the release is ghcr.io/ggpwnkthx/hub@${digest}"
+
+  image:
+    name: the published image is proven
+    needs: build
+    runs-on: ubuntu-latest
+    services:
+      # A deployment talks to a PostgreSQL server: the image applies the
+      # migrations of the schema before it accepts a request.
+      postgres:
+        image: postgres:17-alpine
+        ports:
+          - '5432:5432'
+        env:
+          POSTGRES_USER: hub
+          POSTGRES_PASSWORD: hub
+          POSTGRES_DB: hub
+        options: >-
+          --health-cmd "pg_isready -U hub"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      # The deployment of a production needs the store of the codes of the
+      # logins: the image connects to it at the start and refuses to start
+      # when it does not answer.
+      redis:
+        image: redis:7-alpine
+        ports:
+          - '6379:6379'
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # The image of the release, by its digest: never by its tag.
+      IMAGE: ghcr.io/ggpwnkthx/hub@${{ needs.build.outputs.digest }}
+    steps:
+      - name: the image of the release is pulled by its digest
+        run: |
+          docker pull "$IMAGE"
+          # The digest of the registry is read from the registry itself:
+          # the image that the gates of the release run against is the
+          # image that the deployment will pin.
+          actual="$(docker buildx imagetools inspect "$IMAGE" | awk '/^Digest:/ { print $2 }')"
+          echo "the image of the release is ${actual}"
+          if [ -z "$actual" ] || [ "ghcr.io/ggpwnkthx/hub@${actual}" != "$IMAGE" ]; then
+            echo "the image that was pulled is $actual and the release is $IMAGE"
+            exit 1
+          fi
 
       - name: the role of the deployment
         run: |
@@ -164,7 +213,7 @@ jobs:
             -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b%.0s' {1..64})" \
             -e HUB_SIGNING_KEY \
             -e HUB_SIGNING_KID=hub-release \
-            "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}"
+            "$IMAGE"
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8081/healthz > /dev/null; then
               echo "the service is healthy"
@@ -247,7 +296,7 @@ jobs:
           # The environment of a production deployment is the one of the
           # image: the service has to refuse to start and to name the
           # secrets it misses.
-          if docker run --rm "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}"; then
+          if docker run --rm "$IMAGE"; then
             echo "the service started with an empty environment"
             exit 1
           fi
@@ -257,7 +306,7 @@ jobs:
           if docker run --rm \
             -e HUB_DATABASE_URL=postgres://hub_app:hub_app@host.docker.internal:5432/hub \
             -e HUB_REDIS_URL=redis://host.docker.internal:6379/0 \
-            "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}"; then
+            "$IMAGE"; then
             echo "the service started without a secret"
             exit 1
           fi
@@ -278,7 +327,7 @@ jobs:
             -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b%.0s' {1..64})" \
             -e HUB_SIGNING_KEY \
             -e HUB_SIGNING_KID=hub-release \
-            "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}" 2>&1)"
+            "$IMAGE" 2>&1)"
           status=$?
           set -e
           echo "$output"
@@ -304,45 +353,203 @@ jobs:
 
       - name: the scan of the image
         run: |
-          # A finding of a severity above high fails the release.
+          # A finding of a severity above high fails the release. The scan
+          # reads the image of the release: the one that is published.
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$PWD:/work" aquasec/trivy:latest \
-            image --severity HIGH,CRITICAL --exit-code 1 --no-progress \
-            "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}"
-
-      - name: publish the image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: Dockerfile
-          push: true
-          tags: |
-            ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.tag }}
-            ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.version }}
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
-            REVISION=${{ github.sha }}
-          # The provenance of the image: what was built and from what.
-          # The registry carries the attestations, the local build cannot:
-          # the docker exporter does not support the manifest list of an
-          # attestation.
-          provenance: true
-          sbom: true
+            image --severity HIGH,CRITICAL --exit-code 1 --no-progress "$IMAGE"
 
       - name: export the image
         run: |
           # The exported image is the published one: a deployment that
           # unpacks the artifact runs the image of the release, digest
           # for digest, with its attestations.
-          docker pull "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.version }}"
-          docker save "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.version }}" \
-            | gzip > hub-${{ steps.version.outputs.tag }}.tar.gz
+          docker pull "$IMAGE"
+          docker save "$IMAGE" | gzip > "hub-${{ needs.build.outputs.tag }}.tar.gz"
           # The digest of the image: it is what a deployment pins.
-          docker image inspect "ghcr.io/ggpwnkthx/hub:${{ steps.version.outputs.version }}" \
-            --format '{{index .RepoDigests 0}}'
+          docker image inspect "$IMAGE" --format '{{index .RepoDigests 0}}'
 
       - uses: actions/upload-artifact@v4
         with:
-          name: hub-image-${{ steps.version.outputs.tag }}
-          path: hub-${{ steps.version.outputs.tag }}.tar.gz
+          name: hub-image-${{ needs.build.outputs.tag }}
+          path: hub-${{ needs.build.outputs.tag }}.tar.gz
           retention-days: 30
+
+  compatibility:
+    name: the gateway of the reference, unchanged, against the image of the release
+    needs: build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        ports:
+          - '5432:5432'
+        env:
+          POSTGRES_USER: hub
+          POSTGRES_PASSWORD: hub
+          POSTGRES_DB: hub
+        options: >-
+          --health-cmd "pg_isready -U hub"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - '6379:6379'
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      IMAGE: ghcr.io/ggpwnkthx/hub@${{ needs.build.outputs.digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: install
+        run: bun install --frozen-lockfile
+
+      - name: the image of the release is pulled by its digest
+        run: docker pull "$IMAGE"
+
+      - name: the role of the deployment
+        run: |
+          docker run -i --rm --network host postgres:17-alpine \
+            psql "postgres://hub:hub@localhost:5432/hub" -v ON_ERROR_STOP=1 <<'SQL'
+          create role hub_app login password 'hub_app';
+          grant usage, create on schema public to hub_app;
+          SQL
+
+      - name: the key of the identity signature
+        run: |
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
+            -out "$RUNNER_TEMP/hub-key.pem" 2>/dev/null
+          {
+            echo "HUB_SIGNING_KEY<<EOF"
+            cat "$RUNNER_TEMP/hub-key.pem"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: the image of the release starts
+        run: |
+          # The image listens in the network of the runner: the gateway
+          # of the reference and the browser of the test reach it at
+          # 127.0.0.1, and it reaches the provider of the test — which
+          # runs in the process of the test — at the same address.
+          #
+          # The environment is the one of a **development**: the provider
+          # of the test is on the loopback, and a production deployment
+          # refuses to call a private address (spec §6.6). The rules of a
+          # production are proven by the job of the image, not by this
+          # one: this job proves the protocol of the published bytes.
+          docker run -d --name hub --network host \
+            -e HUB_ENVIRONMENT=development \
+            -e HUB_HOST=127.0.0.1 \
+            -e HUB_PORT=8081 \
+            -e HUB_ISSUER=http://127.0.0.1:8081 \
+            -e HUB_PUBLIC_URL=http://127.0.0.1:8081 \
+            -e HUB_DATABASE_URL=postgres://hub_app:hub_app@127.0.0.1:5432/hub \
+            -e HUB_REDIS_URL=redis://127.0.0.1:6379/0 \
+            -e HUB_ADMIN_TOKEN=release-admin-token \
+            -e HUB_ACCESS_TOKEN=release-access-token \
+            -e HUB_STATE_SECRET="$(printf 'a%.0s' {1..64})" \
+            -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b%.0s' {1..64})" \
+            -e HUB_SIGNING_KEY \
+            -e HUB_SIGNING_KID=hub-release \
+            "$IMAGE"
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8081/healthz > /dev/null; then
+              echo "the image of the release is healthy"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -fsS http://127.0.0.1:8081/healthz > /dev/null; then
+            echo "the image of the release does not answer the probe of the health"
+            docker logs hub || true
+            exit 1
+          fi
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8081/readyz > /dev/null; then
+              echo "the image of the release is ready"
+              break
+            fi
+            sleep 1
+          done
+          if ! curl -fsS http://127.0.0.1:8081/readyz > /dev/null; then
+            echo "the image of the release does not answer the probe of the readiness"
+            docker logs hub || true
+            exit 1
+          fi
+
+      - name: the compatibility suite
+        # The suite runs against the **image of the release**: the Hub of
+        # the environment is the published image, and the suite never
+        # creates one of its own when the environment names one.
+        run: bun run test:compat
+        env:
+          HUB_EXTERNAL_URL: http://127.0.0.1:8081
+          HUB_EXTERNAL_ADMIN_TOKEN: release-admin-token
+          HUB_EXTERNAL_ACCESS_TOKEN: release-access-token
+          # The checkout is kept: the step below reads its state.
+          COMPAT_KEEP: '1'
+          COMPAT_WORKSPACE: ${{ runner.temp }}/compatibility
+
+      - name: the reference was not modified
+        run: |
+          # The gateway is read-only: a change in the tree of the
+          # reference fails the release.
+          checkout="${{ runner.temp }}/compatibility/shuttle"
+          expected="$(bun -e 'const manifest = await Bun.file("compatibility.json").json(); console.log(manifest.repositories.shuttle.commit)')"
+          head="$(git -C "$checkout" rev-parse HEAD)"
+          if [ "$head" != "$expected" ]; then
+            echo "the reference is at $head and the pin is $expected"
+            exit 1
+          fi
+          if [ -n "$(git -C "$checkout" status --porcelain --untracked-files=no)" ]; then
+            echo "the tree of the reference was modified"
+            git -C "$checkout" status --porcelain
+            exit 1
+          fi
+          echo "the tree of the reference is the one of $expected"
+
+      - name: the logs of the image
+        if: always()
+        run: docker logs hub || true
+
+  withdraw:
+    name: the image of a failed release is withdrawn
+    # The image is published before the gates run, so that the gates can
+    # run against the bytes that ship. A release whose gates failed does
+    # not ship: the image is withdrawn from the registry, and the tag of
+    # the release points at nothing.
+    needs: [build, image, compatibility]
+    if: failure()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - name: the login in the registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: the image is withdrawn
+        run: |
+          digest="${{ needs.build.outputs.digest }}"
+          if [ -z "$digest" ]; then
+            echo "the build of the release did not publish anything: there is nothing to withdraw"
+            exit 0
+          fi
+          if docker buildx imagetools rm "ghcr.io/ggpwnkthx/hub@${digest}"; then
+            echo "the image $digest is withdrawn from the registry"
+          else
+            echo "the image $digest could not be withdrawn: it must be removed by hand"
+          fi

@@ -23,6 +23,16 @@ export interface VersionFinding {
   message: string
 }
 
+/**
+ * The shape of the version of a release: three numbers, nothing else.
+ *
+ * A tag of a release names a version, and the workflow of the release
+ * refuses a tag that does not name the version of the package. A
+ * pre-release (`1.0.0-rc.1`) is not a release: it is a build, and it
+ * does not carry the promise of a stable contract.
+ */
+export const RELEASE_VERSION = /^\d+\.\d+\.\d+$/
+
 /** The files that hold the version of the release, and how to read it. */
 export const VERSION_SOURCES: ReadonlyArray<{
   path: string
@@ -73,6 +83,13 @@ export function checkVersionConsistency(files: Record<string, string>): VersionF
     findings.push({ file: 'package.json', message: 'the package does not hold a version' })
     return findings
   }
+  if (!RELEASE_VERSION.test(reference)) {
+    findings.push({
+      file: 'package.json',
+      message: `the version "${reference}" is not the version of a release: three numbers, "1.0.0"`,
+    })
+    return findings
+  }
   for (const source of VERSION_SOURCES) {
     const content = files[source.path]
     if (content === undefined) continue
@@ -103,6 +120,21 @@ export async function checkVersions(root: string): Promise<VersionFinding[]> {
     }
   }
   return checkVersionConsistency(files)
+}
+
+/**
+ * The version of the package.
+ *
+ * It is the reference of every other version: the image, the service and
+ * the specification have to name the same release.
+ */
+export async function readPackageVersion(root: string): Promise<string | null> {
+  try {
+    const content = await readFile(join(root, 'package.json'), 'utf8')
+    return VERSION_SOURCES[0]!.read(content)
+  } catch {
+    return null
+  }
 }
 
 if (import.meta.main) {

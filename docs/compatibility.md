@@ -19,7 +19,7 @@ It is the only place where the reference is named:
   "repositories": {
     "shuttle": {
       "url": "https://github.com/ggpwnkthx/shuttle.git",
-      "commit": "1199d6d350be86b0081cb367e022722649825544"
+      "commit": "3744b7fa7c2649083dc569965934b9580ab15c02"
     }
   }
 }
@@ -45,7 +45,7 @@ that is not the head of the default branch is a deliberate choice, not
 an accident.
 
 The revision that Hub is tested against is the head of the default
-branch of the gateway, and the commit of the release `v0.4.0` of it.
+branch of the gateway, and the commit of the release `v0.5.0` of it.
 
 ## Running the suite
 
@@ -78,14 +78,14 @@ The command does everything:
 The runner prints the revision it tested:
 
 ```
-the reference is cloned from the manifest (https://github.com/ggpwnkthx/shuttle.git) at 1199d6d350be86b0081cb367e022722649825544
-the reference is at 1199d6d350be86b0081cb367e022722649825544 and its tracked files are the ones of the commit
-the reference is unchanged: it is still 1199d6d350be86b0081cb367e022722649825544
-the compatibility suite passed against the gateway at 1199d6d350be86b0081cb367e022722649825544 (the manifest (https://github.com/ggpwnkthx/shuttle.git))
+the reference is cloned from the manifest (https://github.com/ggpwnkthx/shuttle.git) at 3744b7fa7c2649083dc569965934b9580ab15c02
+the reference is at 3744b7fa7c2649083dc569965934b9580ab15c02 and its tracked files are the ones of the commit
+the reference is unchanged: it is still 3744b7fa7c2649083dc569965934b9580ab15c02
+the compatibility suite passed against the gateway at 3744b7fa7c2649083dc569965934b9580ab15c02 (the manifest (https://github.com/ggpwnkthx/shuttle.git))
 ```
 
 The revision is a commit, not a branch: the
-[baseline of the integration](https://github.com/ggpwnkthx/shuttle/tree/1199d6d350be86b0081cb367e022722649825544)
+[baseline of the integration](https://github.com/ggpwnkthx/shuttle/tree/3744b7fa7c2649083dc569965934b9580ab15c02)
 is the exact code that Hub is tested against, and the
 [repository of the gateway](https://github.com/ggpwnkthx/shuttle) is
 where it lives.
@@ -127,7 +127,7 @@ Two variables are about the run itself:
 
 ```bash
 git clone https://github.com/ggpwnkthx/shuttle.git /tmp/shuttle
-git -C /tmp/shuttle checkout --detach 1199d6d350be86b0081cb367e022722649825544
+git -C /tmp/shuttle checkout --detach 3744b7fa7c2649083dc569965934b9580ab15c02
 HUB_SHUTTLE_PATH=/tmp/shuttle bun run test:compat
 ```
 

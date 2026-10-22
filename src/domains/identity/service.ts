@@ -84,6 +84,15 @@ export interface BegunLogin {
 export interface CompletedLogin {
   principal: Principal
   tenant: TenantOfLogin
+  /**
+   * The client id of the request: the client that began the login.
+   *
+   * It is not always the client id of the tenant of the login: with a
+   * shared client, the tenant of the login may be another one, and the
+   * code and the audience belong to the client that presented the
+   * client id (spec §5.2).
+   */
+  clientId: string
   /** The redirect uri of the login. */
   redirectUri: string
   /** The challenge of the PKCE of the gateway, when there is one. */
@@ -224,6 +233,7 @@ export class LoginService {
     return {
       principal: mapping.principal,
       tenant,
+      clientId: state.clientId,
       redirectUri: state.redirectUri,
       ...(state.codeChallenge ? { codeChallenge: state.codeChallenge } : {}),
       state: state.state,

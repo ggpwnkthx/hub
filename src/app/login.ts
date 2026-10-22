@@ -146,12 +146,16 @@ export async function callbackHandler(
       code: query.code,
     })
     const code = await dependencies.codes.issue({
-      clientId: completed.tenant.clientId,
+      // The client that began the login, and not necessarily the tenant
+      // of the login: with a shared client, the gateway presents the
+      // client id it is registered with, and the code and the audience
+      // belong to it (spec §5.2).
+      clientId: completed.clientId,
       redirectUri: completed.redirectUri,
       codeChallenge: completed.codeChallenge,
       subject: completed.principal.id,
       tenant: completed.principal.tenantSlug,
-      audience: completed.tenant.clientId,
+      audience: completed.clientId,
       scopes: completed.scopes,
       nonce: completed.nonce,
     })

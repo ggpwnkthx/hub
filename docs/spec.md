@@ -671,6 +671,11 @@ the challenge of the PKCE, the principal and the moment it was created.
   of the PKCE. An exchange that presents another redirect uri, another
   client or a verifier that does not match the challenge is
   `invalid_grant`.
+- It is bound to the **client that began the login**, and not to the
+  tenant of the login: with a shared client, the tenant of the login may
+  be another one (§5.2), and the gateway exchanges the code with the
+  client id it is registered with. The audience of the tokens is that
+  client id as well (§7.1).
 - It never carries the identity in the clear.
 
 The shared store is Redis. A deployment of one replica may use the memory
@@ -787,7 +792,7 @@ OpenID Connect tokens.
 | --- | --- |
 | `iss` | The issuer of Hub. |
 | `sub` | The id of the principal. |
-| `aud` | The client id of the gateway of the tenant. |
+| `aud` | The client id of the gateway of the tenant — the client that began the login (§5.2, §5.5). |
 | `exp`, `iat` | Five minutes of life. |
 | `nonce` | The nonce of the login, when there was one. |
 | `email` | The e-mail of the principal, when it is known. |

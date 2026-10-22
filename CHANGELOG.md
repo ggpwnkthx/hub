@@ -27,6 +27,13 @@ The work that the release `1.0.0` carries, before the tag.
   writes a notice in its log, once, the first time a decision presents
   it, and the notice names the scheme to use instead: the credentials of
   a tenant, which are scoped to it. (spec §8.8)
+- **The code of a login belongs to the client that began it.** With a
+  shared client, the tenant of the login may be another one, and the
+  code and the audience of the tokens belonged to the tenant of the
+  login: the gateway, which presents the client id it is registered
+  with, was refused with `invalid_grant`. The shared client — the
+  escape hatch of the topology of one gateway for several tenants — did
+  not work at all. (spec §5.2)
 
 ### The release
 

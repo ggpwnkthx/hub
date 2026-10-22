@@ -27,6 +27,18 @@ The work that the release `1.0.0` carries, before the tag.
   writes a notice in its log, once, the first time a decision presents
   it, and the notice names the scheme to use instead: the credentials of
   a tenant, which are scoped to it. (spec §8.8)
+- **The bearer token of the deployment is optional.** It is not required
+  in a production environment any more: a deployment that does not set
+  `HUB_ACCESS_TOKEN` accepts only the credentials of a tenant, and the
+  bearer scheme is refused with `401 unauthorized`. This is the end of
+  the migration of the third open finding of the security review, and it
+  was unreachable while the token was required. (spec §4.4, spec §8.8)
+- **The previous token of the decisions without the token it replaced is
+  refused at the start.** A deployment that removes the shared secret
+  removes it entirely: a `HUB_PREVIOUS_ACCESS_TOKEN` without a
+  `HUB_ACCESS_TOKEN` is a configuration error, and the service says so
+  instead of starting with the secret it believes it has removed.
+  (spec §4.3.1)
 - **The code of a login belongs to the client that began it.** With a
   shared client, the tenant of the login may be another one, and the
   code and the audience of the tokens belonged to the tenant of the

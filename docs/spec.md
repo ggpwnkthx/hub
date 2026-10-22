@@ -405,8 +405,8 @@ readable list with the values of a development machine is in `.env.example`.
 | `HUB_ALLOW_MEMORY_STATE` | Replaces the shared store with the memory of the process. A single-node deployment only. |
 | `HUB_ADMIN_TOKEN` | The bearer token of the nine administrative endpoints. |
 | `HUB_PREVIOUS_ADMIN_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it (§4.3.1). |
-| `HUB_ACCESS_TOKEN` | The bearer token the gateway presents on `POST /v1/decisions`. |
-| `HUB_PREVIOUS_ACCESS_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it (§4.3.1). |
+| `HUB_ACCESS_TOKEN` | The bearer token the gateway presents on `POST /v1/decisions`. Optional, and deprecated: without it, only the credentials of a tenant are accepted (§8.8). |
+| `HUB_PREVIOUS_ACCESS_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it (§4.3.1). It is refused when the token it replaced is not set. |
 | `HUB_ACCESS_CONTEXT_TOKENS` | The credentials of the access context contract (§9): a JSON object whose keys are bearer tokens and whose values are the tenants every token may ask about. A `null` value is a credential of the platform. |
 | `HUB_STATE_SECRET` | Signs and encrypts the state of a login (§5.3). 32 bytes at least. The same value on every replica. |
 | `HUB_SECRET_ENCRYPTION_KEY` | Encrypts the client secrets at rest (§4.3). 32 bytes at least. |
@@ -489,8 +489,8 @@ in use and, during a rotation, the one it replaced:
 
 | Variable | What it holds |
 | --- | --- |
-| `HUB_ACCESS_TOKEN` | The token that the gateway presents on `POST /v1/decisions`. |
-| `HUB_PREVIOUS_ACCESS_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it. |
+| `HUB_ACCESS_TOKEN` | The token that the gateway presents on `POST /v1/decisions`. Optional: without it, only the credentials of a tenant are accepted (§8.8). |
+| `HUB_PREVIOUS_ACCESS_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it. It is refused without the token it replaced: a deployment that removes the shared secret removes it entirely (§8.8). |
 | `HUB_ADMIN_TOKEN` | The token of the nine administrative endpoints. |
 | `HUB_PREVIOUS_ADMIN_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it. |
 
@@ -517,8 +517,6 @@ down.
 | `HUB_ISSUER` | It is the `iss` of every token Hub issues and the issuer the gateway is configured with. |
 | `HUB_REDIS_URL` | The authorization codes have to be shared by the replicas, unless `HUB_ALLOW_MEMORY_STATE=true` names a deployment of a single node. |
 | `HUB_ADMIN_TOKEN` | It is the bearer token of the nine administrative endpoints. |
-| `HUB_ACCESS_TOKEN` | It is the bearer token the gateway presents on `POST /v1/decisions`. |
-| `HUB_ACCESS_CONTEXT_TOKENS` | It holds the credentials of the access context contract (§9). A deployment that serves a data backend needs it. |
 | `HUB_STATE_SECRET` | It signs and encrypts the state of a login. At least 32 bytes. |
 | `HUB_SECRET_ENCRYPTION_KEY` | It encrypts the client secrets at rest. At least 32 bytes. |
 | `HUB_SIGNING_KEY` | It is the private key Hub signs its tokens with, in PEM. |
@@ -531,6 +529,21 @@ hexadecimal characters and 44 base64 characters.
 The level of the log is the only value of the environment that does not
 stop the service: a typo in the level of a log must not keep a deployment
 down.
+
+**`HUB_ACCESS_TOKEN` is not required.** It is the bearer token of the
+deployment on the decisions (§8.8), and it is **deprecated**: it is not
+scoped to a tenant, so the gateway that presents it may ask about any
+principal of the platform. A deployment that does not set it accepts
+**only** the credentials of a tenant, which are scoped. That is the end
+of the migration, and it is reachable: the token is optional, so a
+deployment can remove it once every one of its gateways presents the
+credentials of its tenant. The gateway of the reference sends the bearer
+token, so a deployment that still has such a gateway keeps the token
+until that gateway is moved (§8.8).
+
+`HUB_ACCESS_CONTEXT_TOKENS` is optional too: it holds the credentials of
+the access context contract (§9), and only a deployment that serves a
+data backend needs it.
 
 A production deployment also refuses to start when the role of the
 database is a superuser or a role with `BYPASSRLS`: the isolation of the
@@ -1015,7 +1028,7 @@ accepted, and a deployment picks one of them or the other.
 
 | Scheme | What it is | What it may ask about |
 | --- | --- | --- |
-| `Authorization: Bearer {token}` | The token of the deployment, `HUB_ACCESS_TOKEN`. | Every principal of the platform. |
+| `Authorization: Bearer {token}` | The token of the deployment, `HUB_ACCESS_TOKEN`. **Optional and deprecated.** | Every principal of the platform. |
 | `Authorization: Basic {id:secret}` | The registration of the gateway of a tenant (§3.1). | The principals of that tenant. |
 
 The **bearer token** is the scheme of the gateway of the reference: it is
@@ -1044,6 +1057,16 @@ The two schemes are not exclusive and nothing of the gateway changes: the
 scheme of the credentials is a property of the deployment. A deployment
 that moves its gateways to their own credentials removes the shared
 secret of the platform.
+
+**The bearer token is optional.** `HUB_ACCESS_TOKEN` is not required in
+a production deployment (§4.4): a deployment that does not set it
+accepts **only** the credentials of a tenant, and a request that
+presents the bearer scheme is refused with `401 unauthorized`. This is
+the end of the migration, and it is reachable — the token was
+**required** before, so a deployment that had moved every one of its
+gateways to the credentials of their tenant still had to keep a secret
+whose blast radius was the whole platform. A deployment removes the
+token when the last gateway that sends it has been moved.
 
 **The bearer token of the deployment is deprecated.** It keeps working:
 the gateway of the reference sends it, and a change of the gateway is

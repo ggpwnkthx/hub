@@ -344,12 +344,7 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
   if (production) {
     if (!parsed.HUB_ADMIN_TOKEN) {
       problems.push(
-        'HUB_ADMIN_TOKEN must be set in a production environment: it is the bearer token of the seven administrative endpoints'
-      )
-    }
-    if (!parsed.HUB_ACCESS_TOKEN) {
-      problems.push(
-        'HUB_ACCESS_TOKEN must be set in a production environment: it is the bearer token the gateway presents on POST /v1/decisions'
+        'HUB_ADMIN_TOKEN must be set in a production environment: it is the bearer token of the nine administrative endpoints'
       )
     }
     if (!parsed.HUB_STATE_SECRET) {
@@ -398,6 +393,15 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
   }
   if (parsed.HUB_SIGNING_KEY && !isPrivateKeyPem(parsed.HUB_SIGNING_KEY)) {
     problems.push('HUB_SIGNING_KEY must be a PEM private key')
+  }
+
+  // The previous token of the decisions without the token it replaced is
+  // a mistake: the deployment believes it removed the shared secret, and
+  // the secret is still accepted (spec §4.3.1, §8.8).
+  if (parsed.HUB_PREVIOUS_ACCESS_TOKEN && !parsed.HUB_ACCESS_TOKEN) {
+    problems.push(
+      'HUB_PREVIOUS_ACCESS_TOKEN is set without HUB_ACCESS_TOKEN: the token it replaced is still accepted on POST /v1/decisions, and the shared secret of the deployment is not gone'
+    )
   }
 
   if (problems.length > 0) {

@@ -23,14 +23,22 @@ the deployment; **the operator** is the person who runs the deployment.
 | A secret of the state | It signs and encrypts the state of a login. | `HUB_STATE_SECRET` |
 | A key of the secrets | It encrypts the client secrets of the tenants at rest. | `HUB_SECRET_ENCRYPTION_KEY` |
 | A token of the administration | It guards the nine administrative endpoints. | `HUB_ADMIN_TOKEN` |
-| A token of the access service | The gateway presents it on the decisions. | `HUB_ACCESS_TOKEN` |
+| The credentials of the gateway of a tenant | The gateway presents them on the decisions, and they are scoped to the tenant. | The registration of the tenant, §3.1 |
+| The token of the access service | The shared bearer token of the deployment. **Optional and deprecated**: it is not scoped to a tenant. | `HUB_ACCESS_TOKEN` |
 
 The full list of the variables is in §4 of the spec; `.env.example` holds
 the same list with the values of a development machine.
 
 A **production** deployment (`HUB_ENVIRONMENT=production`) refuses to
-start when one of the nine required variables is missing, and it reports
+start when one of the eight required variables is missing, and it reports
 every problem at once, with the names of the variables.
+
+The shared token of the decisions is **not** one of them: a deployment
+that has moved every one of its gateways to the credentials of their
+tenant does not set it, and the service refuses the bearer scheme
+(spec §8.8). `HUB_PREVIOUS_ACCESS_TOKEN` without `HUB_ACCESS_TOKEN` is
+refused: the deployment believes it removed the shared secret, and the
+secret is still accepted.
 
 ### The role of the database
 
@@ -371,6 +379,13 @@ The window between the second step and the third is the window of the
 rotation. It is the time it takes to change the environment of every
 gateway of the deployment, and it is not a window in which a call is
 refused.
+
+**The end of the rotation of the shared token.** When every gateway of
+the deployment presents the credentials of its tenant, the shared token
+is removed: `HUB_ACCESS_TOKEN` and `HUB_PREVIOUS_ACCESS_TOKEN` are
+removed together, and the deployment is rolled. The bearer scheme is
+refused from that moment, and the secret whose blast radius was the
+whole platform is gone.
 
 ---
 

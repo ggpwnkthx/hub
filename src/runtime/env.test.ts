@@ -94,12 +94,28 @@ describe('the environment of Hub', () => {
     expect(message).toContain('HUB_DATABASE_URL')
     expect(message).toContain('HUB_ISSUER')
     expect(message).toContain('HUB_ADMIN_TOKEN')
-    expect(message).toContain('HUB_ACCESS_TOKEN')
     expect(message).toContain('HUB_STATE_SECRET')
     expect(message).toContain('HUB_SECRET_ENCRYPTION_KEY')
     expect(message).toContain('HUB_SIGNING_KEY')
     expect(message).toContain('HUB_SIGNING_KID')
     expect(message).toContain('HUB_REDIS_URL')
+  })
+
+  test('the shared token of the decisions is optional', () => {
+    // The token of the deployment is not scoped to a tenant and it is
+    // deprecated: a deployment that has moved its gateways to the
+    // credentials of their tenant does not set it (spec §8.8).
+    const settings = readEnv({ ...PRODUCTION, HUB_ACCESS_TOKEN: undefined })
+    expect(settings.production).toBe(true)
+    expect(settings.access.token).toBeUndefined()
+  })
+
+  test('the previous token of the decisions without the token it replaced is refused', () => {
+    // The deployment believes it removed the shared secret, and the
+    // secret is still accepted: the service says so instead of starting.
+    expect(() =>
+      readEnv({ ...PRODUCTION, HUB_ACCESS_TOKEN: undefined, HUB_PREVIOUS_ACCESS_TOKEN: 'old' })
+    ).toThrow(/HUB_PREVIOUS_ACCESS_TOKEN/)
   })
 
   test('a production deployment with every secret starts', () => {

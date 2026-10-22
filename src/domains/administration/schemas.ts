@@ -79,6 +79,33 @@ export const GroupBody = z.object({
   members: z.array(z.string().min(1)).optional(),
 })
 
+/**
+ * The maximum number of items of a batch of the administration.
+ *
+ * A batch is the call that writes many principals or many grants at
+ * once: it is the call that onboards a tenant. The number is a ceiling,
+ * not a promise: a bigger batch is written in several calls.
+ */
+export const MAX_BATCH_ITEMS = 1000
+
+/** The body of a batch of principals. */
+export const PrincipalBatchBody = z.object({
+  principals: z
+    .array(PrincipalBody, {
+      message: 'the principals of the batch are the principals of the tenant',
+    })
+    .min(1, 'the batch holds at least one principal')
+    .max(MAX_BATCH_ITEMS, `the batch holds at most ${MAX_BATCH_ITEMS} principals`),
+})
+
+/** The body of a batch of grants. */
+export const GrantBatchBody = z.object({
+  grants: z
+    .array(GrantBody, { message: 'the grants of the batch are the grants of the tenant' })
+    .min(1, 'the batch holds at least one grant')
+    .max(MAX_BATCH_ITEMS, `the batch holds at most ${MAX_BATCH_ITEMS} grants`),
+})
+
 /** The parsed body of a tenant. */
 export type TenantInput = z.infer<typeof TenantBody>
 /** The parsed body of a principal. */
@@ -87,3 +114,7 @@ export type PrincipalInput = z.infer<typeof PrincipalBody>
 export type GrantInput = z.infer<typeof GrantBody>
 /** The parsed body of a group. */
 export type GroupInput = z.infer<typeof GroupBody>
+/** The parsed body of a batch of principals. */
+export type PrincipalBatchInput = z.infer<typeof PrincipalBatchBody>
+/** The parsed body of a batch of grants. */
+export type GrantBatchInput = z.infer<typeof GrantBatchBody>

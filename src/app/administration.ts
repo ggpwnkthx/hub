@@ -10,8 +10,10 @@ import type { Context } from 'hono'
 import { fingerprint } from '../observability'
 import {
   AdministrationError,
+  GrantBatchBody,
   GrantBody,
   GroupBody,
+  PrincipalBatchBody,
   PrincipalBody,
   TenantBody,
   type AuditContext,
@@ -25,24 +27,76 @@ import type { HubEnv } from './state'
 export const MAX_BODY_BYTES = 65_536
 
 /**
+ * The size of the body of a batch.
+ *
+ * A batch carries a list of principals or of grants: a thousand of them
+ * are a hundred kilobytes, and the limit of a single body would refuse
+ * the call that onboards a tenant. The body of a batch is read by the
+ * endpoint that accepts a list, and the number of items of the list is
+ * bounded by the domain (spec §10.4).
+ */
+export const MAX_BATCH_BODY_BYTES = 1_048_576
+
+/** The options of the reading of a body. */
+interface BodyOptions {
+  /** The size of the body that is accepted, in bytes. */
+  maxBytes?: number
+}
+
+/** A schema of the body of a call. */
+interface BodySchema<T> {
+  safeParse: (value: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } }
+}
+
+/** The type of the body that a schema reads. */
+type BodyOf<S> = S extends BodySchema<infer T> ? T : never
+
+/**
  * Reads the body of a call and validates it.
  *
  * A body that is too large is a `413`, a body that is not JSON or that
  * does not match the schema is a `400`: the database is not touched
  * before the body is understood.
+ *
+ * A call accepts **one** shape or another: the body of one principal and
+ * the body of a batch of principals, for instance. The schemas are tried
+ * in the order they are given, and the problems of the first one are
+ * the ones of the refusal: it is the shape of the documentation.
  */
-async function readBody<T>(
+async function readBody<S1 extends BodySchema<unknown>>(
   context: Context<HubEnv>,
-  schema: {
-    safeParse: (value: unknown) => { success: boolean; data?: T; error?: { issues: unknown[] } }
-  }
-): Promise<T> {
+  first: S1,
+  options?: BodyOptions
+): Promise<BodyOf<S1>>
+async function readBody<S1 extends BodySchema<unknown>, S2 extends BodySchema<unknown>>(
+  context: Context<HubEnv>,
+  first: S1,
+  second: S2,
+  options?: BodyOptions
+): Promise<BodyOf<S1> | BodyOf<S2>>
+async function readBody(context: Context<HubEnv>, ...rest: unknown[]): Promise<unknown> {
+  const schemas = rest.filter(
+    (
+      entry
+    ): entry is {
+      safeParse: (value: unknown) => {
+        success: boolean
+        data?: unknown
+        error?: { issues: unknown[] }
+      }
+    } => typeof entry === 'object' && entry !== null && 'safeParse' in entry
+  )
+  const options = rest.find(
+    (entry): entry is BodyOptions =>
+      typeof entry === 'object' && entry !== null && 'maxBytes' in entry
+  )
+  const maxBytes = options?.maxBytes ?? MAX_BODY_BYTES
   const declared = Number(context.req.header('content-length') ?? '0')
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+  if (Number.isFinite(declared) && declared > maxBytes) {
     throw new BodyTooLargeError()
   }
   const raw = await context.req.text()
-  if (raw.length > MAX_BODY_BYTES) {
+  if (raw.length > maxBytes) {
     throw new BodyTooLargeError()
   }
   let parsed: unknown
@@ -51,18 +105,21 @@ async function readBody<T>(
   } catch {
     throw new AdministrationError('invalid_request', 'the body is not json')
   }
-  const result = schema.safeParse(parsed)
-  if (!result.success || result.data === undefined) {
-    const issues = result.error?.issues ?? []
-    const first = issues[0] as { path?: unknown[]; message?: string } | undefined
-    const field =
-      Array.isArray(first?.path) && first.path.length > 0 ? first.path.join('.') : 'body'
-    throw new AdministrationError(
-      'invalid_request',
-      `${field}: ${first?.message ?? 'the body is not valid'}`
-    )
+  for (const schema of schemas) {
+    const result = schema.safeParse(parsed)
+    if (result.success && result.data !== undefined) return result.data
   }
-  return result.data
+  const first = schemas[0]
+  const issues = (first?.safeParse(parsed).error?.issues ?? []) as {
+    path?: unknown[]
+    message?: string
+  }[]
+  const issue = issues[0]
+  const field = Array.isArray(issue?.path) && issue.path.length > 0 ? issue.path.join('.') : 'body'
+  throw new AdministrationError(
+    'invalid_request',
+    `${field}: ${issue?.message ?? 'the body is not valid'}`
+  )
 }
 
 /** The refusal of a body that is too large. */
@@ -340,7 +397,32 @@ export async function principalHandler(
   const endpoint = '/v1/admin/users'
   try {
     await authenticate(context, dependencies)
-    const body = await readBody(context, PrincipalBody)
+    const body = await readBody(context, PrincipalBody, PrincipalBatchBody, {
+      maxBytes: MAX_BATCH_BODY_BYTES,
+    })
+    // A batch is the call that onboards a tenant: one call writes a
+    // hundred principals instead of a hundred calls (spec §10.4).
+    if ('principals' in body) {
+      const outcomes = await dependencies.administration.upsertPrincipals(
+        body.principals.map((principal) => ({
+          tenant: principal.tenant,
+          externalSubject: principal.externalSubject,
+          email: principal.email,
+          displayName: principal.displayName,
+          status: principal.status,
+        })),
+        auditContext(context, dependencies)
+      )
+      return answer(context, dependencies, endpoint, 200, {
+        principals: outcomes.map((outcome) => ({
+          tenant: outcome.tenant,
+          externalSubject: outcome.externalSubject,
+          id: outcome.id,
+          created: outcome.created,
+          ...(outcome.error ? { error: outcome.error, message: outcome.message } : {}),
+        })),
+      })
+    }
     const result = await dependencies.administration.upsertPrincipal(
       {
         tenant: body.tenant,
@@ -444,7 +526,34 @@ export async function grantHandler(
   const endpoint = '/v1/admin/grants'
   try {
     await authenticate(context, dependencies)
-    const body = await readBody(context, GrantBody)
+    const body = await readBody(context, GrantBody, GrantBatchBody, {
+      maxBytes: MAX_BATCH_BODY_BYTES,
+    })
+    // A batch is the call that writes the grants of a tenant at once
+    // (spec §10.6).
+    if ('grants' in body) {
+      const outcomes = await dependencies.administration.upsertGrants(
+        body.grants.map((grant) => ({
+          tenant: grant.tenant,
+          userId: grant.userId ?? null,
+          group: grant.group ?? null,
+          permission: grant.permission,
+          workspaceId: grant.workspaceId ?? null,
+          routeId: grant.routeId ?? null,
+          expiresAt: grant.expiresAt ? new Date(grant.expiresAt) : null,
+          grantedBy: grant.grantedBy ?? null,
+        })),
+        auditContext(context, dependencies)
+      )
+      return answer(context, dependencies, endpoint, 200, {
+        grants: outcomes.map((outcome) => ({
+          tenant: outcome.tenant,
+          id: outcome.id,
+          created: outcome.created,
+          ...(outcome.error ? { error: outcome.error, message: outcome.message } : {}),
+        })),
+      })
+    }
     const result = await dependencies.administration.upsertGrant(
       {
         tenant: body.tenant,

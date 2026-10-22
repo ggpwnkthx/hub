@@ -60,6 +60,13 @@ The work that the release `1.0.0` carries, before the tag.
   audit answers `csv` and `jsonl` besides `json`: the rows leave the
   platform in a file that a spreadsheet or a script reads. The audit was
   a table and not a report; it is a table and a file now. (spec §10.12)
+- **The administration writes batches.** `POST /v1/admin/users` and
+  `PUT /v1/admin/grants` carry a list in their body: one call writes a
+  hundred principals or a hundred grants instead of a hundred calls. It
+  is the call that onboards a tenant, and it is the **same** endpoints:
+  the administration surface is still nine endpoints. Every item is
+  written on its own and audited, and the answer names the outcome of
+  every one of them. (spec §10.4, spec §10.6)
 
 ### The release
 

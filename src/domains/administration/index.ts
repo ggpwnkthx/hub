@@ -47,14 +47,19 @@ export type {
   TenantSummary,
 } from './ports'
 export {
+  GrantBatchBody,
   GrantBody,
   GroupBody,
+  MAX_BATCH_ITEMS,
   PERMISSION_PATTERN,
+  PrincipalBatchBody,
   PrincipalBody,
   SLUG_PATTERN,
   TenantBody,
+  type GrantBatchInput,
   type GrantInput,
   type GroupInput,
+  type PrincipalBatchInput,
   type PrincipalInput,
   type TenantInput,
 } from './schemas'
@@ -67,4 +72,6 @@ export {
   MAX_PAGE_SIZE,
   type AdministrationOptions,
   type AuditEntry,
+  type GrantOutcome,
+  type PrincipalOutcome,
 } from './service'

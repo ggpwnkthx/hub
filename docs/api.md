@@ -375,6 +375,42 @@ not_found` when the tenant is unknown.
 }
 ```
 
+#### The batch of the principals
+
+The body may carry a list of principals instead of one. It is the call
+that onboards a tenant: one call writes a hundred principals instead of
+a hundred calls.
+
+```bash
+curl -sS -X POST https://hub.example.com/v1/admin/users \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" \
+  -H "content-type: application/json" \
+  -d '{
+        "principals": [
+          {"tenant": "acme", "externalSubject": "00u1a2b3c4d5", "email": "alice@acme.example"},
+          {"tenant": "acme", "externalSubject": "00u1a2b3c4d6", "email": "bob@acme.example"}
+        ]
+      }'
+```
+
+The batch holds at most 1 000 principals. **Every item is written on its
+own**: an item that is written is audited, and an item that fails leaves
+nothing behind. An item that fails does not stop the others, and the
+answer names the outcome of every one of them.
+
+```json
+{
+  "principals": [
+    {"tenant": "acme", "externalSubject": "00u1a2b3c4d5", "id": "b1c2…", "created": true},
+    {"tenant": "acme", "externalSubject": "00u1a2b3c4d6", "id": null, "created": false,
+     "error": "not_found", "message": "the tenant does not exist"}
+  ]
+}
+```
+
+The call is **idempotent**: the same batch again writes the same
+principals, and the ones that exist are updated instead of created.
+
 ### `GET /v1/admin/users`
 
 The list of the principals.
@@ -447,6 +483,23 @@ curl -sS -X PUT https://hub.example.com/v1/admin/grants \
   "workspaceId": "11111111-1111-4111-8111-111111111111",
   "routeId": "workspace-api", "expiresAt": null, "revokedAt": null,
   "createdAt": "2026-01-08T10:06:00.000Z"
+}
+```
+
+#### The batch of the grants
+
+The body may carry a list of grants instead of one: `{"grants": [ … ]}`.
+The rules are the ones of the batch of the principals: at most 1 000
+grants, every item written on its own, the answer naming the outcome of
+every one of them, and the call idempotent.
+
+```json
+{
+  "grants": [
+    {"tenant": "acme", "id": "d3e4…", "created": true},
+    {"tenant": "acme", "id": null, "created": false,
+     "error": "not_found", "message": "the principal does not exist"}
+  ]
 }
 ```
 

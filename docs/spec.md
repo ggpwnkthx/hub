@@ -1307,6 +1307,30 @@ The pair is the key: the call is an **upsert**. `201` when the principal
 was created, `200` when it was updated. An unknown tenant → `404
 not_found`.
 
+**The batch.** The body may carry a list of principals instead of one:
+`{"principals": [ … ]}`. It is the call that onboards a tenant: one call
+writes a hundred principals instead of a hundred calls.
+
+- The batch holds at most **1 000** principals. A bigger list → `400
+  invalid_request`. An empty list → `400 invalid_request`. The body of a
+  batch is at most 1 MiB: the body of one principal is at most 64 KiB.
+- The answer is `200` and it names the outcome of **every** item:
+  `{"principals": [{"tenant", "externalSubject", "id", "created", "error"?,
+  "message"?}, …]}`.
+- **Every item is written on its own.** The change of an item and the row
+  of its audit are one statement: an item that is written is audited, and
+  an item that fails leaves nothing behind. An item that fails does not
+  stop the others — its `error` names the refusal (`not_found` for a
+  tenant that does not exist, `conflict` for an identity that is already
+  used) — because an operator that onboards a tenant wants to know
+  *which* identities were refused.
+- The call is **idempotent**: the same batch again writes the same
+  principals, and the ones that exist are updated instead of created.
+- The cost of a batch is the cost of its items: every item is one
+  statement and one row of the audit, so a batch of a thousand principals
+  is a thousand statements. The batch is the call that onboards a tenant,
+  and it is not the call of the path of a request.
+
 ### 10.5 `GET /v1/admin/users`
 
 The list of the principals. It is the endpoint that answers "who has an
@@ -1334,6 +1358,12 @@ A permission that exists in the catalogue of the platform is reused. A
 permission that exists in another tenant is **not** reused: the tenant
 creates its own row, and the grant names that row — a key is a name
 inside a tenant (§3.3).
+
+**The batch.** The body may carry a list of grants instead of one:
+`{"grants": [ … ]}`. The rules are the ones of the batch of the
+principals (§10.4): at most **1 000** grants, every item written on its
+own, the answer naming the outcome of every item, and the call
+idempotent.
 
 ### 10.7 `DELETE /v1/admin/grants/{id}`
 

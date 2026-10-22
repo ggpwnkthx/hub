@@ -92,6 +92,45 @@ export interface AuditEntry {
   tenant?: string
 }
 
+/**
+ * The outcome of one principal of a batch.
+ *
+ * The answer of a batch names every item: the one that was written and
+ * the one that was refused, with the code of the refusal.
+ */
+export interface PrincipalOutcome {
+  /** The tenant of the principal. */
+  tenant: string
+  /** The external identity of the principal. */
+  externalSubject: string
+  /** The id of the principal, or null when the item failed. */
+  id: string | null
+  /** True when the principal was created, false when it was updated. */
+  created: boolean
+  /** The code of the refusal, when the item failed. */
+  error?: string
+  /** The message of the refusal, when the item failed. */
+  message?: string
+}
+
+/**
+ * The outcome of one grant of a batch.
+ *
+ * The rules are the ones of the outcome of a principal.
+ */
+export interface GrantOutcome {
+  /** The tenant of the grant. */
+  tenant: string
+  /** The id of the grant, or null when the item failed. */
+  id: string | null
+  /** True when the grant was created, false when it was updated. */
+  created: boolean
+  /** The code of the refusal, when the item failed. */
+  error?: string
+  /** The message of the refusal, when the item failed. */
+  message?: string
+}
+
 /** The defaults of the registration of a tenant. */
 export const DEFAULT_IDP_SCOPES = ['openid', 'email', 'profile']
 
@@ -487,6 +526,91 @@ export class AdministrationService {
       created: false,
       audit: { action: 'principal.updated', id: principal.id, tenant: tenant.slug },
     }
+  }
+
+  /**
+   * Writes a batch of principals.
+   *
+   * A batch is the call that onboards a tenant: one call writes a
+   * hundred principals instead of a hundred calls.
+   *
+   * **Every item is written on its own.** The change of an item and the
+   * row of its audit are one statement, so an item that is written is
+   * audited, and an item that fails leaves nothing behind. The answer
+   * names the outcome of every item: an item that failed does not stop
+   * the others, because an operator that onboards a tenant wants to know
+   * *which* identities were refused.
+   *
+   * The call is **idempotent**: the same batch again writes the same
+   * principals, and the ones that exist are updated instead of created.
+   */
+  async upsertPrincipals(
+    registrations: PrincipalRegistration[],
+    context: AuditContext
+  ): Promise<PrincipalOutcome[]> {
+    const outcomes: PrincipalOutcome[] = []
+    for (const registration of registrations) {
+      try {
+        const result = await this.upsertPrincipal(registration, context)
+        outcomes.push({
+          tenant: result.principal.tenant,
+          externalSubject: result.principal.externalSubject,
+          id: result.principal.id,
+          created: result.created,
+        })
+      } catch (error) {
+        if (error instanceof AdministrationError) {
+          outcomes.push({
+            tenant: registration.tenant,
+            externalSubject: registration.externalSubject,
+            id: null,
+            created: false,
+            error: error.code,
+            message: error.message,
+          })
+          continue
+        }
+        throw error
+      }
+    }
+    return outcomes
+  }
+
+  /**
+   * Writes a batch of grants.
+   *
+   * The rules are the ones of the batch of the principals (above): every
+   * grant is written on its own, and the answer names the outcome of
+   * every one of them.
+   */
+  async upsertGrants(
+    registrations: GrantRegistration[],
+    context: AuditContext
+  ): Promise<GrantOutcome[]> {
+    const outcomes: GrantOutcome[] = []
+    for (const registration of registrations) {
+      try {
+        const result = await this.upsertGrant(registration, context)
+        outcomes.push({
+          tenant: result.grant.tenant,
+          id: result.grant.id,
+          created: result.audit.action === 'grant.created',
+        })
+      } catch (error) {
+        if (error instanceof AdministrationError) {
+          outcomes.push({
+            tenant: registration.tenant,
+            id: null,
+            created: false,
+            error: error.code,
+            message: error.message,
+          })
+          continue
+        }
+        throw error
+      }
+    }
+    return outcomes
   }
 
   /**

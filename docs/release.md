@@ -165,10 +165,13 @@ to live in Hub.
    calls of [operations.md](operations.md) §"The first tenant".
 2. **The principals are registered**: one call per external identity of
    the tenant. The external identity is the `sub` of the provider of the
-   tenant — it is the key of the mapping (spec §6.2).
+   tenant — it is the key of the mapping (spec §6.2). **One call carries
+   the whole list** (§10.4): the batch is the call that onboards a
+   tenant.
 3. **The grants are registered**: one call per permission, on a workspace,
    on a route. The first ones are copied from the access service that is
    in production, so the shadow comparison has something to compare.
+   **One call carries the whole list** (§10.6).
 4. **The shadow runs for a day**: the tool of the comparison asks the two
    services the same decisions.
 5. **The gateway of the staging is switched**: the issuer, the client id,

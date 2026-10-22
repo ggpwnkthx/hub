@@ -230,7 +230,10 @@ jobs:
             echo "the service did not create the tenant"
             exit 1
           fi
-          if ! echo "${principal}" | jq -e '.id' > /dev/null; then
+          # The identifier of the principal is a uuid, and not a json
+          # object: the answer of the creation is read by `jq`.
+          if ! printf '%s' "${principal}" |
+            grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
             echo "the service did not create the principal"
             exit 1
           fi

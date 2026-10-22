@@ -112,8 +112,13 @@ jobs:
           case "${{ matrix.target }}" in
             bun-windows-*) name="${name}.exe" ;;
           esac
+          # The embedded PostgreSQL is a development dependency: it is not
+          # in the image of a deployment either, and a deployment names a
+          # PostgreSQL server. The import is left external so that the
+          # bundler does not look for a module that is not there.
           bun build src/main.ts --compile \
             --target=${{ matrix.target }} \
+            --external @electric-sql/pglite \
             --outfile "dist/${name}"
           ls -la dist
 

@@ -97,7 +97,18 @@ class PgliteDatabase implements Database {
  * the process, which is what a test that does not need a state wants.
  */
 export async function createPgliteDatabase(path: string): Promise<Database> {
-  const { PGlite: Embedded } = await import('@electric-sql/pglite')
+  let Embedded: typeof import('@electric-sql/pglite').PGlite
+  try {
+    ;({ PGlite: Embedded } = await import('@electric-sql/pglite'))
+  } catch {
+    // The embedded PostgreSQL is a development dependency: it is not in
+    // the image of a deployment, and it is not in a compiled binary
+    // either. The reason is named, because "cannot find module" is not a
+    // reason an operator can act on.
+    throw new Error(
+      'the embedded PostgreSQL is not part of this build: it is a development dependency, and a deployment needs a PostgreSQL server named by HUB_DATABASE_URL'
+    )
+  }
   const target = path === '' ? 'memory://' : path
   if (target !== 'memory://') {
     // The directory of the database is created: the embedded database of a

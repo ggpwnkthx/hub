@@ -276,9 +276,13 @@ tar -xzf hub-0.1.0-linux-x64.tar.gz -C /opt/hub
 /opt/hub/hub-0.1.0-linux-x64
 ```
 
-A binary that does not find the schema refuses to start and says where
-it looked: a service that starts against a schema it does not understand
-is worse than a service that does not start.
+The embedded PostgreSQL of a development machine is not part of a binary:
+it is a development dependency, and it is not in the image of a
+deployment either. A binary names a PostgreSQL server with
+`HUB_DATABASE_URL`, and a service that does not find the schema refuses
+to start and says where it looked: a service that starts against a
+schema it does not understand is worse than a service that does not
+start.
 
 ### The scan and the SBOM
 

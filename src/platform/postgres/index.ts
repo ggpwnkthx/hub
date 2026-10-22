@@ -12,6 +12,7 @@ export {
   CHECK_VIOLATION,
   DatabaseError,
   FOREIGN_KEY_VIOLATION,
+  GROUP_MEMBERSHIP_CONSTRAINT,
   normalizeError,
   UNIQUE_VIOLATION,
 } from './database'

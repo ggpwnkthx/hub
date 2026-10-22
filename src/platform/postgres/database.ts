@@ -20,6 +20,15 @@ export const FOREIGN_KEY_VIOLATION = '23503'
 export const CHECK_VIOLATION = '23514'
 
 /**
+ * The name of the constraint of the membership of the groups.
+ *
+ * The membership is checked by the database (spec §3.5): a member that is
+ * not a principal of the tenant is refused by the constraint, and the
+ * application turns that refusal into the `404` of the administration.
+ */
+export const GROUP_MEMBERSHIP_CONSTRAINT = 'groups_membership_is_principals'
+
+/**
  * The failure of a statement of the database.
  *
  * The code is the one of PostgreSQL: the domains turn it into the answer

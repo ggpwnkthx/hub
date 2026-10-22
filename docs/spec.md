@@ -273,7 +273,7 @@ set of principals of the tenant that the policy is written on.
 | `tenant_id` | `uuid` | The tenant of the group. Foreign key to `tenants`. |
 | `key` | `text` | The name of the group, `[a-z0-9][a-z0-9._-]{0,63}`. |
 | `display_name` | `text` | `null` when there is none. |
-| `members` | `uuid[]` | The principals of the group: their ids. Every member is a principal of the tenant at the moment the membership is written. The administration speaks in external subjects (§10.9) and the adapter translates them. |
+| `members` | `uuid[]` | The principals of the group: their ids. Every member is a principal of the tenant at the moment the membership is written. The administration speaks in external subjects (§10.9) and the adapter translates them. The database checks it: a constraint trigger refuses a member that is not a principal of the tenant of the group. |
 | `created_at`, `updated_at` | `timestamptz` | |
 
 Unique: `(tenant_id, key)`. The pair `(id, tenant_id)` is unique as well,
@@ -282,6 +282,16 @@ so a grant can carry the tenant of its group in a foreign key (§3.4).
 The membership is **replaced** by the call of the administration (§10.9):
 the members of the list are the members of the group, and the principals
 that are not in the list are not in the group any more.
+
+The membership is checked by the **database** and not only by the
+application: a list of ids has no foreign key, so a constraint trigger
+checks every member when the group is written, and refuses the one that
+is not a principal of the tenant of the group. The check is deferred to
+the end of the transaction, so a principal that is created in the same
+transaction is seen. The refusal of the database is the same `404` that
+the administration gives when it finds the member before the write
+(§10.9): the constraint is the backstop of the rule of the application,
+not its replacement.
 
 The membership is indexed: the question that the decision asks is "which
 groups hold this principal", and the predicate that answers it is a

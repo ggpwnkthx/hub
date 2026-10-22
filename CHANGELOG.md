@@ -51,6 +51,11 @@ The work that the release `1.0.0` carries, before the tag.
   shared store and not by the memory of the process: a deployment of
   several replicas does not accept five times the budget. The second
   open finding of the security review is closed. (spec §10.1)
+- **The database checks the membership of the groups.** The membership
+  is a list of ids and a list has no foreign key: a constraint trigger
+  refuses a member that is not a principal of the tenant of the group,
+  and the refusal is the `404` of the administration. The model of Hub
+  is still five tables. (spec §3.5)
 
 ### The release
 

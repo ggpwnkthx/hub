@@ -28,7 +28,9 @@ import {
   type TenantStore,
 } from '../domains/administration'
 import {
+  CHECK_VIOLATION,
   DatabaseError,
+  GROUP_MEMBERSHIP_CONSTRAINT,
   UNIQUE_VIOLATION,
   type AuditRepository,
   type AuditRow,
@@ -162,10 +164,25 @@ function toGrant(row: GrantRow): {
  *
  * A unique violation is a conflict: the slug, the client id, the domain
  * of the e-mail and the tuple of a grant are unique.
+ *
+ * The membership of a group is checked by the database (spec §3.5): a
+ * member that is not a principal of the tenant is a `404`, the same
+ * answer that the administration gives when it finds it before the
+ * write.
  */
 function translate(error: unknown): unknown {
   if (error instanceof DatabaseError && error.code === UNIQUE_VIOLATION) {
     return new AdministrationError('conflict', 'the value is already used by another tenant')
+  }
+  if (
+    error instanceof DatabaseError &&
+    error.code === CHECK_VIOLATION &&
+    error.constraint === GROUP_MEMBERSHIP_CONSTRAINT
+  ) {
+    return new AdministrationError(
+      'not_found',
+      'a member of the group is not a principal of the tenant'
+    )
   }
   return error
 }

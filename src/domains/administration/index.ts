@@ -17,8 +17,10 @@ export type {
 export type {
   AuditContext,
   AuditFilter,
+  AuditFormat,
   AuditPage,
   AuditRecord,
+  AuditRows,
   AuditStore,
   ChangeAudit,
   Grant,
@@ -61,6 +63,7 @@ export {
   DEFAULT_IDP_ALGORITHMS,
   DEFAULT_IDP_SCOPES,
   DEFAULT_PAGE_SIZE,
+  MAX_EXPORT_ROWS,
   MAX_PAGE_SIZE,
   type AdministrationOptions,
   type AuditEntry,

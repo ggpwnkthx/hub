@@ -156,3 +156,66 @@ describe('the audit of the administration', () => {
     expect(response.status).toBe(401)
   })
 })
+
+describe('the export of the audit', () => {
+  /** Reads the export of the audit, in a format. */
+  async function exported(format: string, query = ''): Promise<Response> {
+    return await fetch(`${base}/v1/admin/audit?format=${format}${query}`, {
+      headers: { authorization: `Bearer ${ADMIN_TOKEN}` },
+    })
+  }
+
+  test('the export in CSV carries the header and the rows', async () => {
+    const response = await exported('csv')
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('text/csv')
+    expect(response.headers.get('content-disposition')).toContain('attachment')
+
+    const text = await response.text()
+    const lines = text.trim().split('\n')
+    expect(lines[0]).toBe('id,at,action,targetId,tenant,operator,address,requestId')
+    expect(lines.length).toBeGreaterThan(1)
+    // The rows are the rows of the audit.
+    const body = await audit('?limit=200')
+    const records = body.records as Record<string, unknown>[]
+    expect(lines.length - 1).toBe(records.length)
+    expect(lines[1]).toContain(records[0]!.action as string)
+  })
+
+  test('the export in JSON Lines carries one object per line', async () => {
+    const response = await exported('jsonl')
+    expect(response.status).toBe(200)
+    expect(response.headers.get('content-type')).toContain('application/x-ndjson')
+
+    const text = await response.text()
+    const lines = text.trim().split('\n')
+    expect(lines.length).toBeGreaterThan(0)
+    for (const line of lines) {
+      const record = JSON.parse(line) as Record<string, unknown>
+      expect(typeof record.action).toBe('string')
+      expect(typeof record.at).toBe('string')
+    }
+  })
+
+  test('the export carries the filter of the list', async () => {
+    const response = await exported('csv', '&action=grant.revoked')
+    const text = await response.text()
+    const lines = text.trim().split('\n').slice(1)
+    expect(lines.length).toBeGreaterThan(0)
+    for (const line of lines) {
+      expect(line).toContain('grant.revoked')
+    }
+  })
+
+  test('a format that is not known is refused', async () => {
+    const response = await exported('xml')
+    expect(response.status).toBe(400)
+    const body = (await response.json()) as Record<string, unknown>
+    expect(body.error).toBe('invalid_request')
+  })
+
+  test('the export needs the token of the administration', async () => {
+    const response = await fetch(`${base}/v1/admin/audit?format=csv`)
+    expect(response.status).toBe(401)
+  })
+})

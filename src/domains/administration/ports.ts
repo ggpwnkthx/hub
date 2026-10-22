@@ -309,6 +309,15 @@ export interface AuditFilter {
   offset: number
 }
 
+/**
+ * The format of the answer of the audit.
+ *
+ * `json` is the paginated answer of the list. `csv` and `jsonl` are the
+ * exports: the rows leave the platform in a file that a spreadsheet or a
+ * script reads (spec §10.12).
+ */
+export type AuditFormat = 'json' | 'csv' | 'jsonl'
+
 /** A page of the audit and the number of the rows that match the filter. */
 export interface AuditPage {
   records: AuditRecord[]
@@ -318,6 +327,22 @@ export interface AuditPage {
   limit: number
   /** The number of rows that were skipped. */
   offset: number
+  /** The format of the answer. */
+  format: AuditFormat
+}
+
+/**
+ * The rows of the audit that match a filter.
+ *
+ * The storage does not know the format of the answer and the page of the
+ * list: it reads the rows that match the filter, and it says how many
+ * they are.
+ */
+export interface AuditRows {
+  /** The rows of the audit. */
+  records: AuditRecord[]
+  /** The number of rows that match the filter, the page included. */
+  total: number
 }
 
 /**
@@ -330,7 +355,7 @@ export interface AuditPage {
  */
 export interface AuditStore {
   /** The rows of the audit that match a filter, and their number. */
-  list(filter: AuditFilter): Promise<AuditPage>
+  list(filter: AuditFilter): Promise<AuditRows>
 }
 
 /** The storage of the tenants. */

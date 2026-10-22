@@ -12,6 +12,7 @@ import { AdministrationError } from './errors'
 import type { FailedAuthenticationLimiter } from './limiter'
 import type {
   AuditContext,
+  AuditFormat,
   AuditPage,
   AuditStore,
   ChangeAudit,
@@ -127,6 +128,29 @@ function wholeNumber(
     throw new AdministrationError('invalid_request', `${name} must be between ${min} and ${max}`)
   }
   return parsed
+}
+
+/**
+ * The maximum number of rows of an export of the audit.
+ *
+ * The export leaves the platform: it is a file that an operator keeps. The
+ * number is a ceiling, not a promise: an audit that holds more rows is
+ * exported page by page.
+ */
+export const MAX_EXPORT_ROWS = 10_000
+
+/**
+ * Reads the format of the answer of the audit.
+ *
+ * A format that is not one of the three is refused: an export that is
+ * asked for in a format the service does not know is not an export.
+ */
+function auditFormat(value: string | null): AuditFormat {
+  const text = (value ?? '').trim().toLowerCase()
+  if (text === '' || text === 'json') return 'json'
+  if (text === 'csv') return 'csv'
+  if (text === 'jsonl') return 'jsonl'
+  throw new AdministrationError('invalid_request', 'the format must be json, csv or jsonl')
 }
 
 /**
@@ -683,12 +707,17 @@ export class AdministrationService {
     action?: string | null
     limit?: string | null
     offset?: string | null
+    format?: string | null
   }): Promise<AuditPage> {
+    const format = auditFormat(query.format ?? null)
+    // An export leaves the platform: it carries the rows in a file, and
+    // the file is bigger than a page of the list.
+    const maximum = format === 'json' ? MAX_PAGE_SIZE : MAX_EXPORT_ROWS
     const limit = wholeNumber(
       query.limit ?? undefined,
-      DEFAULT_PAGE_SIZE,
+      format === 'json' ? DEFAULT_PAGE_SIZE : MAX_EXPORT_ROWS,
       1,
-      MAX_PAGE_SIZE,
+      maximum,
       'limit'
     )
     const offset = wholeNumber(query.offset ?? undefined, 0, 0, Number.MAX_SAFE_INTEGER, 'offset')
@@ -710,6 +739,7 @@ export class AdministrationService {
       total: page?.total ?? 0,
       limit,
       offset,
+      format,
     }
   }
 

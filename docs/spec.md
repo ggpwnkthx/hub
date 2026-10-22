@@ -1395,6 +1395,22 @@ The filter is `tenant` (the slug of a tenant that does not exist →
 `principal.created`, `principal.updated`, `group.created`,
 `group.updated`, `grant.created`, `grant.updated`, `grant.revoked`).
 
+The **format** of the answer is `json` by default. `csv` and `jsonl` are
+the **exports**: the rows leave the platform in a file that a spreadsheet
+or a script reads, and the filter of the list applies to them. A format
+that is not one of the three → `400 invalid_request`.
+
+| Format | The answer |
+| --- | --- |
+| `json` | The paginated list: the rows, the `total`, the `limit` and the `offset`. |
+| `csv` | `text/csv`: the header is the name of the columns, and every row is a line. |
+| `jsonl` | `application/x-ndjson`: one object per line. |
+
+An export carries at most **10 000 rows** in one answer, and the `limit`
+of the list applies to it: an audit that holds more rows is exported page
+by page. The answer of an export names the file in
+`content-disposition`.
+
 The answer carries the rows and the `total` of the rows that match the
 filter:
 

@@ -13,8 +13,8 @@ import {
   AdministrationService,
   FailedAuthenticationLimiter,
   type AuditFilter,
-  type AuditPage,
   type AuditRecord,
+  type AuditRows,
   type AuditStore,
   type AuthenticationFailures,
   type GrantFilter,
@@ -434,13 +434,11 @@ export function createAdministrationService(
 
   const auditStore: AuditStore | undefined = dependencies.audit
     ? {
-        list: async (filter: AuditFilter): Promise<AuditPage> => {
+        list: async (filter: AuditFilter): Promise<AuditRows> => {
           const page = await run(async () => await dependencies.audit!.list(filter))
           return {
             records: page.rows.map(toAudit),
             total: page.total,
-            limit: filter.limit,
-            offset: filter.offset,
           }
         },
       }

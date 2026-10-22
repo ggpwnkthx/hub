@@ -584,8 +584,9 @@ curl -sS "https://hub.example.com/v1/admin/audit?tenant=acme&limit=20" \
 | --- | --- |
 | `tenant` | Optional. The slug of a tenant. A tenant that does not exist → `404 not_found`. |
 | `action` | Optional. The name of the action. |
-| `limit` | Optional. Default `50`, maximum `200`. |
+| `limit` | Optional. Default `50`, maximum `200`. An export carries at most `10000`. |
 | `offset` | Optional. Default `0`. |
+| `format` | Optional. `json` by default, `csv` or `jsonl` for the export. Another value → `400 invalid_request`. |
 
 The actions are `tenant.created`, `tenant.updated`, `principal.created`,
 `principal.updated`, `group.created`, `group.updated`, `grant.created`,
@@ -619,6 +620,31 @@ that repeats it writes the same row of the audit.
 The `operator` is the fingerprint of the credential that made the call:
 the first twelve hexadecimal characters of the digest of the token. It
 names the operator and it is not the token.
+
+### The export of the audit
+
+The audit is a table and it is queryable, but an operator that hands the
+history of the platform to somebody needs a **file**. The export is the
+same endpoint with a format:
+
+```bash
+# The audit of a tenant, in a file a spreadsheet reads.
+curl -sS "https://hub.example.com/v1/admin/audit?format=csv&tenant=acme" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" -o acme-audit.csv
+
+# The audit of a tenant, in a file a script reads line by line.
+curl -sS "https://hub.example.com/v1/admin/audit?format=jsonl&tenant=acme" \
+  -H "authorization: Bearer $HUB_ADMIN_TOKEN" -o acme-audit.jsonl
+```
+
+The filter of the list applies to the export, and an export carries at
+most 10 000 rows: an audit that holds more rows is exported page by
+page, with `limit` and `offset`.
+
+```csv
+id,at,action,targetId,tenant,operator,address,requestId
+0f2c…,2026-01-08T10:30:00.000Z,grant.revoked,9fbfda13-…,acme,6b1f2c9d0e3a,10.0.0.7,8452a08e-…
+```
 
 ---
 

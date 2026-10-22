@@ -577,6 +577,66 @@ function auditBody(record: {
   }
 }
 
+/** The columns of the export of the audit, in the order of the file. */
+const AUDIT_COLUMNS = [
+  'id',
+  'at',
+  'action',
+  'targetId',
+  'tenant',
+  'operator',
+  'address',
+  'requestId',
+]
+
+/**
+ * Escapes a value of a cell of the export.
+ *
+ * A value that carries a comma, a quote or a line break is quoted, and
+ * the quotes of the value are doubled: the file is read by a
+ * spreadsheet, and a value that breaks it is a value that is lost.
+ */
+function csvCell(value: string): string {
+  if (!/[",\r\n]/.test(value)) return value
+  return `"${value.replace(/"/g, '""')}"`
+}
+
+/**
+ * The export of the audit, in CSV.
+ *
+ * The header is the name of the columns, and every row is a line: the
+ * file is read by a spreadsheet and by a script.
+ */
+function auditCsv(records: ReturnType<typeof auditBody>[]): string {
+  const lines = [AUDIT_COLUMNS.join(',')]
+  for (const record of records) {
+    lines.push(
+      AUDIT_COLUMNS.map((column) => {
+        const value = record[column]
+        return csvCell(value === null || value === undefined ? '' : String(value))
+      }).join(',')
+    )
+  }
+  return `${lines.join('\n')}\n`
+}
+
+/**
+ * The export of the audit, in JSON Lines.
+ *
+ * One object per line: the format that a script reads line by line,
+ * without holding the whole file in the memory.
+ */
+function auditJsonl(records: ReturnType<typeof auditBody>[]): string {
+  return (
+    records.map((record) => JSON.stringify(record)).join('\n') + (records.length > 0 ? '\n' : '')
+  )
+}
+
+/** The name of the file of an export of the audit. */
+function auditFilename(format: string): string {
+  return `hub-audit-${new Date().toISOString().replace(/[:.]/g, '-')}.${format}`
+}
+
 /**
  * `GET /v1/admin/audit`: the audit of the administration.
  *
@@ -596,7 +656,25 @@ export async function auditHandler(
       action: query.action ?? null,
       limit: query.limit ?? null,
       offset: query.offset ?? null,
+      format: query.format ?? null,
     })
+
+    // The exports leave the platform: the rows are in a file that a
+    // spreadsheet or a script reads (spec §10.12).
+    if (page.format !== 'json') {
+      const records = page.records.map(auditBody)
+      const body = page.format === 'csv' ? auditCsv(records) : auditJsonl(records)
+      return new Response(body, {
+        headers: {
+          'content-type':
+            page.format === 'csv'
+              ? 'text/csv; charset=utf-8'
+              : 'application/x-ndjson; charset=utf-8',
+          'content-disposition': `attachment; filename="${auditFilename(page.format)}"`,
+        },
+      })
+    }
+
     return answer(context, dependencies, endpoint, 200, {
       records: page.records.map(auditBody),
       total: page.total,

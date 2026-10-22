@@ -56,6 +56,10 @@ The work that the release `1.0.0` carries, before the tag.
   refuses a member that is not a principal of the tenant of the group,
   and the refusal is the `404` of the administration. The model of Hub
   is still five tables. (spec §3.5)
+- **The audit of the administration is exported.** The endpoint of the
+  audit answers `csv` and `jsonl` besides `json`: the rows leave the
+  platform in a file that a spreadsheet or a script reads. The audit was
+  a table and not a report; it is a table and a file now. (spec §10.12)
 
 ### The release
 

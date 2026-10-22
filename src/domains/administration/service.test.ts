@@ -198,6 +198,14 @@ class FakePermissions implements PermissionStore {
     this.rows.push(permission)
     return permission
   }
+
+  async createOrFind(registration: { tenantId: string | null; key: string }): Promise<Permission> {
+    const existing = this.rows.find(
+      (row) => row.tenantId === registration.tenantId && row.key === registration.key
+    )
+    if (existing) return existing
+    return await this.create(registration)
+  }
 }
 
 /** The storage of the grants of the tests. */
@@ -614,7 +622,11 @@ describe('the grants of the administration', () => {
     expect(PERMISSIONS.rows.filter((row) => row.key === 'platform.read')).toHaveLength(1)
   })
 
-  test('a permission of another tenant is refused', async () => {
+  test('a key is a name inside a tenant: two tenants hold the same key', async () => {
+    // The permission of another tenant is not the permission of this
+    // one: the tenant creates its own row, and the grant names that
+    // row. A key that another tenant owns never becomes a permission of
+    // this tenant.
     const administration = service()
     await PERMISSIONS.create({ tenantId: 'another-tenant', key: 'workspace.write' })
     const principal = await administration.upsertPrincipal(
@@ -624,16 +636,18 @@ describe('the grants of the administration', () => {
       },
       CONTEXT
     )
-    await expect(
-      administration.upsertGrant(
-        {
-          tenant: 'acme',
-          userId: principal.principal.id,
-          permission: 'workspace.write',
-        },
-        CONTEXT
-      )
-    ).rejects.toThrow(/belongs to another tenant/)
+    const grant = await administration.upsertGrant(
+      {
+        tenant: 'acme',
+        userId: principal.principal.id,
+        permission: 'workspace.write',
+      },
+      CONTEXT
+    )
+    expect(grant.grant.permission).toBe('workspace.write')
+    const rows = PERMISSIONS.rows.filter((row) => row.key === 'workspace.write')
+    expect(rows).toHaveLength(2)
+    expect(rows.map((row) => row.tenantId).sort()).toEqual(['another-tenant', 'tenant-1'])
   })
 
   test('a principal of another tenant is refused', async () => {

@@ -398,6 +398,14 @@ export interface PermissionStore {
   findByKey(key: string): Promise<Permission | null>
   /** Creates a permission. */
   create(registration: { tenantId: string | null; key: string }): Promise<Permission>
+  /**
+   * Creates a permission, or reads the one that is already there.
+   *
+   * A key is a name inside a tenant: two tenants may hold a permission
+   * of the same key, and two calls of the same tenant may create it at
+   * the same time.
+   */
+  createOrFind(registration: { tenantId: string | null; key: string }): Promise<Permission>
 }
 
 /** The storage of the groups. */

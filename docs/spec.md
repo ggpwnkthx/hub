@@ -221,6 +221,13 @@ rows with the same key.
 A permission of the catalogue (`tenant_id is null`) may be granted to every
 tenant. A permission of a tenant may only be granted inside that tenant.
 
+**A key is a name inside a tenant.** Two tenants may hold a permission of
+the same key, and each one has its own row: the unique index is on
+`(coalesce(tenant_id, '000…0'::uuid), key)`, so the rows live side by
+side. The permission of another tenant is never the permission of this
+one, and a grant never names it: the row of the tenant is created on
+demand (§10.6).
+
 ### 3.4 `grants`
 
 The policy of the platform. A grant says: this principal — or this group
@@ -1268,8 +1275,10 @@ A principal that belongs to another tenant → `403 forbidden`. A `userId`
 that does not exist → `404 not_found`. A group that does not exist → `404
 not_found`. A group of another tenant → `403 forbidden`. A body that
 names neither a principal nor a group, or both → `400 invalid_request`.
-A permission that exists in the catalogue of the platform is reused; a
-permission that exists in another tenant → `403 forbidden`.
+A permission that exists in the catalogue of the platform is reused. A
+permission that exists in another tenant is **not** reused: the tenant
+creates its own row, and the grant names that row — a key is a name
+inside a tenant (§3.3).
 
 ### 10.7 `DELETE /v1/admin/grants/{id}`
 

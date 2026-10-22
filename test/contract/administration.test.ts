@@ -174,6 +174,40 @@ describe('the administration of Hub', () => {
     expect(response.body.revokedAt).toBeNull()
   })
 
+  test('two tenants are granted the same permission key', async () => {
+    // A key is a name inside a tenant: the second tenant is not refused
+    // because the first one holds the key, and the grant names the row
+    // of its own tenant.
+    const second = await call('/v1/admin/tenants', 'POST', {
+      slug: 'globex',
+      displayName: 'Globex Inc',
+      issuer: 'https://login.globex.example',
+      idpClientId: 'hub-globex',
+      idpClientSecret: 'the-secret-of-the-provider',
+      idpRedirectUri: 'https://hub.example.com/oauth/tenant/callback',
+      clientId: 'shuttle-globex',
+      clientSecret: 'the-secret-of-the-gateway',
+    })
+    expect(second.status).toBe(201)
+
+    const principal = await call('/v1/admin/users', 'POST', {
+      tenant: 'globex',
+      externalSubject: 'the-subject-of-the-second-tenant',
+    })
+    expect(principal.status).toBe(201)
+
+    const grant = await call('/v1/admin/grants', 'PUT', {
+      tenant: 'globex',
+      userId: principal.body.id,
+      permission: 'workspace.read',
+      workspaceId: '11111111-1111-4111-8111-111111111111',
+      routeId: 'workspace-api',
+    })
+    expect(grant.status).toBe(200)
+    expect(grant.body.permission).toBe('workspace.read')
+    expect(grant.body.tenant).toBe('globex')
+  })
+
   test('a grant is revoked and the revocation is idempotent', async () => {
     const principal = await call('/v1/admin/users', 'POST', {
       tenant: 'acme',

@@ -95,6 +95,33 @@ export class PermissionRepository {
     return rows[0] ? toRow(rows[0]) : null
   }
 
+  /**
+   * Creates a permission, or reads the one that is already there.
+   *
+   * The unique index is on `(coalesce(tenant_id, '000…'), key)`: two
+   * tenants may hold a permission of the same key, and two calls that
+   * create the key of the same tenant at the same time must not fail
+   * the second one. The conflict is resolved by the statement itself,
+   * and the row that is already there is read back.
+   */
+  async createOrFind(input: NewPermission): Promise<PermissionRow> {
+    const rows = await this.db.query<PermissionRecord>(
+      `insert into permissions (tenant_id, key, description)
+       values ($1, $2, $3)
+       on conflict (coalesce(tenant_id, '00000000-0000-0000-0000-000000000000'::uuid), key) do nothing
+       returning ${COLUMNS}`,
+      [input.tenantId ?? null, input.key, input.description ?? null]
+    )
+    if (rows[0]) return toRow(rows[0])
+    const existing = input.tenantId
+      ? await this.findByTenantAndKey(input.tenantId, input.key)
+      : await this.findCataloguePermission(input.key)
+    if (!existing) {
+      throw new Error(`the permission ${input.key} could not be created and could not be read`)
+    }
+    return existing
+  }
+
   /** The permissions of a tenant, and the ones of the catalogue. */
   async findByTenant(tenantId: string): Promise<PermissionRow[]> {
     const rows = await this.db.query<PermissionRecord>(

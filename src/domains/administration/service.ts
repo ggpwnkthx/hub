@@ -709,9 +709,13 @@ export class AdministrationService {
   /**
    * The permission of a grant.
    *
-   * The catalogue of the platform is reused, the permission of the tenant
-   * is reused, the permission of another tenant is refused and the
-   * permission that does not exist is created in the scope of the tenant.
+   * A key is a name **inside** a tenant: the catalogue of the platform
+   * is shared and is reused, the permission of the tenant is reused, and
+   * the permission that does not exist is created in the scope of the
+   * tenant. Two tenants may hold a permission of the same key: the
+   * unique index is on `(tenant, key)`, and a key that another tenant
+   * owns never becomes a permission of this one — the tenant creates
+   * its own row, and the grant names that row.
    */ private async resolvePermission(tenantId: string, key: string): Promise<Permission> {
     const catalogue = await this.options.permissions.findCataloguePermission(key)
     if (catalogue) return catalogue
@@ -719,11 +723,6 @@ export class AdministrationService {
     const own = await this.options.permissions.findByTenantAndKey(tenantId, key)
     if (own) return own
 
-    const other = await this.options.permissions.findByKey(key)
-    if (other) {
-      throw new AdministrationError('forbidden', 'the permission belongs to another tenant')
-    }
-
-    return await this.options.permissions.create({ tenantId, key })
+    return await this.options.permissions.createOrFind({ tenantId, key })
   }
 }

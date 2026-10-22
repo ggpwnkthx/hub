@@ -287,6 +287,10 @@ export function createAdministrationService(
       const row = await run(async () => await dependencies.permissions.create(registration))
       return toPermission(row)
     },
+    createOrFind: async (registration) => {
+      const row = await run(async () => await dependencies.permissions.createOrFind(registration))
+      return toPermission(row)
+    },
   }
 
   /**

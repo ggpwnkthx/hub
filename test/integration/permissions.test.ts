@@ -63,4 +63,31 @@ describe('the permissions of Hub', () => {
     const enabled = await permissions.setEnabled(created.id, true)
     expect(enabled?.enabled).toBe(true)
   })
+
+  test('two tenants hold a permission of the same key', async () => {
+    // A key is a name inside a tenant: the rows live side by side, and
+    // the row of one tenant is never the row of the other.
+    const tenants = new TenantRepository(database, createSecretCipher('the-key-of-the-deployment'))
+    const other = await tenants.create({
+      slug: 'other',
+      displayName: 'Other Inc',
+      issuer: 'https://login.other.example',
+      idpClientId: 'hub-other',
+      idpClientSecret: 'secret',
+      idpRedirectUri: 'https://hub.example.com/oauth/tenant/callback',
+      idpScopes: ['openid'],
+      idpAlgorithms: ['RS256'],
+      clientId: 'shuttle-other',
+      clientSecret: 'secret',
+    })
+
+    const mine = await permissions.createOrFind({ tenantId, key: 'workspace.shared' })
+    const theirs = await permissions.createOrFind({ tenantId: other.id, key: 'workspace.shared' })
+    expect(theirs.id).not.toBe(mine.id)
+    expect(theirs.tenantId).toBe(other.id)
+
+    // The call that finds the row that is already there returns it.
+    const again = await permissions.createOrFind({ tenantId: other.id, key: 'workspace.shared' })
+    expect(again.id).toBe(theirs.id)
+  })
 })

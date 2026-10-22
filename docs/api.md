@@ -434,7 +434,7 @@ curl -sS -X PUT https://hub.example.com/v1/admin/grants \
 | `tenant` | Required. The slug of the tenant. |
 | `userId` | The id of the principal. Exactly one of `userId` and `group` is required. |
 | `group` | The key of the group of the grant. Exactly one of `userId` and `group` is required. |
-| `permission` | Required. The key of the permission. The row is **created on demand** when it does not exist, in the scope of the tenant. |
+| `permission` | Required. The key of the permission. The row is **created on demand** when it does not exist, in the scope of the tenant. A key is a name inside a tenant: two tenants may hold a permission of the same key. |
 | `workspaceId` | Optional. `null` (the default) is every workspace of the tenant. |
 | `routeId` | Optional. `null` (the default) is every route. |
 | `expiresAt` | Optional. `null` (the default) is a grant that does not expire. An ISO 8601 moment. |

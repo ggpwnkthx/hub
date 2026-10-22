@@ -1,5 +1,5 @@
 /**
- * The audit of the administration (spec §9.1).
+ * The audit of the administration (spec §10.1).
  *
  * The audit is a table of the infrastructure, like the table of the
  * migrations: it holds no tenant, no principal and no grant, and it is
@@ -85,7 +85,7 @@ function toRow(record: AuditRecord): AuditRow {
  *
  * The repository **reads** the audit: the rows are written by the
  * statements that make the changes, so that a change and its row of the
- * audit are committed together (spec §9.1, `audited.ts`).
+ * audit are committed together (spec §10.1, `audited.ts`).
  */
 export class AuditRepository {
   constructor(private readonly db: SqlClient) {}

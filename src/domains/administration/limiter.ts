@@ -1,5 +1,5 @@
 /**
- * The limiter of the administration (spec §9.1).
+ * The limiter of the administration (spec §10.1).
  *
  * The administrative endpoints are guarded by a bearer token, and a token
  * that is guessed by hammering the endpoint is a token that is found. The

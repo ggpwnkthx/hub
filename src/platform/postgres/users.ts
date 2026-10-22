@@ -105,7 +105,7 @@ export interface UserListFilter {
  * The conditions of a list of principals.
  *
  * Every value of a caller is a parameter: the statement is never built
- * with text (spec §9.1).
+ * with text (spec §10.1).
  */
 function listConditions(filter: UserListFilter): { where: string; params: unknown[] } {
   const conditions: string[] = []
@@ -177,7 +177,7 @@ export class UserRepository {
    * The principals that match a filter, and their number.
    *
    * The order is the newest first and it is stable: two pages never show
-   * the same row twice and never skip one (spec §9.5).
+   * the same row twice and never skip one (spec §10.5).
    */
   async list(filter: UserListFilter): Promise<{ rows: UserRow[]; total: number }> {
     const { where, params } = listConditions(filter)
@@ -219,7 +219,7 @@ export class UserRepository {
    *
    * The row of the audit of the creation is written by the same statement
    * as the principal: a principal that is not audited does not exist
-   * (spec §9.1).
+   * (spec §10.1).
    */
   async create(input: NewUser, audit?: ChangeAudit | null): Promise<UserRow> {
     const params: unknown[] = [
@@ -248,7 +248,7 @@ export class UserRepository {
    * Changes a principal.
    *
    * The row of the audit of the change is written by the same statement
-   * as the principal (spec §9.1).
+   * as the principal (spec §10.1).
    */
   async update(id: string, input: UserUpdate, audit?: ChangeAudit | null): Promise<UserRow | null> {
     const assignments: string[] = []

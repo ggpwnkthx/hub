@@ -1,5 +1,5 @@
 /**
- * The reading of the access context (spec §8bis).
+ * The reading of the access context (spec §9).
  *
  * The context is one statement over the tables of the policy: the
  * principal, the tenant, the grants of the principal, the grants of the

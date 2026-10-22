@@ -12,7 +12,7 @@ import { openTestDatabase } from './database'
 
 /**
  * The audit of the administration is written by the statement that
- * changes the thing (spec §9.1, invariant 6).
+ * changes the thing (spec §10.1, invariant 6).
  *
  * A change that is not audited does not exist: when the write of the
  * audit fails, the change is rolled back with it. These tests make the

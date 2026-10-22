@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * The nine calls of the administration (spec §9.11).
+ * The nine calls of the administration (spec §10.11).
  *
  * The script is the smoke test of a deployment: it creates a tenant, it
  * lists the tenants, it creates a principal, it lists the principals, it

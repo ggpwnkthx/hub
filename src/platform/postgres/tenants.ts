@@ -256,7 +256,7 @@ export class TenantRepository {
    *
    * The row of the audit of the creation is written by the same
    * statement as the tenant: a tenant that is not audited does not
-   * exist (spec §9.1).
+   * exist (spec §10.1).
    */
   async create(input: NewTenant, audit?: ChangeAudit | null): Promise<TenantRow> {
     const params: unknown[] = [
@@ -299,7 +299,7 @@ export class TenantRepository {
    * that changes the name of a tenant does not have to know its secrets.
    *
    * The row of the audit of the change is written by the same statement
-   * as the tenant (spec §9.1).
+   * as the tenant (spec §10.1).
    */
   async update(
     id: string,

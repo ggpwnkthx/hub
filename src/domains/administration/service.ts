@@ -1,5 +1,5 @@
 /**
- * The administration of Hub (spec §9).
+ * The administration of Hub (spec §10).
  *
  * Five endpoints, and they are the whole surface of the administration:
  * a tenant, a principal and a grant are created and revoked with them and
@@ -69,7 +69,7 @@ export interface AdministrationOptions {
 }
 
 /**
- * The entry of the audit of a change (spec §9.1).
+ * The entry of the audit of a change (spec §10.1).
  *
  * The audit names what changed and the thing that changed: the secrets are
  * never in it. The row of the table is written by the statement that
@@ -214,7 +214,7 @@ export class AdministrationService {
    *
    * The context carries the facts of the call that the domain cannot
    * know: the operator, the address and the request. The row of the audit
-   * is written by the statement that writes the tenant (spec §9.1).
+   * is written by the statement that writes the tenant (spec §10.1).
    */
   async upsertTenant(
     registration: TenantRegistration,
@@ -320,7 +320,7 @@ export class AdministrationService {
    * The groups that match a filter, and their number.
    *
    * A tenant that does not exist is a `404 not_found`, like everywhere
-   * else. The groups are paginated like the other lists (spec §9.1).
+   * else. The groups are paginated like the other lists (spec §10.1).
    */
   async listGroups(query: {
     tenant?: string | null
@@ -406,7 +406,7 @@ export class AdministrationService {
    * `(tenant, externalSubject)` pair.
    *
    * The row of the audit is written by the statement that writes the
-   * principal (spec §9.1).
+   * principal (spec §10.1).
    */
   async upsertPrincipal(
     registration: PrincipalRegistration,
@@ -468,7 +468,7 @@ export class AdministrationService {
    * `404 not_found`.
    *
    * The row of the audit is written by the statement that writes the
-   * group (spec §9.1).
+   * group (spec §10.1).
    */
   async upsertGroup(
     registration: GroupRegistration,
@@ -542,7 +542,7 @@ export class AdministrationService {
    * permission of another tenant is refused.
    *
    * The row of the audit is written by the statement that writes the
-   * grant (spec §9.1).
+   * grant (spec §10.1).
    */
   async upsertGrant(
     registration: GrantRegistration,

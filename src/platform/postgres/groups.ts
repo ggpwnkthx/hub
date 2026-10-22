@@ -125,7 +125,7 @@ export class GroupRepository {
    *
    * The order is the newest first (`created_at desc, id desc`), and it is
    * stable: two pages never show the same row twice and never skip one
-   * (spec §9.5).
+   * (spec §10.5).
    */
   async list(filter: GroupListFilter): Promise<{ rows: GroupRow[]; total: number }> {
     const conditions: string[] = []
@@ -160,7 +160,7 @@ export class GroupRepository {
    * Creates a group.
    *
    * The row of the audit of the creation is written by the same statement
-   * as the group: a group that is not audited does not exist (spec §9.1).
+   * as the group: a group that is not audited does not exist (spec §10.1).
    */
   async create(input: NewGroup, audit?: ChangeAudit | null): Promise<GroupRow> {
     const params: unknown[] = [input.tenantId, input.key, input.displayName ?? null, input.members]
@@ -186,7 +186,7 @@ export class GroupRepository {
    * the group any more.
    *
    * The row of the audit of the change is written by the same statement
-   * as the group (spec §9.1).
+   * as the group (spec §10.1).
    */
   async update(
     id: string,

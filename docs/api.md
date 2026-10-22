@@ -249,7 +249,7 @@ bad_request` (the body is not understood), `503 service_unavailable`
 
 Nine endpoints, all under `/v1/admin`, all requiring
 `Authorization: Bearer $HUB_ADMIN_TOKEN`. The rules they share — the
-limits, the pagination, the error codes, the audit — are in §9.1 of the
+limits, the pagination, the error codes, the audit — are in §10.1 of the
 spec.
 
 ### `POST /v1/admin/tenants`

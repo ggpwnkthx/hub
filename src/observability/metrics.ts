@@ -1,5 +1,5 @@
 /**
- * The metrics of Hub (spec §11.2).
+ * The metrics of Hub (spec §12.2).
  *
  * The observation layer measures and writes: it knows nothing about the
  * domains, the application or the runtime. The labels are bounded: a

@@ -3,7 +3,7 @@ import { createRuntime, type HubRuntime } from '../../src/runtime/composition'
 import { readEnv } from '../../src/runtime/env'
 
 /**
- * The audit of the administration (spec §9.1).
+ * The audit of the administration (spec §10.1).
  *
  * The audit is what an operator of the platform asks for when a grant
  * appears that nobody remembers: who changed it, when, and from which

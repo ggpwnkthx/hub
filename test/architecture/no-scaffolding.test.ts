@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path'
 const root = resolve(import.meta.dir, '..', '..')
 
 /**
- * The features that are deferred (spec §13).
+ * The features that are deferred (spec §14).
  *
  * A deferred feature has no column, no table, no flag, no endpoint and no
  * code: a half built feature in a service that carries a customer is a

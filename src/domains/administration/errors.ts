@@ -1,5 +1,5 @@
 /**
- * The failures of the administration (spec §9.1).
+ * The failures of the administration (spec §10.1).
  *
  * The codes are the ones of the specification: the caller of the
  * administration is an operator with a `curl`, and the code is what a

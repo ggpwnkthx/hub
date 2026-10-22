@@ -9,7 +9,7 @@ import { startProviderFixture, type ProviderFixture } from '../fixtures/provider
 import { referenceRoot } from './reference'
 
 /**
- * The compatibility suite (spec §14.1).
+ * The compatibility suite (spec §15.1).
  *
  * The gateway of the reference runs, unchanged, with its own configuration
  * and with Hub in place of the two fixtures: Hub is the provider of the

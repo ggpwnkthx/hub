@@ -21,7 +21,7 @@ const REDACTION_BASE = 'http://redaction.invalid'
  *
  * The set holds the headers that carry a credential and the fields that
  * hold one: a token, a secret, a cookie or an `Authorization` header never
- * reach a log line (spec §11.3), whatever the layer that logs them.
+ * reach a log line (spec §12.3), whatever the layer that logs them.
  */
 const SENSITIVE_KEYS = new Set([
   'authorization',

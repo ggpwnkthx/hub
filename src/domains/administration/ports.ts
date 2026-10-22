@@ -236,7 +236,7 @@ export interface GrantPage {
 }
 
 /**
- * The row of the audit of the administration (spec §9.1).
+ * The row of the audit of the administration (spec §10.1).
  *
  * The row names what changed, when, and who changed it. It never carries
  * a secret: the operator is a fingerprint of the credential that made the

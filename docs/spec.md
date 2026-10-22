@@ -126,7 +126,7 @@ test.
    the row of the audit are written by **one statement**, so they are
    committed together or neither is: a change that is not audited does
    not exist. The row names the operator by the fingerprint of its
-   credential. A log line is not the audit: the audit is a table (§9.1).
+   credential. A log line is not the audit: the audit is a table (§10.1).
 7. **A secret is never returned, never logged and never travels in a
    browser.** The client secret of a provider, the client secret of a
    gateway and the tokens are write-only.
@@ -149,7 +149,7 @@ the database.
 Two tables of the **infrastructure** live in the same database and are
 not part of the domain model: the table of the migrations
 (`hub_schema_migrations`) and the table of the **audit** of the
-administration (`admin_audit`, §9.1). The audit holds no tenant, no
+administration (`admin_audit`, §10.1). The audit holds no tenant, no
 principal and no grant: it holds what changed, when, and who changed it.
 
 The schema itself is in `src/platform/postgres/migrations/`.
@@ -266,13 +266,13 @@ set of principals of the tenant that the policy is written on.
 | `tenant_id` | `uuid` | The tenant of the group. Foreign key to `tenants`. |
 | `key` | `text` | The name of the group, `[a-z0-9][a-z0-9._-]{0,63}`. |
 | `display_name` | `text` | `null` when there is none. |
-| `members` | `uuid[]` | The principals of the group: their ids. Every member is a principal of the tenant at the moment the membership is written. The administration speaks in external subjects (§9.9) and the adapter translates them. |
+| `members` | `uuid[]` | The principals of the group: their ids. Every member is a principal of the tenant at the moment the membership is written. The administration speaks in external subjects (§10.9) and the adapter translates them. |
 | `created_at`, `updated_at` | `timestamptz` | |
 
 Unique: `(tenant_id, key)`. The pair `(id, tenant_id)` is unique as well,
 so a grant can carry the tenant of its group in a foreign key (§3.4).
 
-The membership is **replaced** by the call of the administration (§9.9):
+The membership is **replaced** by the call of the administration (§10.9):
 the members of the list are the members of the group, and the principals
 that are not in the list are not in the group any more.
 
@@ -302,7 +302,7 @@ that fails stops the process: Hub does not start against a schema it does
 not understand.
 
 There is no table "for later": a feature that needs one is a feature that
-is deferred until a customer pays for it (§13).
+is deferred until a customer pays for it (§14).
 
 The bookkeeping of the migrations lives in a table of the infrastructure,
 `hub_schema_migrations`. It holds the name of the migrations that were
@@ -400,7 +400,7 @@ readable list with the values of a development machine is in `.env.example`.
 | `HUB_PREVIOUS_ADMIN_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it (§4.3.1). |
 | `HUB_ACCESS_TOKEN` | The bearer token the gateway presents on `POST /v1/decisions`. |
 | `HUB_PREVIOUS_ACCESS_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it (§4.3.1). |
-| `HUB_ACCESS_CONTEXT_TOKENS` | The credentials of the access context contract (§8bis): a JSON object whose keys are bearer tokens and whose values are the tenants every token may ask about. A `null` value is a credential of the platform. |
+| `HUB_ACCESS_CONTEXT_TOKENS` | The credentials of the access context contract (§9): a JSON object whose keys are bearer tokens and whose values are the tenants every token may ask about. A `null` value is a credential of the platform. |
 | `HUB_STATE_SECRET` | Signs and encrypts the state of a login (§5.3). 32 bytes at least. The same value on every replica. |
 | `HUB_SECRET_ENCRYPTION_KEY` | Encrypts the client secrets at rest (§4.3). 32 bytes at least. |
 | `HUB_SIGNING_KEY` | The private key of Hub, in PEM. The public part is published at `/oauth/jwks`. |
@@ -511,7 +511,7 @@ down.
 | `HUB_REDIS_URL` | The authorization codes have to be shared by the replicas, unless `HUB_ALLOW_MEMORY_STATE=true` names a deployment of a single node. |
 | `HUB_ADMIN_TOKEN` | It is the bearer token of the nine administrative endpoints. |
 | `HUB_ACCESS_TOKEN` | It is the bearer token the gateway presents on `POST /v1/decisions`. |
-| `HUB_ACCESS_CONTEXT_TOKENS` | It holds the credentials of the access context contract (§8bis). A deployment that serves a data backend needs it. |
+| `HUB_ACCESS_CONTEXT_TOKENS` | It holds the credentials of the access context contract (§9). A deployment that serves a data backend needs it. |
 | `HUB_STATE_SECRET` | It signs and encrypts the state of a login. At least 32 bytes. |
 | `HUB_SECRET_ENCRYPTION_KEY` | It encrypts the client secrets at rest. At least 32 bytes. |
 | `HUB_SIGNING_KEY` | It is the private key Hub signs its tokens with, in PEM. |
@@ -550,16 +550,16 @@ The bodies of the requests and of the answers are in [api.md](api.md).
 | `GET /healthz` | `200 {"status":"ok",…}`. Always available. |
 | `GET /readyz` | `200` when the database answers and the migrations are applied, `503` otherwise. |
 | `GET /metrics` | Prometheus text. `404` when `HUB_METRICS_TOKEN` is unset, `401` when the bearer token does not match. |
-| `POST /v1/admin/tenants` | Administration (§9.2). |
-| `GET /v1/admin/tenants` | Administration (§9.3). |
-| `POST /v1/admin/users` | Administration (§9.4). |
-| `GET /v1/admin/users` | The list of the principals, paginated (§9.5). |
-| `PUT /v1/admin/grants` | Administration (§9.6). |
-| `DELETE /v1/admin/grants/{id}` | Administration (§9.7). |
-| `GET /v1/admin/grants` | The list of the grants, paginated (§9.8). |
-| `POST /v1/admin/groups` | The group and its membership (§9.9). |
-| `GET /v1/admin/groups` | The list of the groups, paginated (§9.10). |
-| `GET /v1/admin/audit` | The audit of the changes, paginated (§9.1). It reads and it does not change. |
+| `POST /v1/admin/tenants` | Administration (§10.2). |
+| `GET /v1/admin/tenants` | Administration (§10.3). |
+| `POST /v1/admin/users` | Administration (§10.4). |
+| `GET /v1/admin/users` | The list of the principals, paginated (§10.5). |
+| `PUT /v1/admin/grants` | Administration (§10.6). |
+| `DELETE /v1/admin/grants/{id}` | Administration (§10.7). |
+| `GET /v1/admin/grants` | The list of the grants, paginated (§10.8). |
+| `POST /v1/admin/groups` | The group and its membership (§10.9). |
+| `GET /v1/admin/groups` | The list of the groups, paginated (§10.10). |
+| `GET /v1/admin/audit` | The audit of the changes, paginated (§10.1). It reads and it does not change. |
 
 Every other path is `404 not_found`.
 
@@ -715,7 +715,7 @@ users.external_subject = the `sub` of the provider
 It is never the e-mail. An e-mail changes, is reused and is not unique;
 a principal that is bound to one is not a principal, it is a guess.
 Linking two external identities to one principal is a feature, and it is
-deferred (§13).
+deferred (§14).
 
 ### 6.3 The e-mail is a display value
 
@@ -802,7 +802,7 @@ discovers for the browser.
 
 There is **no refresh token**. The gateway does not use one, and a refresh
 token is a credential that has to be revoked, stored and rotated. A
-client that needs one asks for it: it is a feature, it is deferred (§13).
+client that needs one asks for it: it is a feature, it is deferred (§14).
 
 ### 7.3 The roles claim
 
@@ -1035,7 +1035,7 @@ secret of the platform.
 
 ---
 
-## 8bis. The access context
+## 9. The access context
 
 > **Status: extension.** This section was added by the extension of the
 > access context contract, which is a required integration change of the
@@ -1056,7 +1056,7 @@ use §8.
 The bodies of the requests and of the answers are in
 [api.md](api.md#the-access-context-contract).
 
-### 8bis.1 The discovery
+### 9.1 The discovery
 
 ```
 GET {HUB_ISSUER}/v1/access-context
@@ -1071,7 +1071,7 @@ The discovery is the readiness check of a consumer. A version the
 consumer does not know stops its readiness: a consumer that guesses the
 contract guesses the permissions.
 
-### 8bis.2 The request
+### 9.2 The request
 
 ```
 POST {HUB_ISSUER}/v1/access-context
@@ -1107,7 +1107,7 @@ credential of the platform: it may ask about every tenant. It is a
 choice of the deployment and it is never the default of a credential of
 a tenant.
 
-### 8bis.3 The answer
+### 9.3 The answer
 
 ```json
 {
@@ -1142,7 +1142,7 @@ empty, `validUntil` is absent, and the answer does not disclose whether
 the cause was an unknown principal, another tenant, a disabled state or
 a missing grant.
 
-### 8bis.4 The rule
+### 9.4 The rule
 
 Hub evaluates one consistent policy snapshot:
 
@@ -1156,7 +1156,7 @@ Hub does not own a catalog of the workspaces: the relation between a
 tenant and a workspace is the responsibility of the consumer. Hub still
 verifies that the principal belongs to the tenant of the request.
 
-### 8bis.5 The freshness
+### 9.5 The freshness
 
 The context is evaluated on every request and it is never cached by Hub.
 The consumer may cache a context for a read, and the bounds of the
@@ -1172,7 +1172,7 @@ running. It is not a distributed transaction.
 
 ---
 
-## 9. The administration
+## 10. The administration
 
 Nine endpoints, and one that reads the audit of the changes. That is the
 whole administration surface of Hub: there is no console, no portal and
@@ -1181,7 +1181,7 @@ invariant 5).
 
 The bodies of the requests and of the answers are in [api.md](api.md).
 
-### 9.1 The common rules
+### 10.1 The common rules
 
 - Every endpoint is under `/v1/admin` and requires
   `Authorization: Bearer $HUB_ADMIN_TOKEN`. A missing or wrong token →
@@ -1218,7 +1218,7 @@ The bodies of the requests and of the answers are in [api.md](api.md).
 The error codes: `unauthorized`, `invalid_request`, `not_found`,
 `conflict`, `forbidden`, `too_many_requests`.
 
-### 9.2 `POST /v1/admin/tenants`
+### 10.2 `POST /v1/admin/tenants`
 
 Creates a tenant, or updates the tenant of that slug. The slug is the
 key: the call is an **upsert**. `201` when the tenant was created, `200`
@@ -1230,12 +1230,12 @@ conflict`. A `clientId` that belongs to another tenant → `409 conflict`. A
 
 The two client secrets are encrypted at rest and are never returned.
 
-### 9.3 `GET /v1/admin/tenants`
+### 10.3 `GET /v1/admin/tenants`
 
 The list of the tenants, with the number of their principals and of their
 grants.
 
-### 9.4 `POST /v1/admin/users`
+### 10.4 `POST /v1/admin/users`
 
 Creates a principal, or updates the principal of that `(tenant,
 externalSubject)` pair. This is the endpoint that registers a caller
@@ -1245,18 +1245,18 @@ The pair is the key: the call is an **upsert**. `201` when the principal
 was created, `200` when it was updated. An unknown tenant → `404
 not_found`.
 
-### 9.5 `GET /v1/admin/users`
+### 10.5 `GET /v1/admin/users`
 
 The list of the principals. It is the endpoint that answers "who has an
 account here" and "what is the state of this account", without a query
 against the database by hand. The filters are `tenant`, `status` and
-`email`; the page is `limit` and `offset` (§9.1).
+`email`; the page is `limit` and `offset` (§10.1).
 
 The order is the newest first (`created_at desc, id desc`), and it is
 stable: two pages never show the same row twice and never skip one. The
 list never carries a secret.
 
-### 9.6 `PUT /v1/admin/grants`
+### 10.6 `PUT /v1/admin/grants`
 
 Creates a grant, or updates the grant of that `(tenant, user, permission,
 workspace, route)` tuple.
@@ -1271,7 +1271,7 @@ names neither a principal nor a group, or both → `400 invalid_request`.
 A permission that exists in the catalogue of the platform is reused; a
 permission that exists in another tenant → `403 forbidden`.
 
-### 9.7 `DELETE /v1/admin/grants/{id}`
+### 10.7 `DELETE /v1/admin/grants/{id}`
 
 Revokes a grant. The row is kept and stamped with `revoked_at`: the
 history of the policy is worth more than the bytes, and a revoked grant
@@ -1281,18 +1281,18 @@ The call is **idempotent**: a grant that is already revoked answers `204`
 as well. An id that does not exist → `404 not_found`. A revocation is
 visible to the gateway within `SHUTTLE_ACCESS_CACHE_TTL_MS` (§8.6).
 
-### 9.8 `GET /v1/admin/grants`
+### 10.8 `GET /v1/admin/grants`
 
 The list of the grants. It is the endpoint that answers "who may use this
 workspace" and "what is still live", without a query against the database
 by hand. The filters are `tenant`, `userId` and `live`; the page is
-`limit` and `offset` (§9.1). The order is the newest first and it is
+`limit` and `offset` (§10.1). The order is the newest first and it is
 stable.
 
 The grant carries the `grantedBy` of the row: the operator has to be able
 to read who gave an access without a query against the database by hand.
 
-### 9.9 `POST /v1/admin/groups`
+### 10.9 `POST /v1/admin/groups`
 
 Creates a group, or changes the group of that key. The call **replaces**
 the membership of the group.
@@ -1305,23 +1305,23 @@ name a principal that does not exist.
 The key is the key of the row: the call is an **upsert**. `201` when the
 group was created, `200` when it was changed.
 
-### 9.10 `GET /v1/admin/groups`
+### 10.10 `GET /v1/admin/groups`
 
-The list of the groups, paginated like the other lists (§9.1). It reads
+The list of the groups, paginated like the other lists (§10.1). It reads
 and it does not change.
 
 The filters are `tenant` and `key`. A tenant that does not exist →
 `404 not_found`.
 
-The group carries the **external subjects** of its members (§9.9): the
+The group carries the **external subjects** of its members (§10.9): the
 operator knows the `sub` of the provider, not the id of the row.
 
-### 9.11 The whole session, in nine calls
+### 10.11 The whole session, in nine calls
 
 The nine calls of a tenant, from the registration to the revocation, are
 in [api.md](api.md) §"The session in nine calls".
 
-### 9.12 `GET /v1/admin/audit`
+### 10.12 `GET /v1/admin/audit`
 
 The audit of the changes, the newest first. It reads and it does not
 change, and it is paginated like the other lists.
@@ -1359,7 +1359,7 @@ credential that made the call.
 
 ---
 
-## 10. The behavior of the decision, in the whole picture
+## 11. The behavior of the decision, in the whole picture
 
 | Path | Answer |
 | --- | --- |
@@ -1374,12 +1374,12 @@ other denial is `access_denied`.
 
 ---
 
-## 11. The operations
+## 12. The operations
 
 The how-to of the operations is in [operations.md](operations.md). This
 section is the contract that the operations have to respect.
 
-### 11.1 The probes
+### 12.1 The probes
 
 `GET /healthz` answers `200 {"status":"ok","service":"hub","version":"0.2.0"}`
 as long as the process is alive.
@@ -1388,7 +1388,7 @@ as long as the process is alive.
 trivial query and the migrations are applied, `503 {"status":"draining"}`
 during a drain and `503 {"status":"not-ready"}` otherwise.
 
-### 11.2 The metrics
+### 12.2 The metrics
 
 | Metric | Type | Labels |
 | --- | --- | --- |
@@ -1402,7 +1402,7 @@ The labels are bounded: the `tenant` label is capped at 100 values and
 the rest is aggregated into `overflow`. Neither a caller nor a provider can
 grow the number of series without limit.
 
-### 11.3 The logs
+### 12.3 The logs
 
 Structured JSON, one line per event, with the redacted fields. The events
 are: the login (tenant, outcome, the reason of a refusal), the decision
@@ -1413,7 +1413,7 @@ changed) and the lifecycle of the process.
 The redaction is the one of the gateway: a token, a secret, a cookie and
 an `Authorization` header never reach a log line.
 
-### 11.4 The drain
+### 12.4 The drain
 
 On `SIGTERM` the readiness probe answers `503` with the body `draining`,
 the listener stops accepting new work, the running logins are given five
@@ -1422,7 +1422,7 @@ the deadline is reached is a denial.
 
 ---
 
-## 12. What does not change in Shuttle
+## 13. What does not change in Shuttle
 
 This is the point of the whole design, so it is written as a list of
 things that are **not** touched.
@@ -1439,7 +1439,7 @@ things that are **not** touched.
 | The routes, the upstreams, the workspaces | Unchanged. They belong to the deployment, not to the broker. |
 | The code of the gateway | **No commit.** |
 
-### 12.1 The configuration of a deployment
+### 13.1 The configuration of a deployment
 
 ```
 SHUTTLE_OIDC_ISSUER=https://hub.example.com
@@ -1457,7 +1457,7 @@ The gateway discovers Hub, reads its JWKS, exchanges the code at its
 token endpoint and asks it for the decisions. It cannot tell that Hub is
 in front of several identity providers, and it does not have to.
 
-### 12.2 The two configurations that have to agree
+### 13.2 The two configurations that have to agree
 
 | On the side of Hub | On the side of Shuttle |
 | --- | --- |
@@ -1466,7 +1466,7 @@ in front of several identity providers, and it does not have to.
 | `tenants.client_secret` | `SHUTTLE_OIDC_CLIENT_SECRET` |
 | `HUB_ACCESS_TOKEN` | `SHUTTLE_ACCESS_TOKEN` |
 
-### 12.3 What the gateway learns from Hub, and what it does not
+### 13.3 What the gateway learns from Hub, and what it does not
 
 The gateway learns the identity of the caller: the subject, the e-mail and
 the roles. It does not learn the tenant, the grants or the permissions:
@@ -1478,7 +1478,7 @@ subject names the principal and the principal names its tenant.
 
 ---
 
-## 13. The deferred features
+## 14. The deferred features
 
 Everything below is **deferred**. A deferred feature has no column, no
 table, no flag, no endpoint and no code. The schema does not reserve
@@ -1492,8 +1492,8 @@ Not "it seems useful", not "it is on the roadmap", not "it is standard".
 | --- | --- | --- |
 | **SAML** | A tenant whose provider speaks SAML instead of OpenID Connect. | A tenant whose provider is not an OIDC provider is not served. |
 | **Account linking** | One principal, several external identities (a second provider, a second subject). | The mapping key is `(tenant, subject)`, and it is one to one. A person with two accounts has two principals and two sets of grants. |
-| **The console** | A web interface for the administration. | The nine endpoints of §9 and `curl`. |
-| **SCIM** | The provisioning of the principals by a provider. | The principals are created by the endpoint of §9.4, or by the auto-provisioning of the tenant. |
+| **The console** | A web interface for the administration. | The nine endpoints of §10 and `curl`. |
+| **SCIM** | The provisioning of the principals by a provider. | The principals are created by the endpoint of §10.4, or by the auto-provisioning of the tenant. |
 | **Directory sync** | The import of the directory of a tenant, on a schedule, from a source of truth. | The principals are created one at a time, by hand or by a script that calls the endpoints. |
 
 The **groups** were not deferred: the operator of the platform asked for
@@ -1501,7 +1501,7 @@ them, and they are the fifth table of the model (§3.5).
 
 ---
 
-## 14. The verification
+## 15. The verification
 
 A rule that has no test is a rule that is not implemented.
 
@@ -1514,7 +1514,7 @@ A rule that has no test is a rule that is not implemented.
 | Architecture | `test/architecture/` | The import boundaries of Hub, and the absence of the deferred features. |
 | Tooling | `test/tooling/` | The runner of the compatibility suite: the pin of the reference, the sources of the checkout, and the refusals. |
 
-### 14.1 The compatibility test, in detail
+### 15.1 The compatibility test, in detail
 
 The gateway is started with its own configuration and with the fixtures
 replaced by Hub:
@@ -1549,7 +1549,7 @@ switched again without registering anything.
 needs a change in the gateway, the change is a change of the gateway, and
 it is refused: the compatibility test exists to prove that there is none.
 
-### 14.2 The pin of the reference
+### 15.2 The pin of the reference
 
 The revision of the gateway that the suite runs against is the commit
 that `compatibility.json` names, at the root of the repository. The pin
@@ -1580,7 +1580,7 @@ proves nothing. The manual is in [compatibility.md](compatibility.md).
 
 ---
 
-## 15. The layout of the code
+## 16. The layout of the code
 
 The layout, the layers and the boundaries are in
 [architecture.md](architecture.md). In one table:
@@ -1597,11 +1597,11 @@ The layout, the layers and the boundaries are in
 | `src/observability/` | The logs, the metrics, the comparison of the secrets. |
 | `src/runtime/` | The environment, the composition root, the lifecycle and the drain. |
 | `scripts/compatibility.ts` | The runner of the compatibility suite. It is outside the application: no file of `src/` imports it, and the service depends on no package of the reference. |
-| `compatibility.json` | The pin of the reference: the url of its repository and the commit of the revision that is tested (§14.2). |
+| `compatibility.json` | The pin of the reference: the url of its repository and the commit of the revision that is tested (§15.2). |
 
 ---
 
-## 16. The decisions
+## 17. The decisions
 
 | # | Question | Decision |
 | --- | --- | --- |
@@ -1611,14 +1611,14 @@ The layout, the layers and the boundaries are in
 | 4 | Is a principal created at the first login? | Only when the tenant has `auto_provision = true`, and it has no grant: the login succeeds and the access does not (§6.4). |
 | 5 | What decides an access? | The table of grants, and nothing else. The roles of the request are context, because they are a snapshot of the token and a policy that read them would allow a revoked grant until the next login (§8.4). |
 | 6 | Is a decision cached by Hub? | No. The table is the truth, the query is a single statement over indexed tables, and the latency of a revocation is the TTL of the cache of the gateway (§8.6). |
-| 7 | How many administrative endpoints? | Nine: five that change something, four that read a list, and one that reads the audit of the changes. They are the whole surface, and the reason a tenant, a principal and a grant can only be changed through them is that the audit is complete (§9). |
+| 7 | How many administrative endpoints? | Nine: five that change something, four that read a list, and one that reads the audit of the changes. They are the whole surface, and the reason a tenant, a principal and a grant can only be changed through them is that the audit is complete (§10). |
 | 8 | Why is the authorization code stored instead of being self-contained? | A self-contained code can be redeemed twice inside its life. The store makes it single use, which is the property the gateway relies on (§5.5). |
 | 9 | Why are there no refresh tokens? | The gateway does not use one. A refresh token is a credential to store, rotate and revoke; it is a feature, it is deferred (§7.2). |
 | 10 | Why is the reason of a denial free text? | The gateway hides it and only counts it. The vocabulary of the reasons is chosen so the count of the gateway separates a missing role from any other denial (§8.7). |
 
 ---
 
-## 17. The settled questions
+## 18. The settled questions
 
 The questions that were open when this document was written, and the
 answer that the implementation gives them. The answers are the contract:
@@ -1631,4 +1631,4 @@ a change of one of them is a change of this document first.
 | 3 | Does a grant need a scope on the path of the request? | No. The decision contract does not carry one and the contract does not change: a grant is a workspace and a route, which is the granularity the gateway knows. | §8.3 |
 | 4 | Is the expiry of a grant worth it? | Yes: it is in the model because a temporary access is a real thing, and it costs one comparison in the statement of the decision. | §3.4, §8.3 |
 | 5 | How is a secret rotated? | The secret of the gateway of a tenant is kept for 24 hours when it is replaced, and the tokens of the environment are read from two variables during a rotation. The rotation is a rolling change and never a window in which the client and the service disagree (§4.3.1). |
-| 6 | Where does the audit of the administration live? | In a table of the infrastructure, `admin_audit`, written by the call that changed the thing. A log line is not an audit: it disappears with the container and it is not queryable (§9.1). |
+| 6 | Where does the audit of the administration live? | In a table of the infrastructure, `admin_audit`, written by the call that changed the thing. A log line is not an audit: it disappears with the container and it is not queryable (§10.1). |

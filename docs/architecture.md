@@ -65,7 +65,7 @@ and extended from the gateway:
 A second test, `test/architecture/no-scaffolding.test.ts`, asserts that
 the code contains **no SAML, no console, no SCIM and no directory sync**:
 a half-built feature in a service that carries a customer is a liability
-(spec §13).
+(spec §14).
 
 ## The layout
 

@@ -447,7 +447,7 @@ describe('the credentials of the decisions', () => {
       tenant: 'other',
       userId: principal.id,
       // The permission of the grant belongs to the tenant: a permission of
-      // another tenant is refused (spec §9.6).
+      // another tenant is refused (spec §10.6).
       permission: 'workspace.other',
       workspaceId: WORKSPACE,
       routeId: 'workspace-api',

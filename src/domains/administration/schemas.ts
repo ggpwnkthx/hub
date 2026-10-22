@@ -1,5 +1,5 @@
 /**
- * The validation of the bodies of the administration (spec §9).
+ * The validation of the bodies of the administration (spec §10).
  *
  * A body is validated before the database is touched: an answer that
  * refuses a body never opens a connection. The schemas are the shape of

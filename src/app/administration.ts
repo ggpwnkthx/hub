@@ -1,5 +1,5 @@
 /**
- * The administrative endpoints of Hub (spec §9).
+ * The administrative endpoints of Hub (spec §10).
  *
  * The handlers are thin: they authenticate the call, they validate the
  * body, they ask the administration domain and they write the answer. The
@@ -134,7 +134,7 @@ function auditContext(context: Context<HubEnv>, dependencies: HubDependencies): 
  *
  * The row of the audit is written by the statement that changed the
  * thing: the change and its audit are committed together, or neither is
- * (spec §9.1). What is left to the application is the log of the call.
+ * (spec §10.1). What is left to the application is the log of the call.
  */
 async function answer(
   context: Context<HubEnv>,

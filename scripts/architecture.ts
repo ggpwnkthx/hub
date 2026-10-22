@@ -2,7 +2,7 @@
 /**
  * The import boundary check of Hub.
  *
- * The domain organization of the specification (spec §15) is part of the
+ * The domain organization of the specification (spec §16) is part of the
  * implementation contract: a domain owns its policy, the application
  * orchestrates the domains, the platform implements the ports of the
  * domains and the runtime is the only place where the concrete pieces are

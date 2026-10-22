@@ -121,7 +121,7 @@ export interface GrantListFilter {
  * The conditions of a list of grants.
  *
  * Every value of a caller is a parameter: the statement is never built
- * with text (spec §9.1).
+ * with text (spec §10.1).
  */
 function listConditions(filter: GrantListFilter): { where: string; params: unknown[] } {
   const conditions: string[] = []
@@ -272,7 +272,7 @@ export class GrantRepository {
    * The grants that match a filter, and their number.
    *
    * The order is the newest first and it is stable: two pages never show
-   * the same row twice and never skip one (spec §9.8).
+   * the same row twice and never skip one (spec §10.8).
    */
   async list(filter: GrantListFilter): Promise<{ rows: GrantRow[]; total: number }> {
     const { where, params } = listConditions(filter)
@@ -299,7 +299,7 @@ export class GrantRepository {
    * Creates a grant.
    *
    * The row of the audit of the creation is written by the same statement
-   * as the grant: a grant that is not audited does not exist (spec §9.1).
+   * as the grant: a grant that is not audited does not exist (spec §10.1).
    */
   async create(input: NewGrant, audit?: ChangeAudit | null): Promise<GrantRow> {
     const params: unknown[] = [
@@ -335,7 +335,7 @@ export class GrantRepository {
    * Changes the scope of a grant: its expiry and the one who granted it.
    *
    * The row of the audit of the change is written by the same statement
-   * as the grant (spec §9.1).
+   * as the grant (spec §10.1).
    */
   async update(
     id: string,
@@ -386,7 +386,7 @@ export class GrantRepository {
    * the moment of its first revocation.
    *
    * The row of the audit of the revocation is written by the same
-   * statement as the revocation (spec §9.1).
+   * statement as the revocation (spec §10.1).
    */
   async revoke(id: string, audit?: ChangeAudit | null): Promise<GrantRow | null> {
     const params: unknown[] = [id]

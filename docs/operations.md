@@ -122,7 +122,7 @@ promoted. The delivery of the image is in [release.md](release.md) §5.
    SHUTTLE_ACCESS_URL=https://hub.example.com
    SHUTTLE_ACCESS_TOKEN=the-access-token-of-hub
    ```
-   The two sides have to agree character for character (spec §12.2).
+   The two sides have to agree character for character (spec §13.2).
 5. **The check** — the nine calls of the session:
    ```bash
    HUB_URL=https://hub.example.com HUB_ADMIN_TOKEN=… bun run scripts/admin-smoke.ts
@@ -363,7 +363,7 @@ removed at the end (spec §4.3.1).
    the two variables are accepted.
 2. Change the value of `HUB_ADMIN_TOKEN` and of `HUB_ACCESS_TOKEN`, and
    roll the deployment. **The gateway is configured with the same value
-   (spec §12.2): change it on the gateway first.**
+   (spec §13.2): change it on the gateway first.**
 3. Remove the two `HUB_PREVIOUS_*` variables, and roll the deployment
    again. The old values are refused from that moment.
 
@@ -522,7 +522,7 @@ decision does not scan the table of the policy.
 
 The numbers of a deployment are **not** the numbers of this document: the
 embedded database of a development machine is not a PostgreSQL server, and
-the process of the runner of the CI is not the hardware of a deployment.The numbers of a deployment are measured by the same script, against the
+the process of the runner of the CI is not the hardware of a deployment. The numbers of a deployment are measured by the same script, against the
 server of the deployment, and they are published here when they are
 measured.
 

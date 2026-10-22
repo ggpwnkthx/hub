@@ -78,7 +78,7 @@ moves are in [compatibility.md](compatibility.md).
 
 ## The state of the release
 
-Version `0.1.0`. The milestones M0 to M9 are closed: the process starts,
+Version `0.2.0`. The milestones M0 to M9 are closed: the process starts,
 validates its environment, answers the probes, drains on a signal,
 brokers the login of a caller, issues its own tokens, answers the
 decisions of a gateway, and runs the gateway of the reference against

@@ -14,7 +14,7 @@ const SUBJECT = '11111111-1111-4111-8111-111111111111'
 /** The dependencies of the tests. */
 function dependencies(decide: () => Promise<DecisionFacts>): HubDependencies {
   return {
-    version: '0.1.0',
+    version: '0.2.0',
     logger: createSilentLogger(),
     observer: {
       recordDecision: () => undefined,

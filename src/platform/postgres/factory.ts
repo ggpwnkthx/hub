@@ -28,6 +28,7 @@ export async function createDatabase(options: DatabaseOptions): Promise<Database
   return createPostgresDatabase({
     url: options.url,
     schema: options.schema,
+    max: options.max,
     statementTimeoutMs: options.statementTimeoutMs,
   })
 }

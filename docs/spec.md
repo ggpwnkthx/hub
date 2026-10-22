@@ -361,6 +361,14 @@ statement:
   is the setting `hub.tenant_id`, and it is local to the transaction: a
   pooled connection never carries the scope of another request.
 
+The **empty** scope is the scope of the platform. PostgreSQL reverts a
+local setting when its transaction ends, and it leaves the placeholder of
+the setting on the session: `hub.tenant_id` is empty, and not unset, on
+every connection that has run a scoped statement. A connection of a pool
+is a connection that is reused, so the empty scope is the normal state of
+a connection of a deployment, and the statements of the platform see the
+platform on it.
+
 A statement that forgets the tenant in its text is therefore refused by
 PostgreSQL itself, and not only by the review of the code.
 

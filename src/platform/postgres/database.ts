@@ -102,6 +102,14 @@ export interface DatabaseOptions {
   /** The schema the tables live in, when the driver is the server. */
   schema?: string
   /**
+   * The size of the pool of the process, when the driver is the server.
+   *
+   * The pool is bounded: a connection of the pool is reused, and a
+   * reused connection is a connection that carries what the previous
+   * statement left on it.
+   */
+  max?: number
+  /**
    * The deadline of the statements of the server, in milliseconds.
    *
    * The deadline is the one of the server: it is set when the connection

@@ -6,7 +6,7 @@ import {
   createSecretCipher,
   type Database,
 } from '../../src/platform/postgres'
-import { againstServer, openTestDatabase } from './database'
+import { againstServer, openTestDatabase, openTestSession } from './database'
 
 /**
  * The isolation of the tenants, enforced by the database.
@@ -131,6 +131,66 @@ describe('the isolation of the tenants', () => {
       })
     } finally {
       await dropRole('hub_isolation_test')
+    }
+  })
+
+  test('the statements of the platform work on a connection that has run a scoped statement', async () => {
+    // The pool of a deployment reuses its connections, and PostgreSQL
+    // leaves the placeholder of the scope on a connection that has run a
+    // scoped statement: the placeholder is empty, and it is empty for
+    // the rest of the life of the connection. The empty scope is the
+    // scope of the platform: a statement of the platform on such a
+    // connection sees the platform, and it may write it.
+    //
+    // Without the rule, the administration of the platform stops working
+    // on the second call, on the connection of the pool that served the
+    // first one, and the write of a principal is refused by the policy
+    // of the table.
+    const schema = await database.query<{ name: string }>(`select current_schema() as name`)
+    const schemaName = schema[0]!.name
+    await dropRole('hub_scope_leak_test')
+    await database.exec(`create role hub_scope_leak_test`)
+    await database.exec(`grant usage on schema "${schemaName}" to hub_scope_leak_test`)
+    await database.exec(
+      `grant select, insert on tenants, users, permissions, grants, groups, admin_audit to hub_scope_leak_test`
+    )
+
+    // A pool of one connection: the scoped statement and the statement
+    // of the platform are on the same session.
+    const session = await openTestSession()
+    try {
+      await session.transaction(async (client) => {
+        await client.query(`set role hub_scope_leak_test`)
+        // The scope of a tenant, for the transaction that asks for it.
+        await client.query(`select set_config('hub.tenant_id', $1, true)`, [acme])
+        await client.query(`select count(*)::int as count from users`)
+        await client.query(`reset role`)
+      })
+
+      // The scope of the platform, on the same connection: the rows of
+      // the platform are there.
+      await session.transaction(async (client) => {
+        await client.query(`set role hub_scope_leak_test`)
+        const everyone = await client.query<{ count: number }>(
+          `select count(*)::int as count from users`
+        )
+        expect(everyone[0]?.count).toBe(2)
+        await client.query(`reset role`)
+      })
+
+      // And the write of a principal, on the same connection: the policy
+      // of the table lets it through.
+      await session.transaction(async (client) => {
+        await client.query(`set role hub_scope_leak_test`)
+        await client.query(`insert into users (tenant_id, external_subject) values ($1, $2)`, [
+          acme,
+          'the-subject-of-the-leak',
+        ])
+        await client.query(`reset role`)
+      })
+    } finally {
+      if (session !== database) await session.close()
+      await dropRole('hub_scope_leak_test')
     }
   })
 

@@ -88,6 +88,7 @@ describe('the schema of Hub', () => {
       '0006_secret_rotation.sql',
       '0007_admin_audit.sql',
       '0008_gateway_redirect_uris.sql',
+      '0009_empty_scope_is_the_platform.sql',
     ])
 
     const second = await runMigrations({
@@ -105,6 +106,7 @@ describe('the schema of Hub', () => {
       '0006_secret_rotation.sql',
       '0007_admin_audit.sql',
       '0008_gateway_redirect_uris.sql',
+      '0009_empty_scope_is_the_platform.sql',
     ])
   })
 

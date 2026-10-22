@@ -248,8 +248,46 @@ that was built, scanned and promoted.
 A release is a tag. The tag names the version of the package, and the
 workflows refuse a tag that does not.
 
+**The tag is cut by the workflow `tag.yml`.** It runs when the CI of a
+commit of the main branch is green: it reads the version of the package,
+it compares it with the highest version the tags of the repository name,
+and it creates and pushes the tag `v<version>` when the version went up.
+It is the tag of the commit that the CI proved, and not the head of the
+branch: two commits that land in the meantime do not change what is
+released.
+
+The tagger refuses what the release would refuse:
+
+| Situation | What the tagger does |
+| --- | --- |
+| The versions of the project do not agree | It refuses, and it names the files that disagree (`bun run versions`). |
+| The version of the package is not the version of a release | It refuses: three numbers, and no pre-release. |
+| The version did not go up | Nothing: the release of that version is already cut. |
+| The version went down | It refuses: a release does not go backwards. |
+
+The version of the release is written in **five** places, and
+`bun run versions` checks that they agree:
+
+| The file | What it holds |
+| --- | --- |
+| `package.json` | The version of the package. |
+| `Dockerfile` | The version of the image (`ARG VERSION`). |
+| `src/runtime/version.ts` | The version of the service. |
+| `docs/spec.md` | The status of the specification. |
+| `docs/README.md` | The state of the release in the documentation. |
+
+A version that goes up is a change of the five places in one commit, and
+the check names the files that disagree:
+
 ```bash
-git tag v0.2.0 && git push origin v0.2.0
+bun run versions   # it fails and names the files that disagree
+```
+
+The tag can also be cut by hand, and the workflows of the release do not
+care who cut it:
+
+```bash
+git tag -a v0.2.0 -m "Hub v0.2.0" && git push origin v0.2.0
 ```
 
 Two workflows run on the tag, and both of them check that the version of
@@ -348,6 +386,33 @@ The CI of the repository runs, on every push:
 
 The `compatibility` job is the one that may never be skipped: a red
 compatibility job is a red build, whatever the rest says.
+
+**The workflow `tag.yml` runs after the CI.** It cuts the tag of the
+release when the version of the package went up, and the workflows of the
+release run on that tag. It never cuts a tag before the CI of the commit
+is green, and it never cuts a tag that the release would refuse (§5).
+
+---
+
+## 6. The support of a release
+
+A release is supported while it is the current one, and for the window
+that follows it. The window is **one release**: a deployment that is on
+the release `N` moves to the release `N+1`, and the release `N` is not
+patched after that.
+
+| Question | The answer |
+| --- | --- |
+| Which release is the current one? | The version of [`package.json`](../package.json), and the tag `v<version>` of the repository. `bun run versions` checks that the package, the image, the service and the specification name the same release. |
+| Which gateway is a release tested against? | The revision that [`compatibility.json`](../compatibility.json) pins. It is a **commit**, and the compatibility suite of the release runs the real gateway of that commit, unchanged, against the published image of the release. |
+| What changes in a patch release? | The behaviour does not: the contract of the specification does not change in a patch. A change of behaviour is a change of the specification, in the same commit as the code, and it is a minor release. |
+| What happens to the migrations? | They are backward compatible for one release: a rollback of the image does not need a rollback of the schema. The migration that removes a column is two releases after the one that stops using it. |
+
+The changes of every release are in [`CHANGELOG.md`](../CHANGELOG.md).
+
+---
+
+## 7. What this release does not do
 
 
 ---

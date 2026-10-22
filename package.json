@@ -27,7 +27,8 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "architecture": "bun run scripts/architecture.ts",
-    "versions": "bun run scripts/version.ts"
+    "versions": "bun run scripts/version.ts",
+    "tag": "bun run scripts/tag.ts"
   },
   "dependencies": {
     "hono": "4.13.13",

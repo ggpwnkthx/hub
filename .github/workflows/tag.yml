@@ -1,0 +1,66 @@
+name: tag
+
+# The tag of a release.
+#
+# The workflow cuts the tag of a release when the version of the package
+# goes up. The workflows of the release run on the tag: they publish the
+# image, the binaries and the release of the tag.
+#
+# The tag is cut **after** the CI of the commit is green: a release that
+# was never tested is not a release. The tag names the commit that the
+# CI proved, and not the head of the branch: two commits that land in
+# the meantime do not change what is released.
+#
+# The tagger refuses what the release would refuse: a tag is only cut
+# when the version of the package, the version of the image, the version
+# of the service and the status of the specification are the same, and
+# the version is newer than every tag of the repository.
+on:
+  # The CI of the commit has to be green before a release is cut.
+  workflow_run:
+    workflows: ['ci']
+    types: [completed]
+    branches: [main]
+  # A run by hand, for the commit that is already merged.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One tag at a time: two runs that push the same tag race each other,
+# and the loser fails for a reason that has nothing to do with the
+# release.
+concurrency:
+  group: the-tag-of-the-release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: the tag of the release
+    # The CI of the commit was red: there is no release.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The commit that the CI proved, and the tags of the repository:
+          # the history is needed to read them.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: '1.4.3'
+
+      - name: install
+        run: bun install --frozen-lockfile
+
+      - name: the identity of the commit
+        run: |
+          # The tag is annotated: it says which release it names, and it
+          # says who cut it.
+          git config user.name "Hub"
+          git config user.email "hub@ggpwnkthx.com"
+
+      - name: the tag of the release
+        run: bun run scripts/tag.ts

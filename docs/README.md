@@ -19,6 +19,7 @@ is nine `curl` endpoints, plus one that reads the audit of the changes.
 | [security.md](security.md) | The security model and the item-by-item review, with the findings that are open. |
 | [release.md](release.md) | Shipping it: readiness, the cutover of a tenant, the delivery of the image, what is still open. |
 | [compatibility.md](compatibility.md) | The pinned gateway of the reference, the runner of the compatibility suite and the way to move the pin. |
+| [../CHANGELOG.md](../CHANGELOG.md) | The releases, and the changes of the contract of each one. |
 
 A reference to `§N` in the code, in the tests or in these documents is a
 reference to a section of [spec.md](spec.md).

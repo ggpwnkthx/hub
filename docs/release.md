@@ -213,7 +213,7 @@ to live in Hub.
       environment of the target.
 - [ ] The shadow comparison answers zero difference for a day.
 - [ ] The compatibility suite is green.
-- [ ] The eight calls of the session answer (`scripts/admin-smoke.ts`).
+- [ ] The nine calls of the session answer (`scripts/admin-smoke.ts`).
 - [ ] The signing key of Hub is the one of the environment of the target,
       and the gateway is configured with the same issuer.
 - [ ] The rollback of the configuration of the gateway is written down.
@@ -416,11 +416,6 @@ The changes of every release are in [`CHANGELOG.md`](../CHANGELOG.md).
 ---
 
 ## 7. What this release does not do
-
-
----
-
-## 6. What this release does not do
 
 The deferred features are in [spec.md](spec.md) §14: SAML, the console,
 SCIM, the directory sync and the linking of the accounts. There is no

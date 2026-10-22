@@ -33,7 +33,7 @@ interface Reference {
 const DIRECTORIES = ['src', 'test', 'scripts', 'docs']
 
 /** The files of the root that are read. */
-const ROOT_FILES = ['README.md', 'CHANGELOG.md']
+const ROOT_FILES = ['README.md', 'CHANGELOG.md', '.env.example']
 
 /** The headings of the specification: the numbers that exist. */
 async function sectionsOfSpecification(): Promise<Set<string>> {
@@ -63,7 +63,9 @@ async function filesOf(directory: string): Promise<string[]> {
       found.push(...(await filesOf(path)))
       continue
     }
-    if (entry.name.endsWith('.ts') || entry.name.endsWith('.md')) found.push(path)
+    if (entry.name.endsWith('.ts') || entry.name.endsWith('.md') || entry.name.endsWith('.sql')) {
+      found.push(path)
+    }
   }
   return found
 }

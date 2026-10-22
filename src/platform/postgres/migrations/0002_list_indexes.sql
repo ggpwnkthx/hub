@@ -1,4 +1,4 @@
--- The indexes of the two list endpoints (spec §9.5, §9.8).
+-- The indexes of the two list endpoints (spec §10.5, §10.8).
 --
 -- The lists are ordered by the newest first and they are paginated: the
 -- index carries the order of the page and the tenant, so a page is a

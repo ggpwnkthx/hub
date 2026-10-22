@@ -167,12 +167,21 @@ architecture:
 | Integration | `test/integration/` | The decisions against a real PostgreSQL, the isolation, the migrations, the deadline of a statement, the rule of the decision against a policy that is built at random. |
 | Compatibility | `test/compatibility/` | **The gateway of the reference, unchanged, against Hub.** |
 | Architecture | `test/architecture/` | The import boundaries and the absence of the deferred features. |
+| Tooling | `test/tooling/` | The runner of the compatibility suite: the pin, the sources of the reference, the refusals. |
 
 The compatibility suite starts the gateway of the Shuttle reference, at
-the commit pinned in `shuttle.ref`, with Hub in place of its two
-fixtures. The CI then asserts that the tree of the reference was not
-touched: **the build fails if anyone modifies the gateway to make a test
-pass.**
+the commit that [`compatibility.json`](../compatibility.json) pins, with
+Hub in place of its two fixtures. The checkout is prepared by
+`scripts/compatibility.ts` (`bun run test:compat`), which clones the
+reference, installs its dependencies in its own directory and passes its
+path in `HUB_SHUTTLE_PATH`. The runner then asserts that the tree of
+the reference was not touched: **the build fails if anyone modifies the
+gateway to make a test pass.**
+
+The runner is outside the application: it is a script of the
+repository, it is not imported by `src/`, and no dependency of the
+service comes from the reference. The tests of this repository
+(`bun run test`) need neither the reference nor a sibling directory.
 
 ## The rules of the work
 

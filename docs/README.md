@@ -18,6 +18,7 @@ is nine `curl` endpoints, plus one that reads the audit of the changes.
 | [operations.md](operations.md) | Running it: configuration, deployment, probes, metrics, alerts, runbooks, backup, capacity. |
 | [security.md](security.md) | The security model and the item-by-item review, with the findings that are open. |
 | [release.md](release.md) | Shipping it: readiness, the cutover of a tenant, the delivery of the image, what is still open. |
+| [compatibility.md](compatibility.md) | The pinned gateway of the reference, the runner of the compatibility suite and the way to move the pin. |
 
 A reference to `§N` in the code, in the tests or in these documents is a
 reference to a section of [spec.md](spec.md).
@@ -39,8 +40,20 @@ a production environment must name a server.
 The tests run on the embedded PostgreSQL too:
 
 ```bash
-bun test
-HUB_TEST_DATABASE_URL=postgres://hub:hub@localhost:5432/hub bun test test/integration
+bun run test
+HUB_TEST_DATABASE_URL=postgres://hub:hub@localhost:5432/hub bun run test:integration
+```
+
+`bun run test` runs the tests of **this** repository: the units, the
+contracts, the integrations, the boundaries and the tooling. It needs no
+gateway of the reference and no sibling directory.
+
+The compatibility suite is a separate command: it runs the real gateway
+of Shuttle, unchanged, against this service.
+
+```bash
+bun run test:compat
+bun run test:all   # the two
 ```
 
 The other commands:
@@ -55,10 +68,13 @@ bun run architecture # the import boundaries
 ## The gateway it brokers for
 
 Shuttle is a **separate repository** and is read-only here. The version
-this service is built against is the commit in [`../shuttle.ref`](../shuttle.ref).
-The compatibility suite (`test/compatibility/`) runs the gateway,
-unchanged, against this service, and the CI fails when the tree of the
-reference is touched.
+this service is built against is the commit that
+[`compatibility.json`](../compatibility.json) pins. The compatibility
+suite (`test/compatibility/`) runs the gateway, unchanged, against this
+service, and the CI fails when the tree of the reference is touched.
+
+The runner of the suite, the sources it accepts and the way the pin
+moves are in [compatibility.md](compatibility.md).
 
 ## The state of the release
 

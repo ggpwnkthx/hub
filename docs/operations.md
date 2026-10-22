@@ -542,3 +542,30 @@ cutover of the first tenant ([release.md](release.md) §4).
 | The cache of the JWKS of the provider | The calls to the provider of a tenant | 10 minutes |
 | The cache of the discovery of the provider | The calls to the discovery of a tenant | 10 minutes |
 | The life of the code | The window of a replay | 60 s |
+
+---
+
+## The compatibility suite in an environment without the network
+
+The compatibility suite runs the real gateway of the reference, unchanged,
+against Hub. It clones that gateway, and it needs the network for it.
+
+An environment without the network gives the runner a mirror:
+
+```bash
+# Once, on a machine that has the network.
+mkdir -p /srv/compat-mirror
+git clone --bare https://github.com/ggpwnkthx/shuttle.git /srv/compat-mirror/shuttle.git
+
+# In the environment without the network.
+COMPAT_MIRROR=/srv/compat-mirror bun run test:compat
+```
+
+A local repository is a mirror too: `SHUTTLE_REPOSITORY=/path/to/shuttle
+bun run test:compat`. A checkout that is already prepared is used as it
+is, and it is checked before the run:
+`HUB_SHUTTLE_PATH=/path/to/shuttle bun run test:compat`.
+
+The sources, the order of the precedence and the refusals are in
+[compatibility.md](compatibility.md). An override that cannot be used is
+an error: the runner never falls back to another source.

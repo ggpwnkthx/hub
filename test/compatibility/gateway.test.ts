@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { generateKeyPairSync } from 'node:crypto'
 import { createRuntime, type HubRuntime } from '../../src/runtime/composition'
 import { readEnv } from '../../src/runtime/env'
 import { startProviderFixture, type ProviderFixture } from '../fixtures/provider'
+import { referenceRoot } from './reference'
 
 /**
  * The compatibility suite (spec §14.1).
@@ -17,9 +18,8 @@ import { startProviderFixture, type ProviderFixture } from '../fixtures/provider
  * and it is never modified.
  */
 
-/** The root of the reference. */
-const reference =
-  process.env.HUB_SHUTTLE_PATH ?? resolve(import.meta.dir, '..', '..', '..', 'shuttle')
+/** The root of the reference: it is prepared by `bun run test:compat`. */
+let reference: string
 
 /** The token of the administration of the tests. */
 const ADMIN_TOKEN = 'the-admin-token'
@@ -90,6 +90,7 @@ async function waitFor(url: string, timeoutMs = 20_000): Promise<void> {
 }
 
 beforeAll(async () => {
+  reference = referenceRoot()
   upstreamUrl = `http://127.0.0.1:${upstream.port}`
   provider = await startProviderFixture()
 
@@ -237,7 +238,7 @@ afterAll(async () => {
   await hub?.database.close()
   await provider?.stop()
   await upstream.stop(true)
-  await rm(directory, { recursive: true, force: true })
+  if (directory) await rm(directory, { recursive: true, force: true })
 })
 
 /**

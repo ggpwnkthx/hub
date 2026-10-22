@@ -16,8 +16,8 @@ should be fine" is not an answer.
 
 | Item | Answer |
 | --- | --- |
-| Every rule of the specification has a test | The five kinds of tests are in [architecture.md](architecture.md) §"The tests". `bun test` runs the whole suite. |
-| The compatibility suite passes and the diff of the gateway is empty | `test/compatibility/gateway.test.ts` runs the gateway of the reference, unchanged, against Hub. The CI checks that the tree of the reference is the one of `shuttle.ref`. |
+| Every rule of the specification has a test | The kinds of tests are in [architecture.md](architecture.md) §"The tests". `bun run test` runs the tests of this repository, and `bun run test:compat` runs the compatibility suite. |
+| The compatibility suite passes and the diff of the gateway is empty | `test/compatibility/gateway.test.ts` runs the gateway of the reference, unchanged, against Hub. The runner (`bun run test:compat`) prepares the revision that [`compatibility.json`](../compatibility.json) pins, and the CI checks that the tree of the reference is the one of that commit. |
 | The migration applies on an empty database and on a database of the previous release | `test/integration/migrations.test.ts`: the migration applies on an empty database, it is idempotent and it refuses a database that holds a migration the code does not know. |
 | A failure of every dependency is a denial, and it was tested with the dependency really down | The database that is down (a contract test), the decision that does not answer in time, the provider that is not reachable, the store that is down. |
 | The reason of a denial reaches neither the caller nor a log line that a caller can read | The reason is in the log of the decision and in the answer of the contract; the gateway hides it from the caller. |
@@ -155,7 +155,7 @@ to live in Hub.
 
 | The gate | How it is checked |
 | --- | --- |
-| The compatibility suite is green | `bun test test/compatibility` — the gateway of the reference, unchanged, against Hub. |
+| The compatibility suite is green | `bun run test:compat` — the gateway of the reference, unchanged, against Hub. |
 | The alerts are silent | The dashboards of [operations.md](operations.md) §"The alerts" show nothing for the period of the phase. |
 | The difference of the answers is empty | `bun run scripts/shadow.ts --requests decisions.jsonl` answers zero difference. |
 
@@ -330,8 +330,8 @@ The CI of the repository runs, on every push:
 
 | Job | What it runs |
 | --- | --- |
-| `check` | The types, the lint, the format, the import boundaries, the version of the release, the unit and contract tests, the integration tests on the embedded PostgreSQL and on a PostgreSQL server. |
-| `compatibility` | The gateway of the reference, unchanged, against Hub, and the proof that the tree of the reference is the one of `shuttle.ref`. |
+| `check` | The types, the lint, the format, the import boundaries, the version of the release, the tests of this repository (`bun run test`), and the integration tests on a PostgreSQL server. |
+| `compatibility` | `bun run test:compat`: the gateway of the reference, unchanged, against Hub, and the proof that the tree of the reference is the one of the commit that [`compatibility.json`](../compatibility.json) pins. |
 | `image` | The build of the image, the scan, the SBOM, the user it runs as, its size, its refusal to start without a secret, its refusal to start with a role that bypasses the isolation, its start with a deployment and its drain. |
 
 The `compatibility` job is the one that may never be skipped: a red
@@ -357,4 +357,4 @@ The limits that are **known** and that a deployment has to know about:
 | **There is no refresh token.** | The tokens of Hub live five minutes and the gateway re-authenticates the caller after that (spec §7.2). |
 | **The audit of the administration is a table, not a report.** | The audit is durable and it is queryable (`GET /v1/admin/audit`), but it has no report and no export: an operator reads it with `curl` and with SQL. |
 | **The capacity numbers are measured on a development machine.** | The numbers of [operations.md](operations.md) §"The capacity" are the numbers of a development machine, against a PostgreSQL server over the loopback. The numbers of a deployment are measured during the cutover. |
-| **The compatibility suite needs the reference.** | It clones the repository of the gateway from the network: it does not run in an environment without it. |
+| **The compatibility suite needs the reference.** | It clones the repository of the gateway from the network. An environment without the network gives it a mirror (`COMPAT_MIRROR`) or a local repository (`SHUTTLE_REPOSITORY`): the sources and the refusals are in [compatibility.md](compatibility.md). |

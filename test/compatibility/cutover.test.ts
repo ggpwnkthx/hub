@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { generateKeyPairSync } from 'node:crypto'
 import { createRuntime, type HubRuntime } from '../../src/runtime/composition'
 import { readEnv } from '../../src/runtime/env'
 import { startProviderFixture, type ProviderFixture } from '../fixtures/provider'
+import { referenceRoot } from './reference'
 
 /**
  * The rehearsal of the cutover of a tenant (docs/release.md §4).
@@ -25,9 +26,8 @@ import { startProviderFixture, type ProviderFixture } from '../fixtures/provider
  * facts instead of a list of hopes.
  */
 
-/** The root of the reference. */
-const reference =
-  process.env.HUB_SHUTTLE_PATH ?? resolve(import.meta.dir, '..', '..', '..', 'shuttle')
+/** The root of the reference: it is prepared by `bun run test:compat`. */
+let reference: string
 
 const ADMIN_TOKEN = 'the-admin-token'
 const ACCESS_TOKEN = 'the-access-token-of-hub'
@@ -146,6 +146,7 @@ async function request(path: string, cookie: string, host: string): Promise<Resp
 }
 
 beforeAll(async () => {
+  reference = referenceRoot()
   upstreamUrl = `http://127.0.0.1:${upstream.port}`
   provider = await startProviderFixture()
 
@@ -236,7 +237,7 @@ afterAll(async () => {
   await hub?.database.close()
   await provider?.stop()
   await upstream.stop(true)
-  await rm(directory, { recursive: true, force: true })
+  if (directory) await rm(directory, { recursive: true, force: true })
 })
 
 describe('the rehearsal of the cutover of a tenant', () => {

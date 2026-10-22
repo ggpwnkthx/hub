@@ -3,13 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ggpwnkthx/hub.git"
+  },
+  "homepage": "https://github.com/ggpwnkthx/hub#readme",
+  "bugs": {
+    "url": "https://github.com/ggpwnkthx/hub/issues"
+  },
   "description": "Hub: an OpenID Connect broker. It authenticates a caller against the provider of a tenant and answers the decisions of a gateway.",
   "scripts": {
     "start": "bun run src/main.ts",
-    "test": "bun test",
+    "test": "bun test src test/contract test/integration test/architecture test/tooling",
     "test:unit": "bun test src",
     "test:contract": "bun test test/contract",
     "test:integration": "bun test test/integration",
+    "test:architecture": "bun test test/architecture",
+    "test:tooling": "bun test test/tooling",
+    "test:compat": "bun run scripts/compatibility.ts",
+    "test:all": "bun run test && bun run test:compat",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint",
     "format": "biome format --write .",

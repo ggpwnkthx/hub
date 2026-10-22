@@ -1512,6 +1512,7 @@ A rule that has no test is a rule that is not implemented.
 | Integration | `test/integration/` | The decisions against a real PostgreSQL and a real Redis, the isolation of the tenants, the migrations, the deadline of a statement, the rule of the decision against a policy that is built at random. |
 | Compatibility | `test/compatibility/` | **The gateway, unchanged, against Hub.** The fixtures of the Shuttle reference are replaced by Hub, and the contract suite of the gateway is run against it. |
 | Architecture | `test/architecture/` | The import boundaries of Hub, and the absence of the deferred features. |
+| Tooling | `test/tooling/` | The runner of the compatibility suite: the pin of the reference, the sources of the checkout, and the refusals. |
 
 ### 14.1 The compatibility test, in detail
 
@@ -1548,6 +1549,35 @@ switched again without registering anything.
 needs a change in the gateway, the change is a change of the gateway, and
 it is refused: the compatibility test exists to prove that there is none.
 
+### 14.2 The pin of the reference
+
+The revision of the gateway that the suite runs against is the commit
+that `compatibility.json` names, at the root of the repository. The pin
+is a **full commit id**: a branch, a tag, a short hash and a placeholder
+are refused, because a reference that moves is a reference that cannot
+be tested twice.
+
+The runner of the suite (`scripts/compatibility.ts`, `bun run
+test:compat`) is the only way the reference is prepared:
+
+1. it reads the manifest relatively to the root of the repository;
+2. it clones the reference and checks out the pinned commit — the whole
+   history, because the pinned commit is not always the one of the
+   default branch;
+3. it installs the dependencies of the reference in the directory of the
+   reference, with a frozen lockfile;
+4. it passes the path of the checkout in `HUB_SHUTTLE_PATH`, and the
+   suite runs the gateway of the reference as a process, in its own
+   directory;
+5. it asserts that the reference is at the pinned commit and that its
+   tracked files are the ones of the commit, before and after the run.
+
+A checkout that a developer prepared (`HUB_SHUTTLE_PATH`) is checked
+and never written to: a checkout that is at another commit, or that
+carries changes, is refused with the reason. The runner never falls
+back to another source: a suite that runs against another revision
+proves nothing. The manual is in [compatibility.md](compatibility.md).
+
 ---
 
 ## 15. The layout of the code
@@ -1566,6 +1596,8 @@ The layout, the layers and the boundaries are in
 | `src/platform/` | The adapters: PostgreSQL, Redis, the Bun listener, the HTTP client. |
 | `src/observability/` | The logs, the metrics, the comparison of the secrets. |
 | `src/runtime/` | The environment, the composition root, the lifecycle and the drain. |
+| `scripts/compatibility.ts` | The runner of the compatibility suite. It is outside the application: no file of `src/` imports it, and the service depends on no package of the reference. |
+| `compatibility.json` | The pin of the reference: the url of its repository and the commit of the revision that is tested (§14.2). |
 
 ---
 

@@ -57,15 +57,14 @@ jobs:
         run: bun run versions
 
       - name: import boundaries
-        run: |
-          bun run architecture
-          bun test test/architecture
+        run: bun run architecture
 
-      - name: unit and contract tests
-        run: bun test src test/contract
-
-      - name: integration tests
-        run: bun test test/integration
+      - name: the tests of the repository
+        # The tests of this repository: the units, the contracts, the
+        # integrations, the boundaries and the tooling. The compatibility
+        # suite is not among them: it needs the gateway of the reference,
+        # and it is the job of the `compatibility` job below.
+        run: bun run test
 
       - name: the integration tests against a PostgreSQL server
         run: bun test test/integration
@@ -95,26 +94,34 @@ jobs:
       - name: install
         run: bun install --frozen-lockfile
 
-      - name: the reference of the gateway
-        run: |
-          git clone https://github.com/ggpwnkthx/shuttle.git ../shuttle
-          git -C ../shuttle checkout $(cat shuttle.ref)
-          cd ../shuttle
-          bun install --frozen-lockfile
-
       - name: the compatibility suite
-        run: bun test test/compatibility
+        # The runner prepares the gateway of the reference at the commit
+        # that `compatibility.json` pins, and runs the suite against it.
+        # The workflow carries no url and no commit of its own: the pin
+        # is read in the manifest of the repository.
+        run: bun run test:compat
+        env:
+          # The checkout is kept: the step below reads its state.
+          COMPAT_KEEP: '1'
+          COMPAT_WORKSPACE: ${{ runner.temp }}/compatibility
 
       - name: the reference was not modified
         run: |
-          # The gateway is read-only: a change in the tree of the reference
-          # fails the build.
-          if [ -n "$(git -C ../shuttle status --porcelain)" ]; then
-            echo "the tree of the reference was modified"
-            git -C ../shuttle status --porcelain
+          # The gateway is read-only: a change in the tree of the
+          # reference fails the build.
+          checkout="${{ runner.temp }}/compatibility/shuttle"
+          expected="$(bun -e 'const manifest = await Bun.file("compatibility.json").json(); console.log(manifest.repositories.shuttle.commit)')"
+          head="$(git -C "$checkout" rev-parse HEAD)"
+          if [ "$head" != "$expected" ]; then
+            echo "the reference is at $head and the pin is $expected"
             exit 1
           fi
-          echo "the tree of the reference is the one of $(cat shuttle.ref)"
+          if [ -n "$(git -C "$checkout" status --porcelain --untracked-files=no)" ]; then
+            echo "the tree of the reference was modified"
+            git -C "$checkout" status --porcelain
+            exit 1
+          fi
+          echo "the tree of the reference is the one of $expected"
 
   image:
     name: the production image

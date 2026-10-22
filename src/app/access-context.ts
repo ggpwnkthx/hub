@@ -12,7 +12,6 @@
  */
 
 import type { Context } from 'hono'
-import { timingSafeEqual } from 'node:crypto'
 import {
   type AccessContextAnswer,
   type AccessContextFacts,
@@ -25,6 +24,7 @@ import {
   MAX_REQUEST_BYTES,
   evaluateAccessContext,
 } from '../domains/authorization'
+import { sameSecret } from '../observability'
 import { jsonError } from './errors'
 import type { HubEnv } from './state'
 
@@ -59,16 +59,12 @@ class InvalidRequestError extends Error {
   }
 }
 
-/** Compares two secrets in constant time. */
-function sameSecret(left: string, right: string): boolean {
-  const a = Buffer.from(left)
-  const b = Buffer.from(right)
-  if (a.length !== b.length) return false
-  return timingSafeEqual(a, b)
-}
-
 /**
  * Reads the credential of a call.
+ *
+ * The comparison is in constant time: the two values are hashed first, so
+ * the comparison does not depend on the length of the secret either. It
+ * is the comparison of the whole service (`src/observability/secrets.ts`).
  *
  * The credential of a tenant may only ask about the principals of that
  * tenant. A credential of the platform may ask about every tenant: it is

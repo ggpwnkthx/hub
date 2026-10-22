@@ -1040,6 +1040,14 @@ scheme of the credentials is a property of the deployment. A deployment
 that moves its gateways to their own credentials removes the shared
 secret of the platform.
 
+**The bearer token of the deployment is deprecated.** It keeps working:
+the gateway of the reference sends it, and a change of the gateway is
+not a change of the deployment. But the service says so, once, in the
+log of the first decision that presents it: the token is not scoped to a
+tenant, and the credentials of a tenant are. The notice names the
+scheme to use instead, and it is written once per service — a warning
+on every decision would drown the log of the decisions.
+
 ---
 
 ## 9. The access context

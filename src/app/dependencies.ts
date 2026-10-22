@@ -129,4 +129,12 @@ export interface HubDependencies {
   publicUrl: string
   /** The address of the peer of a request: the address of the socket. */
   peerAddress: (request: Request) => string
+  /**
+   * True when the notice of the deprecated bearer token was written.
+   *
+   * The notice is written once per service: a warning on every decision
+   * would drown the log of the decisions, and a warning that is never
+   * written is a warning that nobody reads.
+   */
+  sharedTokenNoticeWritten: boolean
 }

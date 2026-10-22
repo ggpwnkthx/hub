@@ -94,6 +94,8 @@ interface DecisionCredentials {
   tenantId: string | null
   /** The slug of the tenant, for the log. */
   tenantSlug: string
+  /** True when the caller presented the bearer token of the deployment. */
+  sharedToken: boolean
 }
 
 /**
@@ -144,6 +146,7 @@ async function readCredentials(
     return {
       tenantId: tenant.sharedClient ? null : tenant.id,
       tenantSlug: tenant.slug,
+      sharedToken: false,
     }
   }
 
@@ -159,7 +162,7 @@ async function readCredentials(
     ((expectedToken !== undefined && sameSecret(presented, expectedToken)) ||
       (previousToken !== undefined && sameSecret(presented, previousToken)))
   if (!accepted) return null
-  return { tenantId: null, tenantSlug: 'every-tenant' }
+  return { tenantId: null, tenantSlug: 'every-tenant', sharedToken: true }
 }
 
 /**
@@ -215,6 +218,16 @@ export async function decisionHandler(
   const answer = decide(facts)
   const durationMs = Date.now() - started
   const tenant = facts.tenantSlug ?? credentials.tenantSlug
+
+  // The bearer token of the deployment is deprecated: the notice says it
+  // once, and it says what to do instead.
+  if (credentials.sharedToken && !dependencies.sharedTokenNoticeWritten) {
+    dependencies.sharedTokenNoticeWritten = true
+    dependencies.logger.warn(
+      'the decision was asked with the shared credential of the deployment, which is deprecated: it is not scoped to a tenant. The credentials of the tenant of the gateway are scoped to it, and they are the scheme to use (spec §8.8)',
+      { requestId }
+    )
+  }
 
   dependencies.observer.recordDecision(answer.allow ? 'allow' : 'deny', tenant, durationMs)
   dependencies.logger.info('the decision was answered', {

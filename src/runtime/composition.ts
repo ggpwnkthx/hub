@@ -408,6 +408,8 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     }),
     publicUrl: settings.public.publicUrl,
     peerAddress: (request: Request) => peer.address(request),
+    // The notice of the deprecated bearer token is written once per service.
+    sharedTokenNoticeWritten: false,
   }
 
   const app = createHubApp(dependencies)

@@ -38,6 +38,7 @@ function dependencies(decide: () => Promise<DecisionFacts>): HubDependencies {
     accessToken: TOKEN,
     publicUrl: 'https://hub.example.com',
     peerAddress: () => '127.0.0.1',
+    sharedTokenNoticeWritten: false,
   }
 }
 
@@ -91,5 +92,80 @@ describe('the decision endpoint', () => {
       allow: false,
       reason: 'the principal does not have the role of the workspace',
     })
+  })
+})
+
+describe('the deprecation of the bearer token of the deployment', () => {
+  test('the notice is written once, and it says what to use instead', async () => {
+    const warnings: string[] = []
+    const deps = dependencies(async () => ({
+      principalExists: true,
+      tenantSlug: 'acme',
+      principalActive: true,
+      tenantEnabled: true,
+      liveGrant: false,
+      expiredGrant: false,
+    }))
+    deps.logger = {
+      ...createSilentLogger(),
+      warn: (message: string) => {
+        warnings.push(message)
+      },
+    }
+    const app = createHubApp(deps)
+
+    await ask(app)
+    await ask(app)
+
+    // The notice is written once: a warning on every decision would
+    // drown the log of the decisions.
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toContain('deprecated')
+    expect(warnings[0]).toContain('scoped')
+  })
+
+  test('the credentials of a tenant are not deprecated', async () => {
+    const warnings: string[] = []
+    const deps = dependencies(async () => ({
+      principalExists: true,
+      tenantSlug: 'acme',
+      principalActive: true,
+      tenantEnabled: true,
+      liveGrant: false,
+      expiredGrant: false,
+    }))
+    deps.logger = {
+      ...createSilentLogger(),
+      warn: (message: string) => {
+        warnings.push(message)
+      },
+    }
+    deps.tenants = {
+      findByClientId: async () => ({
+        id: '22222222-2222-4222-8222-222222222222',
+        slug: 'acme',
+        clientId: 'shuttle-acme',
+        sharedClient: false,
+      }),
+      gatewaySecrets: async () => ({
+        current: 'the-secret',
+        previous: null,
+        previousUntil: null,
+      }),
+    } as HubDependencies['tenants']
+    const app = createHubApp(deps)
+
+    const response = await app.fetch(
+      new Request('http://hub.example.com/v1/decisions', {
+        method: 'POST',
+        headers: {
+          authorization: `Basic ${Buffer.from('shuttle-acme:the-secret').toString('base64')}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ subject: SUBJECT, workspaceId: 'w', routeId: 'r', roles: [] }),
+      })
+    )
+    expect(response.status).toBe(200)
+    expect(warnings).toHaveLength(0)
   })
 })

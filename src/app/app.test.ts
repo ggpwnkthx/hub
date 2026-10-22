@@ -29,6 +29,7 @@ function dependencies(): HubDependencies {
     cookieSecure: false,
     publicUrl: 'https://hub.example.com',
     peerAddress: () => '127.0.0.1',
+    sharedTokenNoticeWritten: false,
   }
 }
 

@@ -203,24 +203,39 @@ jobs:
           # gateway over the table of the grants. A tenant, a principal
           # and a decision: the image of the release serves the contract
           # that the gateway of the reference speaks.
-          curl -fsS -X POST http://127.0.0.1:8081/v1/admin/tenants \
+          #
+          # The answer is printed, and the logs of the service are printed
+          # with it: a failure that does not say why is a failure that
+          # costs an afternoon.
+          tenant="$(curl -sS -X POST http://127.0.0.1:8081/v1/admin/tenants \
             -H 'authorization: Bearer release-admin-token' \
             -H 'content-type: application/json' \
-            -d '{"slug":"acme","displayName":"Acme Inc","issuer":"https://login.acme.example","idpClientId":"hub-acme","idpClientSecret":"the-secret-of-the-provider","clientId":"shuttle-acme","clientSecret":"the-secret-of-the-gateway"}' \
-            > /dev/null
-          principal="$(curl -fsS -X POST http://127.0.0.1:8081/v1/admin/users \
+            -d '{"slug":"acme","displayName":"Acme Inc","issuer":"https://login.acme.example","idpClientId":"hub-acme","idpClientSecret":"the-secret-of-the-provider","clientId":"shuttle-acme","clientSecret":"the-secret-of-the-gateway"}')"
+          echo "the tenant: ${tenant}"
+          principal="$(curl -sS -X POST http://127.0.0.1:8081/v1/admin/users \
             -H 'authorization: Bearer release-admin-token' \
             -H 'content-type: application/json' \
             -d '{"tenant":"acme","externalSubject":"00u1a2b3c4d5","email":"alice@acme.example"}' \
             | jq -r '.id')"
-          answer="$(curl -fsS -X POST http://127.0.0.1:8081/v1/decisions \
+          echo "the principal: ${principal}"
+          answer="$(curl -sS -X POST http://127.0.0.1:8081/v1/decisions \
             -H 'authorization: Bearer release-access-token' \
             -H 'content-type: application/json' \
             -d "{\"subject\":\"${principal}\",\"workspaceId\":\"\",\"routeId\":\"\",\"roles\":[]}")"
           echo "the decision of the gateway: ${answer}"
+          # The logs of the service are always printed: they are the
+          # reason of a refusal that the answer does not carry.
+          docker logs hub || true
+          if ! echo "${tenant}" | jq -e '.id' > /dev/null; then
+            echo "the service did not create the tenant"
+            exit 1
+          fi
+          if ! echo "${principal}" | jq -e '.id' > /dev/null; then
+            echo "the service did not create the principal"
+            exit 1
+          fi
           if ! echo "${answer}" | jq -e '.allow == false' > /dev/null; then
             echo "the service did not deny the decision of a principal without a grant"
-            docker logs hub || true
             exit 1
           fi
 

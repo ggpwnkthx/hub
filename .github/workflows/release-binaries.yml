@@ -363,4 +363,4 @@ jobs:
               --verify-tag
           fi
           gh release upload "${TAG}" dist/* --repo "${REPOSITORY}" --clobber
-          gh release view "${TAG}" --repo "${REPOSITORY }}"
+          gh release view "${TAG}" --repo "${REPOSITORY}"

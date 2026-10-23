@@ -274,8 +274,8 @@ jobs:
             -e HUB_ISSUER=https://hub.example.com \
             -e HUB_ADMIN_TOKEN=ci-admin-token-of-the-build \
             -e HUB_ACCESS_TOKEN=ci-access-token-of-the-build \
-            -e HUB_STATE_SECRET="$(printf 'a%.0s' {1..64})" \
-            -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b%.0s' {1..64})" \
+            -e HUB_STATE_SECRET="$(printf '4f9a2c8e%.0s' {1..8})" \
+            -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b31e7d09%.0s' {1..8})" \
             -e HUB_SIGNING_KEY="$(cat /tmp/hub-key.pem)" \
             -e HUB_SIGNING_KID=hub-ci \
             hub:ci
@@ -314,8 +314,8 @@ jobs:
             -e HUB_ISSUER=https://hub.example.com \
             -e HUB_ADMIN_TOKEN=ci-admin-token-of-the-build \
             -e HUB_ACCESS_TOKEN=ci-access-token-of-the-build \
-            -e HUB_STATE_SECRET="$(printf 'a%.0s' {1..64})" \
-            -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b%.0s' {1..64})" \
+            -e HUB_STATE_SECRET="$(printf '4f9a2c8e%.0s' {1..8})" \
+            -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b31e7d09%.0s' {1..8})" \
             -e HUB_SIGNING_KEY="$(cat /tmp/hub-key.pem)" \
             -e HUB_SIGNING_KID=hub-ci \
             hub:ci 2>&1)"

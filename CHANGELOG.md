@@ -153,6 +153,12 @@ The work that the release `1.0.0` carries, before the tag.
   sets have to be the same one: a route that is added is documented in
   the same commit, and a route that is removed is removed from the
   documents in the same commit. (`test/architecture/routes.test.ts`)
+- **The environment of the workflows starts a production deployment.**
+  A test reads the secrets that the workflows name and holds that the
+  service starts with them: a workflow that names a secret the service
+  refuses is a workflow that fails in the middle of a release, and the
+  refusal is now a failure of the build and not of a release.
+  (`test/architecture/workflows.test.ts`)
 - **The number of the administration is the number of the code.** The
   test that holds the documents and the code on the size of the
   administration reads the number from the code instead of carrying it:

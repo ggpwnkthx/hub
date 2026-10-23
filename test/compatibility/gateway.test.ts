@@ -389,7 +389,7 @@ describe('the compatibility of Hub with the gateway', () => {
   })
 
   test('the gateway accepts the bearer token of Hub', async () => {
-    // The gateway of the release 1.0.0 and later refuses a bearer token
+    // The gateway of the release 1.2.0 and later refuses a bearer token
     // that carries no expiry, and it bounds the lifetime of a token with
     // the moment it was issued: the token of Hub carries the two, and its
     // lifetime is five minutes.

@@ -90,7 +90,7 @@ moves are in [compatibility.md](compatibility.md).
 
 ## The state of the release
 
-Version `1.0.0`. The milestones M0 to M9 are closed: the process starts,
+Version `1.0.1`. The milestones M0 to M9 are closed: the process starts,
 validates its environment, answers the probes, drains on a signal,
 brokers the login of a caller, issues its own tokens, answers the
 decisions of a gateway, and runs the gateway of the reference against
@@ -99,7 +99,9 @@ itself, unchanged.
 The release carries the administration that has a credential per tenant,
 the denial that carries the code of its reason, the groups of the
 principals, the batches of the administration, and the audit that is
-exported.
+exported. The release `1.0.1` changes nothing of the behaviour: it
+carries the pin of the gateway at its release `1.3.0`, and it is the
+release that proves the published image against that gateway.
 
 What is **not** done is written down in [release.md](release.md) §6. It is
 a short list, and it is a list of facts, not of intentions.

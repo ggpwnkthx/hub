@@ -6,7 +6,7 @@ import { createSilentLogger } from '../observability'
 /** The dependencies of the tests. */
 function dependencies(): HubDependencies {
   return {
-    version: '1.0.0',
+    version: '1.0.1',
     logger: createSilentLogger(),
     observer: {
       recordDecision: () => undefined,

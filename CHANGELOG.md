@@ -14,6 +14,17 @@ work that carries it.
 
 The work that the next release carries.
 
+## 1.0.1
+
+A **PATCH** release: the behaviour of the service does not change, and
+the contract of the specification does not change either. The release
+carries the pin of the reference at the release `1.3.0` of the gateway
+and the documents that follow it.
+
+The release is the one that proves the published image against the
+gateway of the release `1.3.0`: the release `1.0.0` was proven against
+the gateway of the release `1.2.0`.
+
 ### The release
 
 - **The pin of the reference is the release `1.3.0` of the gateway.** The

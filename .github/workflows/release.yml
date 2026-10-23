@@ -8,10 +8,10 @@ name: release
 # runs the gateway of the reference against them, and it exports the
 # image as an artifact of the run.
 #
-#   git tag v1.0.0 && git push origin v1.0.0
+#   git tag v1.0.1 && git push origin v1.0.1
 #
-# The image is published with two tags: the tag of the release (`v1.0.0`)
-# and the version itself (`1.0.0`). A deployment that pins a version pins
+# The image is published with two tags: the tag of the release (`v1.0.1`)
+# and the version itself (`1.0.1`). A deployment that pins a version pins
 # the image of that release, and the digest of the image is what it pins.
 #
 # **The image is built once.** The build is published, and every gate of

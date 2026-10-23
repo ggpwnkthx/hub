@@ -160,6 +160,14 @@ The work that the release `1.0.0` carries, before the tag.
 - **The dependencies of a development machine.** A compose file brings
   the PostgreSQL and the Redis of a deployment up, so that the tests
   that need them run on a machine and not only in the CI.
+- **The database of the development machine is PostgreSQL 18.** The
+  compose file, the jobs of the CI and the gates of the release run
+  PostgreSQL 18, and the embedded PostgreSQL of a development machine is
+  that version: one version everywhere, so a migration that the tests
+  accept is a migration the CI accepts. A deployment names the server it
+  uses and the service does not read its version — the version of the
+  database of a deployment is the choice of the operator.
+  (docs/operations.md)
 - **The topology of a shared client is written in one place.** §1.4 said
   that the schema does not allow one gateway for several tenants, and
   §5.2 described the escape hatch that does: the client id is unique,

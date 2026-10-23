@@ -360,6 +360,13 @@ running in the process of Hub. It is the same PostgreSQL as the one of a
 deployment, so a development machine applies the migrations of the
 production and nothing has to be translated between the two.
 
+The repository is developed and tested against **PostgreSQL 18**: the
+compose file of a development machine, the jobs of the CI and the gates
+of the release run it, and the embedded PostgreSQL is that version. A
+deployment names the server it uses in `HUB_DATABASE_URL`, and the
+service does not read the version of that server: the version of the
+database of a deployment is the choice of the operator.
+
 A **production** environment must name a PostgreSQL server: the embedded
 database lives in one process and the replicas of a deployment share their
 tables. A production environment that names the embedded database is

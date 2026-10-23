@@ -43,6 +43,12 @@ production are the migrations of the development. `HUB_DATABASE_URL` names
 a server (`postgres://…`) or another embedded database (`pglite://<path>`);
 a production environment must name a server.
 
+The repository is developed and tested against **PostgreSQL 18**: the
+compose file of the development machine, the jobs of the CI and the gates
+of the release run it, and the embedded PostgreSQL is that version. A
+deployment names the server it uses, and the service does not read its
+version.
+
 The tests run on the embedded PostgreSQL too:
 
 ```bash

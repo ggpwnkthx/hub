@@ -22,7 +22,7 @@ jobs:
       # on a real server here: the engine of a deployment is the one of the
       # tests.
       postgres:
-        image: postgres:17-alpine
+        image: postgres:18-alpine
         ports:
           - '5432:5432'
         env:
@@ -168,7 +168,7 @@ jobs:
       # A deployment talks to a PostgreSQL server: the image applies the
       # migrations of the schema before it accepts a request.
       postgres:
-        image: postgres:17-alpine
+        image: postgres:18-alpine
         ports:
           - '5432:5432'
         env:
@@ -262,7 +262,7 @@ jobs:
           # The `-i` is what gives the statements of the heredoc to psql:
           # without it, the container reads nothing and the step is green
           # with nothing done.
-          docker run -i --rm --network host postgres:17-alpine \
+          docker run -i --rm --network host postgres:18-alpine \
             psql "postgres://hub:hub@localhost:5432/hub" -v ON_ERROR_STOP=1 <<'SQL'
           create role hub_app login password 'hub_app';
           grant usage, create on schema public to hub_app;

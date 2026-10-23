@@ -58,6 +58,22 @@ grant usage, create on schema public to hub_app;
 
 The migrations are applied by that role, so it owns the tables it creates.
 
+### The version of the database
+
+The repository is developed and tested against **PostgreSQL 18**: the
+compose file of a development machine, the jobs of the CI and the gates
+of the release run it, and the embedded database of a development machine
+(`pglite`) is PostgreSQL 18.6. One version everywhere means that a
+migration the tests accept is a migration the CI accepts.
+
+A deployment names the server it uses in `HUB_DATABASE_URL`, and the
+service **does not read the version** of that server: the version of the
+database of a deployment is the choice of the operator. The schema uses
+nothing that is newer than PostgreSQL 13 — the row level security, the
+`coalesce` of a unique index, the trigger of a constraint and the
+`set_config` of the scope — so the version of the database of a
+deployment is not constrained by the schema.
+
 ### The environment of a replica
 
 ```
@@ -518,18 +534,18 @@ exits with the status of the measurement.
 
 ### What was measured
 
-**Against a PostgreSQL server.** PostgreSQL 15 over the loopback of a
-development machine of sixteen cores, with a load average of nine at the
+**Against a PostgreSQL server.** PostgreSQL 18 over the loopback of a
+development machine of sixteen cores, with a load average of one at the
 time of the measurement, five thousand requests, twenty in flight, and a
 principal that holds a hundred grants. The numbers are the median of
 three runs:
 
 | Measurement | The decision of the platform | The decision of a tenant |
 | --- | --- | --- |
-| The `p50` | 1.94 ms | 2.82 ms |
-| The `p95` | 3.44 ms | 5.08 ms |
-| The `p99` | 5.32 ms | 6.88 ms |
-| The decisions per second | 9 060 | 6 321 |
+| The `p50` | 1.44 ms | 1.95 ms |
+| The `p95` | 1.85 ms | 2.81 ms |
+| The `p99` | 2.49 ms | 3.87 ms |
+| The decisions per second | 13 639 | 9 765 |
 
 The two columns are the two paths of §8.8: the **decision of the
 platform** is the bearer token of the deployment, the one of the gateway
@@ -538,10 +554,9 @@ a tenant, whose scope is a transaction because the scope of a statement
 is local to it. The second path costs a transaction and it is a third
 slower.
 
-The targets of the table above are met on this machine, on a machine
-that was busy. The numbers of a deployment are measured by the same
-script, against the server of the deployment, and they are published here
-when they are measured.
+The targets of the table above are met on this machine. The numbers of a
+deployment are measured by the same script, against the server of the
+deployment, and they are published here when they are measured.
 
 **On the embedded PostgreSQL of a development machine** (one connection,
 so the requests are serialized by it), with 1 000 requests and a principal
@@ -566,7 +581,7 @@ The plan of the statement, with a data set of 1 000 principals and
 | Measurement | Value |
 | --- | --- |
 | The plan | `Bitmap Index Scan on grants_user_live`, `Index Cond: (user_id = u.id)` |
-| The execution time | 2.0 ms |
+| The execution time | 1.5 ms |
 
 The index of the specification is the one the planner chooses: the
 decision does not scan the table of the policy.

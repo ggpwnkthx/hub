@@ -179,7 +179,7 @@ jobs:
       # The binary of a deployment talks to a PostgreSQL server: the
       # engine of a deployment is the one of the tests.
       postgres:
-        image: postgres:17-alpine
+        image: postgres:18-alpine
         ports:
           - '5432:5432'
         env:
@@ -210,7 +210,7 @@ jobs:
 
       - name: the role of the deployment
         run: |
-          docker run -i --rm --network host postgres:17-alpine \
+          docker run -i --rm --network host postgres:18-alpine \
             psql "postgres://hub:hub@localhost:5432/hub" -v ON_ERROR_STOP=1 <<'SQL'
           create role hub_app login password 'hub_app';
           grant usage, create on schema public to hub_app;

@@ -104,6 +104,15 @@ The work that the release `1.0.0` carries, before the tag.
 
 ### The release
 
+- **The dead code is a gate.** The build fails when the repository holds
+  a file that no program reaches, or an export that no file imports:
+  `knip` reads the source, the tests and the scripts, and names what
+  nothing uses. `bun run dead-code` is the gate and `bun run
+  dead-code:fix` removes the exports it finds. The check found the file
+  of the shared store that no program reached, and the hundred and
+  sixty-two exports that no file imported — among them the fifteen
+  symbols that nothing used at all: they are gone, and the surface of
+  the domains is the one the code uses.
 - **The capacity of the decision is a gate.** The measurement of the CI
   fails the build when the decision is outside of its thresholds: a
   decision that got slower — a plan that changed, an index that was

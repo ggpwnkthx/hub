@@ -16,10 +16,10 @@ import { createPrivateKey, createPublicKey } from 'node:crypto'
 import { exportJWK, SignJWT, type JWK, type JWTPayload } from 'jose'
 
 /** The algorithm of the tokens of Hub. */
-export const SIGNING_ALGORITHM = 'RS256'
+const SIGNING_ALGORITHM = 'RS256'
 
 /** A key of the JWKS. */
-export interface PublishedKey {
+interface PublishedKey {
   /** The identifier of the key. */
   kid: string
   /** The public part of the key. */

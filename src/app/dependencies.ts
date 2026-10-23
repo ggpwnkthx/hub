@@ -14,7 +14,7 @@ import type { ProviderService, TokenPair } from '../domains/provider'
 import type { Logger, Observer } from '../observability'
 
 /** The login of the callers, as the application sees it. */
-export interface LoginPort {
+interface LoginPort {
   /** Starts a login. */
   begin: (request: AuthorizationRequest) => Promise<BegunLogin>
   /** Finishes a login. */
@@ -30,7 +30,7 @@ export interface LoginPort {
 }
 
 /** The codes of the logins, as the application sees them. */
-export interface CodePort {
+interface CodePort {
   /** Issues a code for a completed login. */
   issue: (options: {
     clientId: string
@@ -52,7 +52,7 @@ export interface CodePort {
 }
 
 /** The tenants of the platform, as the application sees them. */
-export interface TenantPort {
+interface TenantPort {
   /** The tenant of a client id of a gateway. */
   findByClientId: (
     clientId: string
@@ -68,7 +68,7 @@ export interface TenantPort {
 }
 
 /** The secrets of the gateway of a tenant, in clear. */
-export interface GatewaySecrets {
+interface GatewaySecrets {
   /** The secret that is in use. */
   current: string | null
   /** The secret that the current one replaced, when it is still accepted. */
@@ -84,7 +84,7 @@ export interface GatewaySecrets {
  * to answer and the migrations have to be applied. The port is implemented
  * by the platform of the database, and the runtime hands it over.
  */
-export interface ReadinessProbe {
+interface ReadinessProbe {
   /** True when the dependencies of the service answer. */
   ready: () => Promise<boolean>
 }

@@ -10,10 +10,10 @@
 import { z } from 'zod'
 
 /** The name of a tenant. */
-export const SLUG_PATTERN = /^[a-z0-9-]{2,63}$/
+const SLUG_PATTERN = /^[a-z0-9-]{2,63}$/
 
 /** The name of a permission. */
-export const PERMISSION_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/
+const PERMISSION_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/
 
 /** The body of the creation and of the change of a tenant. */
 export const TenantBody = z.object({
@@ -86,7 +86,7 @@ export const GroupBody = z.object({
  * once: it is the call that onboards a tenant. The number is a ceiling,
  * not a promise: a bigger batch is written in several calls.
  */
-export const MAX_BATCH_ITEMS = 1000
+const MAX_BATCH_ITEMS = 1000
 
 /** The body of a batch of principals. */
 export const PrincipalBatchBody = z.object({
@@ -105,16 +105,3 @@ export const GrantBatchBody = z.object({
     .min(1, 'the batch holds at least one grant')
     .max(MAX_BATCH_ITEMS, `the batch holds at most ${MAX_BATCH_ITEMS} grants`),
 })
-
-/** The parsed body of a tenant. */
-export type TenantInput = z.infer<typeof TenantBody>
-/** The parsed body of a principal. */
-export type PrincipalInput = z.infer<typeof PrincipalBody>
-/** The parsed body of a grant. */
-export type GrantInput = z.infer<typeof GrantBody>
-/** The parsed body of a group. */
-export type GroupInput = z.infer<typeof GroupBody>
-/** The parsed body of a batch of principals. */
-export type PrincipalBatchInput = z.infer<typeof PrincipalBatchBody>
-/** The parsed body of a batch of grants. */
-export type GrantBatchInput = z.infer<typeof GrantBatchBody>

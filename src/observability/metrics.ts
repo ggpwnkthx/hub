@@ -127,15 +127,3 @@ export class MetricsStore implements Observer {
     return this.registry.contentType
   }
 }
-
-/** An observer that measures nothing; it is used by the tests. */
-export function createSilentObserver(): Observer {
-  return {
-    recordDecision: () => undefined,
-    recordAdminRequest: () => undefined,
-    recordStoreError: () => undefined,
-    recordLogin: () => undefined,
-    render: async () => '',
-    contentType: 'text/plain; version=0.0.4',
-  }
-}

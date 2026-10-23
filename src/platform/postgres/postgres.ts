@@ -11,7 +11,7 @@ import { normalizeError, type Database, type MigrationLock, type SqlClient } fro
 import { MIGRATION_STATEMENT_TIMEOUT_MS } from './migrations'
 
 /** The key of the advisory lock of the migrations. */
-export const MIGRATION_LOCK_KEY = 8_675_309
+const MIGRATION_LOCK_KEY = 8_675_309
 
 export interface PostgresOptions {
   /** The url of the server. */

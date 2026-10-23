@@ -14,7 +14,7 @@ import { isIP } from 'node:net'
 import { lookup } from 'node:dns/promises'
 
 /** The failure of the guard of an address. */
-export class AddressError extends Error {
+class AddressError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'AddressError'

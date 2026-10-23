@@ -14,16 +14,16 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto'
 
 /** The version of the format of the ciphertext. */
-export const CIPHERTEXT_VERSION = 1
+const CIPHERTEXT_VERSION = 1
 
 /** The size of the key of the encryption. */
-export const KEY_BYTES = 32
+const KEY_BYTES = 32
 
 /** The size of the nonce of the encryption. */
-export const NONCE_BYTES = 12
+const NONCE_BYTES = 12
 
 /** The size of the tag of the encryption. */
-export const TAG_BYTES = 16
+const TAG_BYTES = 16
 
 /** The label of the derivation of the key. */
 const KEY_INFO = 'hub:client-secret:v1'

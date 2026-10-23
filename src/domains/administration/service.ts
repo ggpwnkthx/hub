@@ -140,17 +140,11 @@ export interface GrantOutcome {
   message?: string
 }
 
-/** The defaults of the registration of a tenant. */
-export const DEFAULT_IDP_SCOPES = ['openid', 'email', 'profile']
-
-/** The defaults of the algorithms of a tenant. */
-export const DEFAULT_IDP_ALGORITHMS = ['RS256']
-
 /** The default size of a page of the administration. */
-export const DEFAULT_PAGE_SIZE = 50
+const DEFAULT_PAGE_SIZE = 50
 
 /** The maximum size of a page of the administration. */
-export const MAX_PAGE_SIZE = 200
+const MAX_PAGE_SIZE = 200
 
 /**
  * Reads a whole number of the query of a list.
@@ -185,7 +179,7 @@ function wholeNumber(
  * number is a ceiling, not a promise: an audit that holds more rows is
  * exported page by page.
  */
-export const MAX_EXPORT_ROWS = 10_000
+const MAX_EXPORT_ROWS = 10_000
 
 /**
  * Reads the format of the answer of the audit.

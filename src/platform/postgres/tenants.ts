@@ -146,7 +146,7 @@ const COLUMNS = `id, slug, display_name, enabled, is_default, auto_provision, em
  * secret and short enough for the old secret not to be a permanent second
  * credential of the tenant.
  */
-export const SECRET_ROTATION_WINDOW_MS = 24 * 60 * 60 * 1000
+const SECRET_ROTATION_WINDOW_MS = 24 * 60 * 60 * 1000
 
 /** Turns the row of the database into the row of the domain. */
 function toRow(record: TenantRecord): TenantRow {

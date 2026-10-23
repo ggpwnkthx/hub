@@ -8,13 +8,10 @@
  */
 
 /** The driver of the database. */
-export type SqlDriver = 'postgres' | 'pglite'
+type SqlDriver = 'postgres' | 'pglite'
 
 /** The failure of a unique constraint. */
 export const UNIQUE_VIOLATION = '23505'
-
-/** The failure of a foreign key. */
-export const FOREIGN_KEY_VIOLATION = '23503'
 
 /** The failure of a check constraint. */
 export const CHECK_VIOLATION = '23514'

@@ -14,7 +14,7 @@ import type { Logger } from '../observability'
  * The running logins are given five seconds to finish and the process
  * exits: a deployment that is replaced waits for its replica.
  */
-export const DRAIN_TIMEOUT_MS = 5_000
+const DRAIN_TIMEOUT_MS = 5_000
 
 export interface DrainOptions {
   /** The logger of the service. */

@@ -77,7 +77,7 @@ export interface HubRuntime {
 }
 
 /** The storage of the five tables, as the domains receive it. */
-export interface HubRepositories {
+interface HubRepositories {
   tenants: TenantRepository
   users: UserRepository
   permissions: PermissionRepository
@@ -486,7 +486,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
  * A malformed value stops the service: a credential that is not
  * understood is a credential that is not scoped.
  */
-export function readAdminCredentials(raw: string | undefined): AdminCredential[] {
+function readAdminCredentials(raw: string | undefined): AdminCredential[] {
   if (!raw || raw.trim().length === 0) return []
   let parsed: unknown
   try {

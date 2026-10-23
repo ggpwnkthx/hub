@@ -77,6 +77,13 @@ jobs:
       - name: import boundaries
         run: bun run architecture
 
+      - name: the dead code
+        # The files and the exports that nothing uses: a symbol that no
+        # program of the repository reaches is code that never runs, and
+        # it is a place where a defect can hide. `bun run dead-code:fix`
+        # removes the exports that knip finds.
+        run: bun run dead-code
+
       - name: the tests of the repository
         # The tests of this repository: the units, the contracts, the
         # integrations, the boundaries and the tooling. The compatibility

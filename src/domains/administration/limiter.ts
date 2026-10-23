@@ -18,10 +18,10 @@
  */
 
 /** How many failures an address may make in the window. */
-export const MAX_FAILURES = 5
+const MAX_FAILURES = 5
 
 /** The size of the window, in milliseconds. */
-export const WINDOW_MS = 60_000
+const WINDOW_MS = 60_000
 
 /**
  * The count of the failures of an address, and the window that is left.

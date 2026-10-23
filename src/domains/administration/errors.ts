@@ -7,7 +7,7 @@
  */
 
 /** The codes of the failures of the administration. */
-export const ERROR_CODES = [
+const ERROR_CODES = [
   'unauthorized',
   'invalid_request',
   'not_found',

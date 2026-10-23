@@ -16,7 +16,7 @@
 import type { SqlClient } from './database'
 
 /** The setting that carries the scope of a statement. */
-export const TENANT_SCOPE_SETTING = 'hub.tenant_id'
+const TENANT_SCOPE_SETTING = 'hub.tenant_id'
 
 /**
  * Runs a statement in the scope of a tenant.

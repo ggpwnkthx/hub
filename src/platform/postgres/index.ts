@@ -7,57 +7,46 @@
  * the secrets that are stored.
  */
 
-export type { Database, DatabaseOptions, MigrationLock, SqlClient, SqlDriver } from './database'
+export type { Database } from './database'
 export {
   CHECK_VIOLATION,
   DatabaseError,
-  FOREIGN_KEY_VIOLATION,
   GROUP_MEMBERSHIP_CONSTRAINT,
-  normalizeError,
   UNIQUE_VIOLATION,
 } from './database'
 export { createDatabase } from './factory'
-export type { Migration, MigrationResult } from './migrations'
+
 export {
-  FIRST_MIGRATION,
   MIGRATION_STATEMENT_TIMEOUT_MS,
   MIGRATIONS_DIRECTORY,
   MIGRATIONS_TABLE,
-  migrationsDirectoryCandidates,
-  migrationsDirectoryOf,
   readMigrations,
   resolveMigrationsDirectory,
   runMigrations,
 } from './migrations'
-export type { AuditFilter, AuditPage } from './audit'
+
 export { AuditRepository, type AuditRow } from './audit'
-export type { DecisionFacts, DecisionRequest } from '../../domains/authorization'
+
 export { AccessContextRepository } from './access-context'
-export { DecisionRepository, TimeoutError, withTimeout } from './decisions'
-export type { GrantRow, NewGrant } from './grants'
+export { DecisionRepository, TimeoutError } from './decisions'
+export type { GrantRow } from './grants'
 export { GrantRepository } from './grants'
-export type { GroupRow, NewGroup } from './groups'
+export type { GroupRow } from './groups'
 export { GroupRepository } from './groups'
-export type { PermissionRow, NewPermission } from './permissions'
+export type { PermissionRow } from './permissions'
 export { PermissionRepository } from './permissions'
 export type { SecretCipher } from './secrets'
 export {
-  CIPHERTEXT_VERSION,
   createSecretCipher,
-  deriveKey,
-  KEY_BYTES,
   SecretError,
 } from './secrets'
 export {
   bypassesRowLevelSecurity,
   roleOf,
-  TENANT_SCOPE_SETTING,
-  withTenantScope,
-  type DatabaseRole,
 } from './scope'
-export type { NewTenant, TenantRow, TenantSummary, TenantUpdate } from './tenants'
-export { SECRET_ROTATION_WINDOW_MS, TenantRepository, type GatewaySecrets } from './tenants'
-export type { NewUser, PrincipalStatus, UserRow, UserUpdate } from './users'
+export type { NewTenant, TenantRow, TenantSummary } from './tenants'
+export { TenantRepository } from './tenants'
+export type { UserRow } from './users'
 export { UserRepository } from './users'
-export type { TraceOptions } from './trace'
-export { createTracedClient, SLOW_QUERY_MS } from './trace'
+
+export { createTracedClient } from './trace'

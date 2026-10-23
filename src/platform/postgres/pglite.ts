@@ -15,7 +15,7 @@ import { mkdir } from 'node:fs/promises'
 import { normalizeError, type Database, type MigrationLock, type SqlClient } from './database'
 
 /** The key of the advisory lock of the migrations. */
-export const MIGRATION_LOCK_KEY = 8_675_309
+const MIGRATION_LOCK_KEY = 8_675_309
 
 /** A client of the embedded database. */
 class PgliteClient implements SqlClient {

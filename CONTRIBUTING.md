@@ -46,7 +46,13 @@ bun run typecheck    # tsc --noEmit
 bun run lint         # biome lint
 bun run format       # biome format --write .
 bun run architecture # the import boundaries
+bun run dead-code   # the dead code of the repository
 ```
+
+`bun run dead-code:fix` removes the exports that nothing imports, and
+keeps the code that uses them. Run it, then run `bun run typecheck`: a
+removal leaves an import behind when the import was only there for the
+export.
 
 The compatibility suite clones the gateway of the reference at the
 commit that `compatibility.json` pins. It needs the network, or a

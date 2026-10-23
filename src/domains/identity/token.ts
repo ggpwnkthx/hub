@@ -21,7 +21,7 @@ export class IdentityError extends Error {
 }
 
 /** The claims of the token of a provider. */
-export interface ProviderToken {
+interface ProviderToken {
   /** The issuer of the token. */
   issuer?: string
   /** The audience of the token. */

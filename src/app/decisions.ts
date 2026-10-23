@@ -13,7 +13,6 @@ import {
   isMissingRole,
   isUuid,
   reasonCodeOf,
-  REASONS,
   type DecisionFacts,
 } from '../domains/authorization'
 import { sameSecret } from '../observability'
@@ -76,7 +75,7 @@ async function readBody(context: Context<HubEnv>): Promise<DecisionBody> {
 }
 
 /** The refusal of a body that is not understood. */
-export class InvalidRequestError extends Error {
+class InvalidRequestError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'InvalidRequestError'
@@ -259,6 +258,3 @@ export async function decisionHandler(
     reasonCode: reasonCodeOf(answer.reason),
   })
 }
-
-/** The reason of an allowance, for the tests of the contract. */
-export const ALLOWED_REASON = REASONS.allowed

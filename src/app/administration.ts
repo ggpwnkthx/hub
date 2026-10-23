@@ -25,7 +25,7 @@ import { jsonError } from './errors'
 import type { HubEnv } from './state'
 
 /** The size of a body of the administration. */
-export const MAX_BODY_BYTES = 65_536
+const MAX_BODY_BYTES = 65_536
 
 /**
  * The size of the body of a batch.
@@ -36,7 +36,7 @@ export const MAX_BODY_BYTES = 65_536
  * endpoint that accepts a list, and the number of items of the list is
  * bounded by the domain (spec §10.4).
  */
-export const MAX_BATCH_BODY_BYTES = 1_048_576
+const MAX_BATCH_BODY_BYTES = 1_048_576
 
 /** The options of the reading of a body. */
 interface BodyOptions {
@@ -124,7 +124,7 @@ async function readBody(context: Context<HubEnv>, ...rest: unknown[]): Promise<u
 }
 
 /** The refusal of a body that is too large. */
-export class BodyTooLargeError extends Error {
+class BodyTooLargeError extends Error {
   constructor() {
     super('the body is too large')
     this.name = 'BodyTooLargeError'

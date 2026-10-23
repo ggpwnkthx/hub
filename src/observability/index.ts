@@ -8,12 +8,6 @@
 
 export type { LogFields, LogLevel, Logger } from './logging'
 export { fingerprint, sameSecret } from './secrets'
-export { createLogger, createSilentLogger, parseLogLevel, redactFields, redactUrl } from './logging'
+export { createLogger, createSilentLogger, parseLogLevel } from './logging'
 export type { Observer } from './metrics'
-export {
-  BoundedLabel,
-  createSilentObserver,
-  LABEL_LIMIT,
-  MetricsStore,
-  OVERFLOW_LABEL,
-} from './metrics'
+export { MetricsStore } from './metrics'

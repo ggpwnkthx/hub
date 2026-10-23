@@ -12,7 +12,7 @@ import type { SqlClient } from './database'
 import type { ChangeAudit } from '../../domains/administration'
 
 /** The status of a principal. */
-export type PrincipalStatus = 'active' | 'disabled'
+type PrincipalStatus = 'active' | 'disabled'
 
 /** The row of a principal. */
 export interface UserRow {

@@ -12,7 +12,7 @@
  * The platform does not know the application and it does not know the
  * framework of the application: it knows that something answers a request.
  */
-export interface RequestHandler {
+interface RequestHandler {
   handle(request: Request, env: never): Response | Promise<Response>
 }
 

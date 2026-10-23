@@ -33,7 +33,7 @@ export class TimeoutError extends Error {
  * little longer, so the failure it reports is the one of the server (the
  * statement was cancelled) and not a race between the two deadlines.
  */
-export const TIMEOUT_GRACE_MS = 250
+const TIMEOUT_GRACE_MS = 250
 
 /**
  * Runs a statement with a deadline.

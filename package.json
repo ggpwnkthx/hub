@@ -27,6 +27,8 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "architecture": "bun run scripts/architecture.ts",
+    "dead-code": "knip --no-progress",
+    "dead-code:fix": "knip --no-progress --fix",
     "versions": "bun run scripts/version.ts",
     "tag": "bun run scripts/tag.ts"
   },
@@ -44,6 +46,7 @@
     "@electric-sql/pglite": "0.5.11",
     "@types/bun": "1.4.3",
     "@types/pg": "8.15.6",
+    "knip": "6.42.1",
     "typescript": "5.9.3"
   },
   "engines": {

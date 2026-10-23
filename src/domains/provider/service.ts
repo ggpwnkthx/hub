@@ -13,13 +13,13 @@ import { jwksOf, loadSigningKeys, type SigningKeys } from './keys'
 import { issueTokens, rolesClaim, type TokenPair, type TokenSubject } from './tokens'
 
 /** The storage of the roles of a principal. */
-export interface RoleStore {
+interface RoleStore {
   /** The keys of the permissions of the live grants of the principal. */
   roleKeys(userId: string): Promise<string[]>
 }
 
 /** The storage of the principals. */
-export interface PrincipalStore {
+interface PrincipalStore {
   /** The principal of an id. */
   findById(id: string): Promise<{
     id: string
@@ -30,7 +30,7 @@ export interface PrincipalStore {
 }
 
 /** The storage of the clients of the platform. */
-export interface AudienceStore {
+interface AudienceStore {
   /** True when the client id names a gateway of the platform. */
   isKnown(clientId: string): Promise<boolean>
 }
@@ -44,7 +44,7 @@ export interface UserinfoClaims {
 }
 
 /** The storage of the principals. */
-export interface PrincipalStore {
+interface PrincipalStore {
   /** The principal of an id. */
   findById(id: string): Promise<{
     id: string

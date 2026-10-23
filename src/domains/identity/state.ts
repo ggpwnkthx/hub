@@ -9,20 +9,10 @@
  * authenticated): it carries nothing readable and nothing durable.
  */
 
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHash,
-  hkdfSync,
-  randomBytes,
-  randomUUID,
-} from 'node:crypto'
-
-/** The name of the cookie of the state of a login. */
-export const STATE_COOKIE = 'hub_login_state'
+import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes } from 'node:crypto'
 
 /** The life of the state of a login, in seconds. */
-export const STATE_TTL_SECONDS = 600
+const STATE_TTL_SECONDS = 600
 
 /** The size of the key of the encryption. */
 const KEY_BYTES = 32
@@ -160,11 +150,6 @@ export function aVerifier(): string {
 /** The challenge of the PKCE of a verifier. */
 export function aChallenge(verifier: string): string {
   return createHash('sha256').update(verifier, 'ascii').digest('base64url')
-}
-
-/** A fresh state of the provider. */
-export function aProviderState(): string {
-  return randomUUID()
 }
 
 /** A fresh nonce of the login. */

@@ -20,7 +20,6 @@ import {
 import {
   aNonce,
   aVerifier,
-  createStateCipher,
   isAlive,
   LoginStateError,
   type LoginState,
@@ -418,9 +417,4 @@ export class LoginService {
   private sameProviderState(state: LoginState, received: string): boolean {
     return this.providerStateOf(state) === received
   }
-}
-
-/** Builds the cipher of the state of a login. */
-export function stateCipherOf(secret: string): StateCipher {
-  return createStateCipher(secret)
 }

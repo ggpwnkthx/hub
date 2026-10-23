@@ -7,7 +7,6 @@
  */
 
 import type { Context } from 'hono'
-import type { ProviderService } from '../domains/provider'
 import type { HubDependencies } from './dependencies'
 import { jsonError } from './errors'
 import type { HubEnv } from './state'
@@ -50,6 +49,3 @@ export async function userinfoHandler(
   }
   return context.json(claims)
 }
-
-/** The provider of the service, as the application sees it. */
-export type { ProviderService }

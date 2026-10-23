@@ -15,7 +15,7 @@ import { refusalPage } from './pages'
 import type { HubEnv } from './state'
 
 /** The cookie of the state of a login. */
-export const STATE_COOKIE = 'hub_login_state'
+const STATE_COOKIE = 'hub_login_state'
 
 /** The attributes of the cookie of the state of a login. */
 function stateCookie(value: string, secure: boolean, maxAgeSeconds: number): string {

@@ -67,6 +67,17 @@ the code contains **no SAML, no console, no SCIM and no directory sync**:
 a half-built feature in a service that carries a customer is a liability
 (spec §14).
 
+A third check, `knip`, finds the code that never runs. The compiler
+catches the variables that a function does not use, and it says nothing
+about the symbols that no file imports: knip reads the whole repository —
+the source, the tests and the scripts — and names the files that no
+program reaches and the exports that no file imports. `bun run dead-code`
+is the gate, and `bun run dead-code:fix` removes the exports it finds.
+
+The entry points of the check are in `knip.json`: the tests and the
+scripts of the operator. The entry point of the service is one of the
+defaults of knip. A file that none of them reaches is dead.
+
 ## The layout
 
 | Path | Owns |

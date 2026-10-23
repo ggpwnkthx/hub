@@ -17,10 +17,10 @@ import type { LogLevel } from '../observability'
 import { parseLogLevel } from '../observability'
 
 /** The environment the process runs in. */
-export type Environment = 'development' | 'production'
+type Environment = 'development' | 'production'
 
 /** The settings of the listener. */
-export interface NetworkSettings {
+interface NetworkSettings {
   /** The address the listener binds to. */
   host: string
   /** The port the listener binds to. */
@@ -28,7 +28,7 @@ export interface NetworkSettings {
 }
 
 /** The urls the browser and the gateway use. */
-export interface PublicSettings {
+interface PublicSettings {
   /** The public issuer url of Hub: the `iss` of every token it issues. */
   issuer: string
   /** The public url of Hub, when it differs from the issuer. */
@@ -36,7 +36,7 @@ export interface PublicSettings {
 }
 
 /** The settings of the database of the five tables. */
-export interface DatabaseSettings {
+interface DatabaseSettings {
   /** The driver of the database. */
   driver: 'postgres' | 'pglite'
   /** The url of the PostgreSQL server, when the driver is the server. */
@@ -46,7 +46,7 @@ export interface DatabaseSettings {
 }
 
 /** The settings of the shared store of the authorization codes. */
-export interface StoreSettings {
+interface StoreSettings {
   /** The url of the Redis of the deployment, when there is one. */
   url?: string
   /**
@@ -60,7 +60,7 @@ export interface StoreSettings {
 }
 
 /** The settings of the administration. */
-export interface AdminSettings {
+interface AdminSettings {
   /** The bearer token of the nine administrative endpoints. */
   token?: string
   /**
@@ -81,7 +81,7 @@ export interface AdminSettings {
 }
 
 /** The settings of the decision contract of the gateway. */
-export interface AccessSettings {
+interface AccessSettings {
   /** The bearer token the gateway presents on `POST /v1/decisions`. */
   token?: string
   /**
@@ -103,13 +103,13 @@ export interface AccessSettings {
 }
 
 /** The settings of the metrics. */
-export interface MetricsSettings {
+interface MetricsSettings {
   /** The bearer token that guards the metrics endpoint. */
   token?: string
 }
 
 /** The settings of the secrets of the process. */
-export interface SecretSettings {
+interface SecretSettings {
   /** The secret that signs and encrypts the state of a login. */
   stateSecret?: string
   /** The key that encrypts the client secrets at rest. */
@@ -117,7 +117,7 @@ export interface SecretSettings {
 }
 
 /** The settings of the key Hub signs its tokens with. */
-export interface SigningSettings {
+interface SigningSettings {
   /** The private key of Hub, in PEM. */
   key?: string
   /** The identifier of the key in the JWKS. */
@@ -129,7 +129,7 @@ export interface SigningSettings {
 }
 
 /** The settings of the deadlines. */
-export interface TimeoutSettings {
+interface TimeoutSettings {
   /** How long Hub waits for the provider of a tenant. */
   idpTimeoutMs: number
   /** How long a decision may take before it is a denial. */
@@ -139,7 +139,7 @@ export interface TimeoutSettings {
 }
 
 /** The settings of the observation. */
-export interface ObservabilitySettings {
+interface ObservabilitySettings {
   /** The level of the log. */
   logLevel: LogLevel
 }
@@ -164,12 +164,12 @@ export interface RuntimeSettings {
 }
 
 /** The issuer of a development deployment. */
-export function developmentIssuer(port: number): string {
+function developmentIssuer(port: number): string {
   return `http://localhost:${port}`
 }
 
 /** The smallest size of a secret, in bytes. */
-export const MINIMUM_SECRET_BYTES = 32
+const MINIMUM_SECRET_BYTES = 32
 
 /**
  * The smallest size of a bearer token of the environment, in bytes.
@@ -178,7 +178,7 @@ export const MINIMUM_SECRET_BYTES = 32
  * the same way: a token of one character is a token of one byte
  * (spec §4.1).
  */
-export const MINIMUM_TOKEN_BYTES = 16
+const MINIMUM_TOKEN_BYTES = 16
 
 /**
  * The values of the file of examples.
@@ -187,7 +187,7 @@ export const MINIMUM_TOKEN_BYTES = 16
  * production one keeps a published secret. A production deployment
  * refuses to start with one of these values (spec §4.1).
  */
-export const EXAMPLE_SECRETS: readonly string[] = [
+const EXAMPLE_SECRETS: readonly string[] = [
   'the-admin-token-of-the-development',
   'the-previous-admin-token-of-the-development',
   'the-access-token-of-the-development',
@@ -202,7 +202,7 @@ export const EXAMPLE_SECRETS: readonly string[] = [
  * the tenants and the principals of a development machine survive the
  * restarts of the process.
  */
-export const DEFAULT_EMBEDDED_DATABASE_PATH = './.hub/pglite'
+const DEFAULT_EMBEDDED_DATABASE_PATH = './.hub/pglite'
 
 /** An integer of the environment. */
 function intEnv(defaultValue: number, options: { min?: number; max?: number } = {}) {
@@ -311,7 +311,7 @@ function isPrivateKeyPem(value: string): boolean {
  * one of its values: a production deployment refuses to start with one
  * of them (spec §4.1).
  */
-export function isExampleSecret(value: string): boolean {
+function isExampleSecret(value: string): boolean {
   const trimmed = value.trim()
   return EXAMPLE_SECRETS.includes(trimmed)
 }
@@ -323,7 +323,7 @@ export function isExampleSecret(value: string): boolean {
  * and a secret of one repeated character is not a secret whatever its
  * length (spec §4.1).
  */
-export function isRepeatedCharacterSecret(value: string): boolean {
+function isRepeatedCharacterSecret(value: string): boolean {
   const trimmed = value.trim()
   if (trimmed.length < 8) return false
   return [...trimmed].every((character) => character === trimmed[0])
@@ -336,7 +336,7 @@ export function isRepeatedCharacterSecret(value: string): boolean {
  * private key in a variable of the environment is a private key that a
  * shell mangles (spec §4.5).
  */
-export const FILE_VARIABLES: readonly string[] = [
+const FILE_VARIABLES: readonly string[] = [
   'HUB_ADMIN_TOKEN',
   'HUB_PREVIOUS_ADMIN_TOKEN',
   'HUB_ACCESS_TOKEN',
@@ -356,7 +356,7 @@ export const FILE_VARIABLES: readonly string[] = [
  * not set at the same time: a deployment that sets both does not know
  * which one it meant, and the service says so instead of choosing.
  */
-export function readSecretFiles(env: Env): Env {
+function readSecretFiles(env: Env): Env {
   const resolved: Env = { ...env }
   for (const name of FILE_VARIABLES) {
     const file = env[`${name}_FILE`]

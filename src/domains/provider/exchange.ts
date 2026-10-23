@@ -25,7 +25,7 @@ export class ExchangeError extends Error {
 }
 
 /** The principal of a login, as the exchange knows it. */
-export interface PrincipalOfLogin {
+interface PrincipalOfLogin {
   id: string
   email: string | null
   displayName: string | null

@@ -334,6 +334,27 @@ export class AdministrationService {
       throw new AdministrationError('not_found', 'the tenant does not exist')
     }
 
+    // The flags that change the scope of the platform belong to the
+    // operator of the platform: the shared client of a tenant moves the
+    // logins of the platform and lifts the scope of the decisions of its
+    // gateway, and the default tenant of the platform routes the logins
+    // of the shared clients. A credential of a tenant may not change
+    // them.
+    if (scope.tenant !== null && existing) {
+      if (registration.sharedClient !== existing.sharedClient) {
+        throw new AdministrationError(
+          'forbidden',
+          'the credential may not change the shared client of the tenant'
+        )
+      }
+      if (registration.isDefault !== existing.isDefault) {
+        throw new AdministrationError(
+          'forbidden',
+          'the credential may not change the default tenant of the platform'
+        )
+      }
+    }
+
     // A client id belongs to one tenant.
     const owner = await this.options.tenants.findByClientId(registration.clientId)
     if (owner && owner.id !== existing?.id) {

@@ -709,7 +709,9 @@ disabled → `403 tenant_disabled`.
 A shared client is a deliberate weakening: the operator accepts that a
 login may be resolved to a tenant by a hint that the caller controls. It
 is refused by default and it is the reason a shared gateway is not the
-recommended topology.
+recommended topology. Only the operator of the platform may enable it:
+the flag is one of the flags of the tenant that belong to the platform
+(§10.1).
 
 **The redirect uri of the request.** The url the browser comes back to
 is a value the caller controls, so it is checked against the ones the
@@ -1402,6 +1404,14 @@ The bodies of the requests and of the answers are in [api.md](api.md).
   lists of its tenant, and the filter of a query cannot widen them. A
   credential of a tenant does not create a tenant: the creation of a
   tenant is the work of the operator of the platform.
+
+  **The flags of a tenant that belong to the platform are the work of the
+  operator of the platform.** The `shared_client` of a tenant moves the
+  logins of the platform and the `is_default` routes the logins of the
+  shared clients: a credential of a tenant may not change them. A call
+  that carries a value that is not the value of the row → `403
+  forbidden`. A call that carries the value of the row changes the
+  tenant like any other change.
 
 - The bodies are JSON, at most 64 KiB. A body that is larger → `413`.
 - The answers are JSON. The errors are

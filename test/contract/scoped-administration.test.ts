@@ -126,6 +126,54 @@ describe('the credentials of the administration', () => {
     expect(response.status).toBe(403)
   })
 
+  test('the credential of a tenant may not change the shared client of its tenant', async () => {
+    // The shared client of a tenant moves the logins of the platform and
+    // lifts the scope of the decisions of its gateway: it belongs to the
+    // operator of the platform.
+    const response = await call(
+      '/v1/admin/tenants',
+      'POST',
+      { ...tenant('acme', 'shuttle-acme'), sharedClient: true },
+      ACME_TOKEN
+    )
+    expect(response.status).toBe(403)
+    expect(response.body.error).toBe('forbidden')
+  })
+
+  test('the credential of a tenant may not change the default tenant of the platform', async () => {
+    const response = await call(
+      '/v1/admin/tenants',
+      'POST',
+      { ...tenant('acme', 'shuttle-acme'), default: true },
+      ACME_TOKEN
+    )
+    expect(response.status).toBe(403)
+    expect(response.body.error).toBe('forbidden')
+  })
+
+  test('the credential of a tenant changes its tenant with the flags it already has', async () => {
+    const response = await call(
+      '/v1/admin/tenants',
+      'POST',
+      { ...tenant('acme', 'shuttle-acme'), displayName: 'Acme Renamed' },
+      ACME_TOKEN
+    )
+    expect(response.status).toBe(200)
+    expect(response.body.displayName).toBe('Acme Renamed')
+    expect(response.body.sharedClient).toBe(false)
+  })
+
+  test('the credential of the platform changes the shared client', async () => {
+    const response = await call(
+      '/v1/admin/tenants',
+      'POST',
+      { ...tenant('other', 'shuttle-other'), sharedClient: true },
+      PLATFORM_TOKEN
+    )
+    expect(response.status).toBe(200)
+    expect(response.body.sharedClient).toBe(true)
+  })
+
   test('the list of the principals of a credential is the list of its tenant', async () => {
     const response = await call('/v1/admin/users', 'GET', undefined, ACME_TOKEN)
     expect(response.status).toBe(200)

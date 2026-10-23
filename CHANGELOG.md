@@ -14,6 +14,16 @@ work that carries it.
 
 The work that the next release carries.
 
+### The contract
+
+- **The flags of a tenant that belong to the platform are the work of the
+  operator of the platform.** A credential of a tenant may not change the
+  `shared_client` of its tenant, nor the `is_default` of the platform: a
+  call that carries a value that is not the value of the row is a `403
+  forbidden` (spec §10.1). The shared client moves the logins of the
+  platform, and the default tenant routes the logins of the shared
+  clients: they are not the decision of a tenant operator.
+
 ## 1.0.1
 
 A **PATCH** release: the behaviour of the service does not change, and

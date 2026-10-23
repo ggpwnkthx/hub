@@ -5,6 +5,7 @@ import {
   AdministrationService,
   FailedAuthenticationLimiter,
   PLATFORM_SCOPE,
+  type AdminCredential,
   type AuthenticationFailures,
   type AuditContext,
   type ChangeAudit,
@@ -431,6 +432,7 @@ function service(
     token?: string
     limiter?: FailedAuthenticationLimiter
     failures?: AuthenticationFailures
+    credentials?: AdminCredential[]
   } = {}
 ) {
   return new AdministrationService({
@@ -440,6 +442,7 @@ function service(
     grants: GRANTS,
     groups: GROUPS,
     token: options.token ?? 'the-admin-token',
+    ...(options.credentials ? { credentials: options.credentials } : {}),
     publicUrl: 'https://hub.example.com',
     limiter:
       options.limiter ?? new FailedAuthenticationLimiter(options.failures ?? new FakeFailures()),
@@ -553,6 +556,48 @@ describe('the tenants of the administration', () => {
     expect(updated.created).toBe(false)
     expect(updated.audit.action).toBe('tenant.updated')
     expect(updated.tenant.displayName).toBe('Another name')
+  })
+
+  test('a credential of a tenant may not change the shared client of its tenant', async () => {
+    const administration = service({
+      credentials: [{ token: 'the-token-of-acme', tenant: 'acme', operator: 'alice' }],
+    })
+    await administration.upsertTenant(PLATFORM_SCOPE, TENANT, CONTEXT)
+    const scope = { tenant: 'acme', operator: 'alice' }
+    // The shared client moves the logins of the platform and lifts the
+    // scope of the decisions of the gateway: it belongs to the operator
+    // of the platform.
+    await expect(
+      administration.upsertTenant(scope, { ...TENANT, sharedClient: true }, CONTEXT)
+    ).rejects.toThrow(/may not change the shared client/)
+    // The tenant with the value it already has is changed.
+    const changed = await administration.upsertTenant(
+      scope,
+      { ...TENANT, displayName: 'Another name' },
+      CONTEXT
+    )
+    expect(changed.tenant.displayName).toBe('Another name')
+    // The operator of the platform may change it.
+    const byPlatform = await administration.upsertTenant(
+      PLATFORM_SCOPE,
+      { ...TENANT, sharedClient: true },
+      CONTEXT
+    )
+    expect(byPlatform.tenant.sharedClient).toBe(true)
+  })
+
+  test('a credential of a tenant may not change the default tenant of the platform', async () => {
+    const administration = service({
+      credentials: [{ token: 'the-token-of-acme', tenant: 'acme', operator: 'alice' }],
+    })
+    await administration.upsertTenant(PLATFORM_SCOPE, TENANT, CONTEXT)
+    const scope = { tenant: 'acme', operator: 'alice' }
+    await expect(
+      administration.upsertTenant(scope, { ...TENANT, isDefault: true }, CONTEXT)
+    ).rejects.toThrow(/may not change the default tenant/)
+    await expect(
+      administration.upsertTenant(scope, { ...TENANT, isDefault: false }, CONTEXT)
+    ).resolves.toBeTruthy()
   })
 
   test('a client id belongs to one tenant', async () => {

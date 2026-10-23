@@ -311,13 +311,15 @@ curl -sS -X POST https://hub.example.com/v1/admin/tenants \
 | `clientSecret` | Required. Encrypted at rest, never returned. A secret that replaces another one is kept for 24 hours, and both are accepted until the window is over (the rotation of a secret). |
 | `clientRedirectUris` | Optional. Default `[]`. The urls the gateway is registered with: the browser is sent back to one of them with the code of the login. A url that is not in the list is refused with `400 invalid_request`. A tenant that has registered none refuses every login. |
 | `autoProvision` | Optional. Default `false`. |
-| `sharedClient` | Optional. Default `false`. |
-| `default` | Optional. Default `false`. At most one tenant is the default. |
+| `sharedClient` | Optional. Default `false`. Only the operator of the platform may change it: a credential of a tenant that sends a value that is not the value of the row is refused with `403 forbidden`. |
+| `default` | Optional. Default `false`. At most one tenant is the default. Only the operator of the platform may change it: a credential of a tenant that sends a value that is not the value of the row is refused with `403 forbidden`. |
 | `enabled` | Optional. Default `true`. |
 
 `201` when the tenant was created, `200` when it was updated. `409
 conflict` when the client id belongs to another tenant, or when a second
-tenant would become the default.
+tenant would become the default. `403 forbidden` when a credential of a
+tenant sends a `sharedClient` or a `default` that is not the value of the
+row.
 
 ```json
 {

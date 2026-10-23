@@ -139,6 +139,14 @@ The work that the release `1.0.0` carries, before the tag.
   `v<version>` — after the CI of the commit is green, and only when the
   versions of the project agree. The workflows of the release run on
   that tag.
+- **The integration tests have a schema of their own.** Every file of
+  `test/integration/` runs in a schema of its own against a server: the
+  rows of a file do not share their rows with the rows of another file,
+  and a second run of the suite starts from a schema that is empty. The
+  file of the schema of Hub ran in the schema `public` and shared it
+  with everything else that wrote there, so the second run of the suite
+  against the same server was refused on a row that was already there.
+  (test/integration/database.ts, test/integration/schema.test.ts)
 - The version of the release is checked to be the version of a release:
   three numbers, and no pre-release.
 

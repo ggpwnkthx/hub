@@ -10,33 +10,22 @@ import {
   runMigrations,
   type Database,
 } from '../../src/platform/postgres'
+import { openTestDatabase } from './database'
 
 /**
  * The database of the integration tests.
  *
- * It is the embedded PostgreSQL of the process by default: the tests run
- * everywhere and they run the migrations of the production. A workflow
- * that has a server names it in `HUB_TEST_DATABASE_URL` and the same
- * tests run against it.
+ * The file has a schema of its own when the tests run against a server:
+ * its rows do not share their rows with the rows of another file, and a
+ * second run of the suite starts from a schema that is empty.
  */
-const url = process.env.HUB_TEST_DATABASE_URL ?? 'pglite://memory://'
+let database: Database
 
 /** The table of the audit of the administration: it is infrastructure. */
 const AUDIT_TABLE = 'admin_audit'
 
-let database: Database
-
 beforeAll(async () => {
-  database = await createDatabase(
-    url.startsWith('pglite://')
-      ? { driver: 'pglite', path: url.slice('pglite://'.length) }
-      : { driver: 'postgres', url }
-  )
-  await runMigrations({
-    database,
-    directory: MIGRATIONS_DIRECTORY,
-    logger: createLogger({ level: 'silent' }),
-  })
+  database = await openTestDatabase()
 })
 
 afterAll(async () => {
@@ -115,7 +104,7 @@ describe('the schema of Hub', () => {
   test('the five tables are the only tables of the domain', async () => {
     const rows = await database.query<{ table_name: string }>(
       `select table_name from information_schema.tables
-       where table_schema = 'public'
+       where table_schema = current_schema()
          and table_name not in ('${MIGRATIONS_TABLE}', '${AUDIT_TABLE}')
        order by table_name`
     )
@@ -131,7 +120,7 @@ describe('the schema of Hub', () => {
   test('the tables of the infrastructure are the migrations and the audit', async () => {
     const rows = await database.query<{ table_name: string }>(
       `select table_name from information_schema.tables
-       where table_schema = 'public'
+       where table_schema = current_schema()
          and table_name in ('${MIGRATIONS_TABLE}', '${AUDIT_TABLE}')
        order by table_name`
     )
@@ -229,7 +218,9 @@ describe('the schema of Hub', () => {
 
   test('the index of the decision is there', async () => {
     const rows = await database.query<{ indexname: string }>(
-      `select indexname from pg_indexes where tablename = 'grants' order by indexname`
+      `select indexname from pg_indexes
+       where tablename = 'grants' and schemaname = current_schema()
+       order by indexname`
     )
     expect(rows.map((row) => row.indexname)).toContain('grants_user_live')
   })

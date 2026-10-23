@@ -414,6 +414,7 @@ readable list with the values of a development machine is in `.env.example`.
 | `HUB_REDIS_URL` | The shared store of the authorization codes. Required when more than one replica runs. |
 | `HUB_ALLOW_MEMORY_STATE` | Replaces the shared store with the memory of the process. A single-node deployment only. |
 | `HUB_ADMIN_TOKEN` | The bearer token of the nine administrative endpoints. |
+| `HUB_ADMIN_TOKENS` | The credentials of the administration: a json object of bearer tokens and of their scopes (§4.6). |
 | `HUB_PREVIOUS_ADMIN_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it (§4.3.1). |
 | `HUB_ACCESS_TOKEN` | The bearer token the gateway presents on `POST /v1/decisions`. Optional, and deprecated: without it, only the credentials of a tenant are accepted (§8.8). |
 | `HUB_PREVIOUS_ACCESS_TOKEN` | The token that the current one replaced. It is accepted until the deployment removes it (§4.3.1). It is refused when the token it replaced is not set. |
@@ -604,6 +605,35 @@ the service refuses to start rather than choose.
 The files are how a secret is given to a container: a secret of a
 deployment is a file that a secret manager writes, and a private key in
 a variable of the environment is a private key that a shell mangles.
+
+### 4.6 The credentials of the administration
+
+The administration is guarded by bearer tokens. A deployment may name
+them in `HUB_ADMIN_TOKENS`, a json object whose keys are the tokens and
+whose values are the scope of every one of them:
+
+```json
+{
+  "the-token-of-the-operator-of-the-platform": null,
+  "the-token-of-the-operator-of-acme": {"tenant": "acme", "operator": "alice"}
+}
+```
+
+A value of `null` is the credential of the **platform**: it may act for
+every tenant. A value of an object names the **slug** of the tenant the
+credential may act for, and the **name** of its operator. The name is
+what the audit of a change carries: a name is what an operator of a
+platform can answer for, and the credential itself is never written.
+
+A credential is at least 16 characters long, and a malformed value stops
+the service: a credential that is not understood is a credential that is
+not scoped.
+
+`HUB_ADMIN_TOKEN` is the credential of the platform of a deployment that
+names none. It keeps working, and the operator of the audit is the
+fingerprint of the token. The two schemes are not exclusive: a
+deployment may name the credentials of its tenants and keep the token of
+the platform.
 
 ---
 
@@ -1306,11 +1336,26 @@ The bodies of the requests and of the answers are in [api.md](api.md).
 
 ### 10.1 The common rules
 
-- Every endpoint is under `/v1/admin` and requires
-  `Authorization: Bearer $HUB_ADMIN_TOKEN`. A missing or wrong token →
-  `401 unauthorized`. The comparison is in constant time. The token that
-  the current one replaced is accepted as well, until the deployment
-  removes it (§4.3.1).
+- Every endpoint is under `/v1/admin` and requires a **bearer token**. A
+  missing or wrong token → `401 unauthorized`. The comparison is in
+  constant time. The token that the current one replaced is accepted as
+  well, until the deployment removes it (§4.3.1).
+
+  There are three kinds of credentials (§4.6):
+
+  | Credential | What it may act for | The operator of the audit |
+  | --- | --- | --- |
+  | `HUB_ADMIN_TOKEN` | Every tenant of the platform. | The fingerprint of the token. |
+  | A credential of a tenant of `HUB_ADMIN_TOKENS` | The tenant of the credential and nothing else. | The name of the operator of the credential. |
+  | A credential of the platform of `HUB_ADMIN_TOKENS` | Every tenant of the platform. | The name of the operator, or the fingerprint of the token. |
+
+  A credential of a tenant is refused with `403 forbidden` when the call
+  acts for **another** tenant: a principal, a group, a grant or a tenant
+  that is not its own. The lists of a credential of a tenant are the
+  lists of its tenant, and the filter of a query cannot widen them. A
+  credential of a tenant does not create a tenant: the creation of a
+  tenant is the work of the operator of the platform.
+
 - The bodies are JSON, at most 64 KiB. A body that is larger → `413`.
 - The answers are JSON. The errors are
   `{"error": "<code>", "message": "<text>"}`.
@@ -1332,16 +1377,18 @@ The bodies of the requests and of the answers are in [api.md](api.md).
 - **Every change is audited in a table.** The audit is the table
   `admin_audit`: it holds the action, the identifier of the thing that
   changed, the tenant, the operator, the address and the request. The
-  operator is the **fingerprint** of the credential that made the call
-  (the first twelve hexadecimal characters of the digest of the token):
-  the audit names the operator and it never holds the secret. The row is
-  written by **the same statement** that writes the thing that changed,
-  so the change and its audit are committed together or neither is: a
-  change that is not audited does not exist. A write that fails is a
-  failure of the call: the caller repeats it, and every call of the
-  administration is idempotent. The audit is read with
-  `GET /v1/admin/audit`, which is paginated like the other lists and
-  filtered by `tenant` and by `action`.
+  operator is the **name** of the credential when it carries one, and
+  the **fingerprint** of the credential when it does not (the first
+  twelve hexadecimal characters of the digest of the token): the audit
+  names the operator and it never holds the secret. The row is written
+  by **the same statement** that writes the thing that changed, so the
+  change and its audit are committed together or neither is: a change
+  that is not audited does not exist. A write that fails is a failure of
+  the call: the caller repeats it, and every call of the administration
+  is idempotent. The audit is read with `GET /v1/admin/audit`, which is
+  paginated like the other lists and filtered by `tenant` and by
+  `action`. The audit of a credential of a tenant is the audit of that
+  tenant.
 
 The error codes: `unauthorized`, `invalid_request`, `not_found`,
 `conflict`, `forbidden`, `too_many_requests`, `service_unavailable`. The

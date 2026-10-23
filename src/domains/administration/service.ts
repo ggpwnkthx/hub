@@ -9,6 +9,7 @@
 
 import { sameSecret } from '../../observability'
 import { AdministrationError } from './errors'
+import type { AdminCredential, AdminScope } from './credentials'
 import type { FailedAuthenticationLimiter } from './limiter'
 import type {
   AuditContext,
@@ -53,6 +54,14 @@ export interface AdministrationOptions {
   grants: GrantStore
   /** The bearer token of the administration. */
   token?: string
+  /**
+   * The credentials of the tenants (spec §10.1).
+   *
+   * A credential of a tenant may only act for that tenant, and it may
+   * carry the name of its operator: the audit of a change names the
+   * operator and not the secret it used.
+   */
+  credentials?: AdminCredential[]
   /**
    * The token that the current one replaced.
    *
@@ -237,10 +246,15 @@ export class AdministrationService {
    *
    * Two tokens are accepted during a rotation: the one of the deployment
    * and the one it replaced.
+   *
+   * The call answers the **scope** of the credential it presented: the
+   * tenant it may act for and the operator it is. The token of the
+   * platform is the scope of the platform (spec §10.1).
    */
-  async authenticate(header: string | undefined, address: string): Promise<void> {
+  async authenticate(header: string | undefined, address: string): Promise<AdminScope> {
     const expected = this.options.token
     const previous = this.options.previousToken
+    const credentials = this.options.credentials ?? []
     const match = /^Bearer\s+(.+)$/i.exec((header ?? '').trim())
     const presented = match?.[1]?.trim() ?? ''
 
@@ -255,12 +269,17 @@ export class AdministrationService {
       )
     }
 
-    // A deployment without a token has no administrative surface: every
-    // call is refused.
-    const accepted =
-      presented !== '' &&
-      ((expected !== undefined && sameSecret(presented, expected)) ||
-        (previous !== undefined && sameSecret(presented, previous)))
+    // Every candidate is compared, and the comparison does not stop at
+    // the first one: the time of the answer may not tell which of the
+    // credentials was presented.
+    const comparisons: boolean[] = []
+    if (expected !== undefined) comparisons.push(sameSecret(presented, expected))
+    if (previous !== undefined) comparisons.push(sameSecret(presented, previous))
+    for (const credential of credentials) {
+      comparisons.push(sameSecret(presented, credential.token))
+    }
+    const accepted = presented !== '' && comparisons.some(Boolean)
+
     if (!accepted) {
       const failure = await this.limiter.fail(address)
       if (!failure.allowed) {
@@ -273,6 +292,27 @@ export class AdministrationService {
       throw new AdministrationError('unauthorized', 'a valid administration token is required')
     }
     await this.limiter.succeed(address)
+
+    // The scope of the call: the credential of a tenant is scoped to it,
+    // and the token of the platform is the scope of the platform.
+    const credential = credentials.find((candidate) => sameSecret(presented, candidate.token))
+    if (credential) {
+      return { tenant: credential.tenant, operator: credential.operator }
+    }
+    return { tenant: null, operator: null }
+  }
+
+  /**
+   * Refuses a call that acts for a tenant the credential may not act for.
+   *
+   * A credential of a tenant may only act for that tenant: a call that
+   * names another one is a `403 forbidden`, and it names nothing that
+   * would tell the caller whether that tenant exists (spec §10.1).
+   */
+  private refuseOutsideScope(scope: AdminScope, tenant: string | null | undefined): void {
+    if (scope.tenant === null) return
+    if (tenant !== undefined && tenant !== null && tenant.trim() === scope.tenant) return
+    throw new AdministrationError('forbidden', 'the credential may not act for this tenant')
   }
 
   /**
@@ -287,10 +327,18 @@ export class AdministrationService {
    * is written by the statement that writes the tenant (spec §10.1).
    */
   async upsertTenant(
+    scope: AdminScope,
     registration: TenantRegistration,
     context: AuditContext
   ): Promise<{ tenant: Tenant; created: boolean; audit: AuditEntry }> {
+    this.refuseOutsideScope(scope, registration.slug)
     const existing = await this.options.tenants.findBySlug(registration.slug)
+    // A credential of a tenant changes that tenant: it does not create
+    // it. The creation of a tenant is the work of the operator of the
+    // platform.
+    if (scope.tenant !== null && !existing) {
+      throw new AdministrationError('not_found', 'the tenant does not exist')
+    }
 
     // A client id belongs to one tenant.
     const owner = await this.options.tenants.findByClientId(registration.clientId)
@@ -337,8 +385,11 @@ export class AdministrationService {
   }
 
   /** The tenants of the platform, with their numbers. */
-  async listTenants(): Promise<TenantSummary[]> {
-    return await this.options.tenants.list()
+  async listTenants(scope: AdminScope): Promise<TenantSummary[]> {
+    const tenants = await this.options.tenants.list()
+    // A credential of a tenant sees its own tenant and nothing else.
+    if (scope.tenant === null) return tenants
+    return tenants.filter((tenant) => tenant.slug === scope.tenant)
   }
 
   /**
@@ -348,13 +399,16 @@ export class AdministrationService {
    * tenant is optional, and a tenant that does not exist is a
    * `404 not_found`.
    */
-  async listPrincipals(query: {
-    tenant?: string | null
-    status?: string | null
-    email?: string | null
-    limit?: string | null
-    offset?: string | null
-  }): Promise<PrincipalPage> {
+  async listPrincipals(
+    scope: AdminScope,
+    query: {
+      tenant?: string | null
+      status?: string | null
+      email?: string | null
+      limit?: string | null
+      offset?: string | null
+    }
+  ): Promise<PrincipalPage> {
     const limit = wholeNumber(
       query.limit ?? undefined,
       DEFAULT_PAGE_SIZE,
@@ -366,7 +420,10 @@ export class AdministrationService {
     const status = statusOf(query.status ?? undefined)
 
     let tenantId: string | null = null
-    const slug = query.tenant?.trim()
+    // The filter of the tenant of a credential that is scoped to a
+    // tenant is the tenant of the credential: the filter of the query
+    // cannot widen it.
+    const slug = scope.tenant ?? query.tenant?.trim()
     if (slug) {
       const tenant = await this.options.tenants.findBySlug(slug)
       if (!tenant) {
@@ -392,12 +449,15 @@ export class AdministrationService {
    * A tenant that does not exist is a `404 not_found`, like everywhere
    * else. The groups are paginated like the other lists (spec §10.1).
    */
-  async listGroups(query: {
-    tenant?: string | null
-    key?: string | null
-    limit?: string | null
-    offset?: string | null
-  }): Promise<GroupPage> {
+  async listGroups(
+    scope: AdminScope,
+    query: {
+      tenant?: string | null
+      key?: string | null
+      limit?: string | null
+      offset?: string | null
+    }
+  ): Promise<GroupPage> {
     const groups = this.options.groups
     if (!groups) {
       throw new AdministrationError('forbidden', 'the groups are not enabled in this deployment')
@@ -412,7 +472,7 @@ export class AdministrationService {
     const offset = wholeNumber(query.offset ?? undefined, 0, 0, Number.MAX_SAFE_INTEGER, 'offset')
 
     let tenantId: string | null = null
-    const slug = query.tenant?.trim()
+    const slug = scope.tenant ?? query.tenant?.trim()
     if (slug) {
       const tenant = await this.options.tenants.findBySlug(slug)
       if (!tenant) {
@@ -438,13 +498,16 @@ export class AdministrationService {
    * that does not exist is an empty list: the id of a principal of
    * another tenant is not a way to read the grants of this one.
    */
-  async listGrants(query: {
-    tenant?: string | null
-    userId?: string | null
-    live?: string | null
-    limit?: string | null
-    offset?: string | null
-  }): Promise<GrantPage> {
+  async listGrants(
+    scope: AdminScope,
+    query: {
+      tenant?: string | null
+      userId?: string | null
+      live?: string | null
+      limit?: string | null
+      offset?: string | null
+    }
+  ): Promise<GrantPage> {
     const limit = wholeNumber(
       query.limit ?? undefined,
       DEFAULT_PAGE_SIZE,
@@ -456,7 +519,7 @@ export class AdministrationService {
     const live = liveOf(query.live ?? undefined)
 
     let tenantId: string | null = null
-    const slug = query.tenant?.trim()
+    const slug = scope.tenant ?? query.tenant?.trim()
     if (slug) {
       const tenant = await this.options.tenants.findBySlug(slug)
       if (!tenant) {
@@ -479,9 +542,11 @@ export class AdministrationService {
    * principal (spec §10.1).
    */
   async upsertPrincipal(
+    scope: AdminScope,
     registration: PrincipalRegistration,
     context: AuditContext
   ): Promise<{ principal: Principal; created: boolean; audit: AuditEntry }> {
+    this.refuseOutsideScope(scope, registration.tenant)
     const tenant = await this.options.tenants.findBySlug(registration.tenant)
     if (!tenant) {
       throw new AdministrationError('not_found', 'the tenant does not exist')
@@ -545,13 +610,14 @@ export class AdministrationService {
    * principals, and the ones that exist are updated instead of created.
    */
   async upsertPrincipals(
+    scope: AdminScope,
     registrations: PrincipalRegistration[],
     context: AuditContext
   ): Promise<PrincipalOutcome[]> {
     const outcomes: PrincipalOutcome[] = []
     for (const registration of registrations) {
       try {
-        const result = await this.upsertPrincipal(registration, context)
+        const result = await this.upsertPrincipal(scope, registration, context)
         outcomes.push({
           tenant: result.principal.tenant,
           externalSubject: result.principal.externalSubject,
@@ -584,13 +650,14 @@ export class AdministrationService {
    * every one of them.
    */
   async upsertGrants(
+    scope: AdminScope,
     registrations: GrantRegistration[],
     context: AuditContext
   ): Promise<GrantOutcome[]> {
     const outcomes: GrantOutcome[] = []
     for (const registration of registrations) {
       try {
-        const result = await this.upsertGrant(registration, context)
+        const result = await this.upsertGrant(scope, registration, context)
         outcomes.push({
           tenant: result.grant.tenant,
           id: result.grant.id,
@@ -626,9 +693,11 @@ export class AdministrationService {
    * group (spec §10.1).
    */
   async upsertGroup(
+    scope: AdminScope,
     registration: GroupRegistration,
     context: AuditContext
   ): Promise<{ group: Group; created: boolean; audit: AuditEntry }> {
+    this.refuseOutsideScope(scope, registration.tenant)
     const tenant = await this.options.tenants.findBySlug(registration.tenant)
     if (!tenant) {
       throw new AdministrationError('not_found', 'the tenant does not exist')
@@ -700,9 +769,11 @@ export class AdministrationService {
    * grant (spec §10.1).
    */
   async upsertGrant(
+    scope: AdminScope,
     registration: GrantRegistration,
     context: AuditContext
   ): Promise<{ grant: Grant; audit: AuditEntry }> {
+    this.refuseOutsideScope(scope, registration.tenant)
     const tenant = await this.options.tenants.findBySlug(registration.tenant)
     if (!tenant) {
       throw new AdministrationError('not_found', 'the tenant does not exist')
@@ -794,11 +865,14 @@ export class AdministrationService {
    * The call is idempotent: a grant that is already revoked answers the
    * same way. A grant that does not exist is a `404`.
    */
-  async revokeGrant(id: string, context: AuditContext): Promise<AuditEntry> {
+  async revokeGrant(scope: AdminScope, id: string, context: AuditContext): Promise<AuditEntry> {
     const existing = await this.options.grants.findById(id)
     if (!existing) {
       throw new AdministrationError('not_found', 'the grant does not exist')
     }
+    // A credential of a tenant revokes the grants of that tenant and
+    // nothing else.
+    this.refuseOutsideScope(scope, existing.tenant)
     await this.options.grants.revoke(id, this.change('grant.revoked', existing.tenant, context))
     return { action: 'grant.revoked', id, tenant: existing.tenant }
   }
@@ -826,13 +900,16 @@ export class AdministrationService {
    * The filter is the tenant, the action and the page. A tenant that
    * does not exist is a `404 not_found`, like everywhere else.
    */
-  async listAudit(query: {
-    tenant?: string | null
-    action?: string | null
-    limit?: string | null
-    offset?: string | null
-    format?: string | null
-  }): Promise<AuditPage> {
+  async listAudit(
+    scope: AdminScope,
+    query: {
+      tenant?: string | null
+      action?: string | null
+      limit?: string | null
+      offset?: string | null
+      format?: string | null
+    }
+  ): Promise<AuditPage> {
     const format = auditFormat(query.format ?? null)
     // An export leaves the platform: it carries the rows in a file, and
     // the file is bigger than a page of the list.
@@ -847,7 +924,9 @@ export class AdministrationService {
     const offset = wholeNumber(query.offset ?? undefined, 0, 0, Number.MAX_SAFE_INTEGER, 'offset')
 
     let tenant: string | null = null
-    const slug = query.tenant?.trim()
+    // The audit of a credential that is scoped to a tenant is the audit
+    // of that tenant: the filter of the query cannot widen it.
+    const slug = scope.tenant ?? query.tenant?.trim()
     if (slug) {
       const found = await this.options.tenants.findBySlug(slug)
       if (!found) {

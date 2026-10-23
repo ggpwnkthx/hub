@@ -12,6 +12,7 @@ import {
   AdministrationError,
   AdministrationService,
   FailedAuthenticationLimiter,
+  type AdminCredential,
   type AuditFilter,
   type AuditRecord,
   type AuditRows,
@@ -216,6 +217,8 @@ export interface AdministrationDependencies {
   token?: string
   /** The token that the current one replaced, during a rotation. */
   previousToken?: string
+  /** The credentials of the tenants of the administration (spec §10.1). */
+  credentials?: AdminCredential[]
   /** The public url of Hub. */
   publicUrl: string
   /**
@@ -453,6 +456,7 @@ export function createAdministrationService(
     audit: auditStore,
     token: dependencies.token,
     previousToken: dependencies.previousToken,
+    credentials: dependencies.credentials,
     publicUrl: dependencies.publicUrl,
     limiter: new FailedAuthenticationLimiter(dependencies.failures),
   })

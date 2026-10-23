@@ -4,6 +4,7 @@ import {
   AdministrationError,
   AdministrationService,
   FailedAuthenticationLimiter,
+  PLATFORM_SCOPE,
   type AuthenticationFailures,
   type AuditContext,
   type ChangeAudit,
@@ -480,9 +481,9 @@ describe('the authentication of the administration', () => {
   })
 
   test('the right token is accepted', async () => {
-    await expect(
-      service().authenticate('Bearer the-admin-token', '10.0.0.1')
-    ).resolves.toBeUndefined()
+    await expect(service().authenticate('Bearer the-admin-token', '10.0.0.1')).resolves.toEqual(
+      PLATFORM_SCOPE
+    )
   })
 
   test('a deployment without a token has no administrative surface', async () => {
@@ -523,7 +524,7 @@ describe('the authentication of the administration', () => {
     // Another address is not affected.
     await expect(
       administration.authenticate('Bearer the-admin-token', '10.0.0.3')
-    ).resolves.toBeUndefined()
+    ).resolves.toEqual(PLATFORM_SCOPE)
   })
 
   test('a success clears the failures of the address', async () => {
@@ -532,7 +533,7 @@ describe('the authentication of the administration', () => {
     await expect(administration.authenticate('Bearer wrong', '10.0.0.4')).rejects.toThrow()
     await expect(
       administration.authenticate('Bearer the-admin-token', '10.0.0.4')
-    ).resolves.toBeUndefined()
+    ).resolves.toEqual(PLATFORM_SCOPE)
     expect(await limiter.count('10.0.0.4')).toBe(0)
   })
 })
@@ -540,11 +541,12 @@ describe('the authentication of the administration', () => {
 describe('the tenants of the administration', () => {
   test('a tenant is created and then changed', async () => {
     const administration = service()
-    const created = await administration.upsertTenant(TENANT, CONTEXT)
+    const created = await administration.upsertTenant(PLATFORM_SCOPE, TENANT, CONTEXT)
     expect(created.created).toBe(true)
     expect(created.audit.action).toBe('tenant.created')
 
     const updated = await administration.upsertTenant(
+      PLATFORM_SCOPE,
       { ...TENANT, displayName: 'Another name' },
       CONTEXT
     )
@@ -556,13 +558,18 @@ describe('the tenants of the administration', () => {
   test('a client id belongs to one tenant', async () => {
     const administration = service()
     await expect(
-      administration.upsertTenant({ ...TENANT, slug: 'another', clientId: 'shuttle-acme' }, CONTEXT)
+      administration.upsertTenant(
+        PLATFORM_SCOPE,
+        { ...TENANT, slug: 'another', clientId: 'shuttle-acme' },
+        CONTEXT
+      )
     ).rejects.toThrow(/belongs to another tenant/)
   })
 
   test('at most one tenant is the default', async () => {
     const administration = service()
     await administration.upsertTenant(
+      PLATFORM_SCOPE,
       {
         ...TENANT,
         slug: 'first',
@@ -573,6 +580,7 @@ describe('the tenants of the administration', () => {
     )
     await expect(
       administration.upsertTenant(
+        PLATFORM_SCOPE,
         {
           ...TENANT,
           slug: 'second',
@@ -586,7 +594,7 @@ describe('the tenants of the administration', () => {
 
   test('the tenants are listed', async () => {
     const administration = service()
-    const listed = await administration.listTenants()
+    const listed = await administration.listTenants(PLATFORM_SCOPE)
     expect(listed.length).toBeGreaterThan(0)
     expect(listed.every((tenant) => typeof tenant.userCount === 'number')).toBe(true)
   })
@@ -596,6 +604,7 @@ describe('the principals of the administration', () => {
   test('a principal is created and then changed', async () => {
     const administration = service()
     const created = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: '00u1a2b3c4d5',
@@ -607,6 +616,7 @@ describe('the principals of the administration', () => {
     expect(created.principal.status).toBe('active')
 
     const updated = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: '00u1a2b3c4d5',
@@ -621,7 +631,11 @@ describe('the principals of the administration', () => {
   test('an unknown tenant is a not found', async () => {
     const administration = service()
     await expect(
-      administration.upsertPrincipal({ tenant: 'unknown', externalSubject: 'sub' }, CONTEXT)
+      administration.upsertPrincipal(
+        PLATFORM_SCOPE,
+        { tenant: 'unknown', externalSubject: 'sub' },
+        CONTEXT
+      )
     ).rejects.toThrow(/the tenant does not exist/)
   })
 })
@@ -630,6 +644,7 @@ describe('the grants of the administration', () => {
   test('a grant is created and the permission is created on demand', async () => {
     const administration = service()
     const principal = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-a-grant',
@@ -637,6 +652,7 @@ describe('the grants of the administration', () => {
       CONTEXT
     )
     const grant = await administration.upsertGrant(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         userId: principal.principal.id,
@@ -655,6 +671,7 @@ describe('the grants of the administration', () => {
     const administration = service()
     await PERMISSIONS.create({ tenantId: null, key: 'platform.read' })
     const principal = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-the-catalogue',
@@ -662,6 +679,7 @@ describe('the grants of the administration', () => {
       CONTEXT
     )
     const grant = await administration.upsertGrant(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         userId: principal.principal.id,
@@ -681,6 +699,7 @@ describe('the grants of the administration', () => {
     const administration = service()
     await PERMISSIONS.create({ tenantId: 'another-tenant', key: 'workspace.write' })
     const principal = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-another-tenant',
@@ -688,6 +707,7 @@ describe('the grants of the administration', () => {
       CONTEXT
     )
     const grant = await administration.upsertGrant(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         userId: principal.principal.id,
@@ -704,6 +724,7 @@ describe('the grants of the administration', () => {
   test('a principal of another tenant is refused', async () => {
     const administration = service()
     await administration.upsertTenant(
+      PLATFORM_SCOPE,
       {
         ...TENANT,
         slug: 'another',
@@ -712,6 +733,7 @@ describe('the grants of the administration', () => {
       CONTEXT
     )
     const principal = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-another-tenant',
@@ -720,6 +742,7 @@ describe('the grants of the administration', () => {
     )
     await expect(
       administration.upsertGrant(
+        PLATFORM_SCOPE,
         {
           tenant: 'another',
           userId: principal.principal.id,
@@ -733,6 +756,7 @@ describe('the grants of the administration', () => {
   test('a grant is revoked and the revocation is idempotent', async () => {
     const administration = service()
     const principal = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-a-revocation',
@@ -740,6 +764,7 @@ describe('the grants of the administration', () => {
       CONTEXT
     )
     const grant = await administration.upsertGrant(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         userId: principal.principal.id,
@@ -747,16 +772,18 @@ describe('the grants of the administration', () => {
       },
       CONTEXT
     )
-    const audit = await administration.revokeGrant(grant.grant.id, CONTEXT)
+    const audit = await administration.revokeGrant(PLATFORM_SCOPE, grant.grant.id, CONTEXT)
     expect(audit.action).toBe('grant.revoked')
-    await expect(administration.revokeGrant(grant.grant.id, CONTEXT)).resolves.toBeTruthy()
+    await expect(
+      administration.revokeGrant(PLATFORM_SCOPE, grant.grant.id, CONTEXT)
+    ).resolves.toBeTruthy()
   })
 
   test('a grant that does not exist is a not found', async () => {
     const administration = service()
-    await expect(administration.revokeGrant('grant-does-not-exist', CONTEXT)).rejects.toThrow(
-      /the grant does not exist/
-    )
+    await expect(
+      administration.revokeGrant(PLATFORM_SCOPE, 'grant-does-not-exist', CONTEXT)
+    ).rejects.toThrow(/the grant does not exist/)
   })
 })
 
@@ -764,6 +791,7 @@ describe('the lists of the administration', () => {
   test('the principals of a tenant are listed', async () => {
     const administration = service()
     const principal = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-a-list',
@@ -771,7 +799,7 @@ describe('the lists of the administration', () => {
       },
       CONTEXT
     )
-    const page = await administration.listPrincipals({ tenant: 'acme' })
+    const page = await administration.listPrincipals(PLATFORM_SCOPE, { tenant: 'acme' })
     expect(page.total).toBeGreaterThan(0)
     expect(page.principals.some((row) => row.id === principal.principal.id)).toBe(true)
     expect(page.limit).toBe(50)
@@ -781,6 +809,7 @@ describe('the lists of the administration', () => {
   test('the list of the principals is filtered by the status and by the e-mail', async () => {
     const administration = service()
     const principal = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-a-filter',
@@ -789,6 +818,7 @@ describe('the lists of the administration', () => {
       CONTEXT
     )
     await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-a-disabled-one',
@@ -796,11 +826,14 @@ describe('the lists of the administration', () => {
       },
       CONTEXT
     )
-    const byStatus = await administration.listPrincipals({ tenant: 'acme', status: 'disabled' })
+    const byStatus = await administration.listPrincipals(PLATFORM_SCOPE, {
+      tenant: 'acme',
+      status: 'disabled',
+    })
     expect(byStatus.principals.every((row) => row.status === 'disabled')).toBe(true)
     expect(byStatus.principals.some((row) => row.id === principal.principal.id)).toBe(false)
 
-    const byEmail = await administration.listPrincipals({
+    const byEmail = await administration.listPrincipals(PLATFORM_SCOPE, {
       tenant: 'acme',
       email: 'filtered@acme.example',
     })
@@ -811,6 +844,7 @@ describe('the lists of the administration', () => {
     const administration = service()
     for (let index = 0; index < 3; index += 1) {
       await administration.upsertPrincipal(
+        PLATFORM_SCOPE,
         {
           tenant: 'acme',
           externalSubject: `the-subject-of-a-page-${index}`,
@@ -818,8 +852,16 @@ describe('the lists of the administration', () => {
         CONTEXT
       )
     }
-    const first = await administration.listPrincipals({ tenant: 'acme', limit: '2', offset: '0' })
-    const second = await administration.listPrincipals({ tenant: 'acme', limit: '2', offset: '2' })
+    const first = await administration.listPrincipals(PLATFORM_SCOPE, {
+      tenant: 'acme',
+      limit: '2',
+      offset: '0',
+    })
+    const second = await administration.listPrincipals(PLATFORM_SCOPE, {
+      tenant: 'acme',
+      limit: '2',
+      offset: '2',
+    })
     expect(first.principals).toHaveLength(2)
     expect(first.total).toBe(second.total)
     const ids = new Set([...first.principals, ...second.principals].map((row) => row.id))
@@ -828,26 +870,26 @@ describe('the lists of the administration', () => {
 
   test('a limit that is not understood is refused', async () => {
     const administration = service()
-    await expect(administration.listPrincipals({ limit: 'many' })).rejects.toThrow(
+    await expect(administration.listPrincipals(PLATFORM_SCOPE, { limit: 'many' })).rejects.toThrow(
       /limit must be a whole number/
     )
-    await expect(administration.listPrincipals({ limit: '5000' })).rejects.toThrow(
+    await expect(administration.listPrincipals(PLATFORM_SCOPE, { limit: '5000' })).rejects.toThrow(
       /limit must be between 1 and 200/
     )
-    await expect(administration.listPrincipals({ offset: '-1' })).rejects.toThrow(
+    await expect(administration.listPrincipals(PLATFORM_SCOPE, { offset: '-1' })).rejects.toThrow(
       /offset must be a whole number/
     )
-    await expect(administration.listPrincipals({ status: 'paused' })).rejects.toThrow(
-      /status must be active or disabled/
-    )
+    await expect(
+      administration.listPrincipals(PLATFORM_SCOPE, { status: 'paused' })
+    ).rejects.toThrow(/status must be active or disabled/)
   })
 
   test('a tenant that does not exist is a not found', async () => {
     const administration = service()
-    await expect(administration.listPrincipals({ tenant: 'nowhere' })).rejects.toThrow(
-      /the tenant does not exist/
-    )
-    await expect(administration.listGrants({ tenant: 'nowhere' })).rejects.toThrow(
+    await expect(
+      administration.listPrincipals(PLATFORM_SCOPE, { tenant: 'nowhere' })
+    ).rejects.toThrow(/the tenant does not exist/)
+    await expect(administration.listGrants(PLATFORM_SCOPE, { tenant: 'nowhere' })).rejects.toThrow(
       /the tenant does not exist/
     )
   })
@@ -855,6 +897,7 @@ describe('the lists of the administration', () => {
   test('the grants of a tenant are listed and they carry who granted them', async () => {
     const administration = service()
     const principal = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-a-listed-grant',
@@ -862,6 +905,7 @@ describe('the lists of the administration', () => {
       CONTEXT
     )
     const grant = await administration.upsertGrant(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         userId: principal.principal.id,
@@ -870,7 +914,7 @@ describe('the lists of the administration', () => {
       },
       CONTEXT
     )
-    const page = await administration.listGrants({ tenant: 'acme' })
+    const page = await administration.listGrants(PLATFORM_SCOPE, { tenant: 'acme' })
     const listed = page.grants.find((row) => row.id === grant.grant.id)
     expect(listed?.grantedBy).toBe('ops@acme.example')
     expect(page.total).toBeGreaterThan(0)
@@ -879,6 +923,7 @@ describe('the lists of the administration', () => {
   test('the list of the grants is filtered by the principal and by the life', async () => {
     const administration = service()
     const principal = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-the-live-grant',
@@ -886,6 +931,7 @@ describe('the lists of the administration', () => {
       CONTEXT
     )
     await administration.upsertGrant(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         userId: principal.principal.id,
@@ -894,6 +940,7 @@ describe('the lists of the administration', () => {
       CONTEXT
     )
     const revoked = await administration.upsertGrant(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         userId: principal.principal.id,
@@ -901,15 +948,15 @@ describe('the lists of the administration', () => {
       },
       CONTEXT
     )
-    await administration.revokeGrant(revoked.grant.id, CONTEXT)
+    await administration.revokeGrant(PLATFORM_SCOPE, revoked.grant.id, CONTEXT)
 
-    const live = await administration.listGrants({ tenant: 'acme', live: 'true' })
+    const live = await administration.listGrants(PLATFORM_SCOPE, { tenant: 'acme', live: 'true' })
     expect(live.grants.some((row) => row.id === revoked.grant.id)).toBe(false)
 
-    const dead = await administration.listGrants({ tenant: 'acme', live: 'false' })
+    const dead = await administration.listGrants(PLATFORM_SCOPE, { tenant: 'acme', live: 'false' })
     expect(dead.grants.some((row) => row.id === revoked.grant.id)).toBe(true)
 
-    const byPrincipal = await administration.listGrants({
+    const byPrincipal = await administration.listGrants(PLATFORM_SCOPE, {
       tenant: 'acme',
       userId: principal.principal.id,
     })
@@ -918,7 +965,7 @@ describe('the lists of the administration', () => {
 
   test('a live filter that is not understood is refused', async () => {
     const administration = service()
-    await expect(administration.listGrants({ live: 'maybe' })).rejects.toThrow(
+    await expect(administration.listGrants(PLATFORM_SCOPE, { live: 'maybe' })).rejects.toThrow(
       /live must be true or false/
     )
   })
@@ -928,6 +975,7 @@ describe('the groups of the administration', () => {
   test('a group is created with its members', async () => {
     const administration = service()
     const principal = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-a-member',
@@ -935,6 +983,7 @@ describe('the groups of the administration', () => {
       CONTEXT
     )
     const result = await administration.upsertGroup(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         key: 'team-platform',
@@ -952,6 +1001,7 @@ describe('the groups of the administration', () => {
   test('the membership is replaced by the second call', async () => {
     const administration = service()
     await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-the-first-member',
@@ -959,6 +1009,7 @@ describe('the groups of the administration', () => {
       CONTEXT
     )
     await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-the-second-member',
@@ -966,6 +1017,7 @@ describe('the groups of the administration', () => {
       CONTEXT
     )
     await administration.upsertGroup(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         key: 'team-replaced',
@@ -974,6 +1026,7 @@ describe('the groups of the administration', () => {
       CONTEXT
     )
     const second = await administration.upsertGroup(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         key: 'team-replaced',
@@ -990,6 +1043,7 @@ describe('the groups of the administration', () => {
     const administration = service()
     await expect(
       administration.upsertGroup(
+        PLATFORM_SCOPE,
         {
           tenant: 'acme',
           key: 'team-unknown',
@@ -1003,6 +1057,7 @@ describe('the groups of the administration', () => {
   test('the groups of a tenant are listed', async () => {
     const administration = service()
     await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-a-listed-group',
@@ -1010,6 +1065,7 @@ describe('the groups of the administration', () => {
       CONTEXT
     )
     await administration.upsertGroup(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         key: 'team-listed',
@@ -1017,7 +1073,7 @@ describe('the groups of the administration', () => {
       },
       CONTEXT
     )
-    const page = await administration.listGroups({ tenant: 'acme' })
+    const page = await administration.listGroups(PLATFORM_SCOPE, { tenant: 'acme' })
     expect(page.total).toBeGreaterThan(0)
     expect(page.groups.some((row) => row.key === 'team-listed')).toBe(true)
     expect(page.limit).toBe(50)
@@ -1027,6 +1083,7 @@ describe('the groups of the administration', () => {
   test('the list of the groups is filtered by the key', async () => {
     const administration = service()
     await administration.upsertGroup(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         key: 'team-filtered',
@@ -1034,7 +1091,10 @@ describe('the groups of the administration', () => {
       },
       CONTEXT
     )
-    const page = await administration.listGroups({ tenant: 'acme', key: 'team-filtered' })
+    const page = await administration.listGroups(PLATFORM_SCOPE, {
+      tenant: 'acme',
+      key: 'team-filtered',
+    })
     expect(page.groups.length).toBe(1)
     expect(page.groups[0]!.key).toBe('team-filtered')
     expect(page.total).toBe(1)
@@ -1042,7 +1102,7 @@ describe('the groups of the administration', () => {
 
   test('a tenant that does not exist is a not found', async () => {
     const administration = service()
-    await expect(administration.listGroups({ tenant: 'nowhere' })).rejects.toThrow(
+    await expect(administration.listGroups(PLATFORM_SCOPE, { tenant: 'nowhere' })).rejects.toThrow(
       /the tenant does not exist/
     )
   })
@@ -1050,6 +1110,7 @@ describe('the groups of the administration', () => {
   test('a grant of a group is created for the group', async () => {
     const administration = service()
     await administration.upsertGroup(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         key: 'team-with-a-grant',
@@ -1058,6 +1119,7 @@ describe('the groups of the administration', () => {
       CONTEXT
     )
     const grant = await administration.upsertGrant(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         group: 'team-with-a-grant',
@@ -1073,6 +1135,7 @@ describe('the groups of the administration', () => {
   test('a grant names a principal or a group, and not both', async () => {
     const administration = service()
     const principal = await administration.upsertPrincipal(
+      PLATFORM_SCOPE,
       {
         tenant: 'acme',
         externalSubject: 'the-subject-of-an-ambiguous-grant',
@@ -1080,11 +1143,13 @@ describe('the groups of the administration', () => {
       CONTEXT
     )
     await administration.upsertGroup(
+      PLATFORM_SCOPE,
       { tenant: 'acme', key: 'team-ambiguous', members: [] },
       CONTEXT
     )
     await expect(
       administration.upsertGrant(
+        PLATFORM_SCOPE,
         {
           tenant: 'acme',
           userId: principal.principal.id,
@@ -1096,6 +1161,7 @@ describe('the groups of the administration', () => {
     ).rejects.toThrow(/names a principal or a group/)
     await expect(
       administration.upsertGrant(
+        PLATFORM_SCOPE,
         {
           tenant: 'acme',
           permission: 'workspace.ambiguous',
@@ -1109,6 +1175,7 @@ describe('the groups of the administration', () => {
     const administration = service()
     await expect(
       administration.upsertGrant(
+        PLATFORM_SCOPE,
         {
           tenant: 'acme',
           group: 'team-that-does-not-exist',

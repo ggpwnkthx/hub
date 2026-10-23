@@ -254,9 +254,21 @@ bad_request` (the body is not understood), `503 service_unavailable`
 ## The administration
 
 Nine endpoints, all under `/v1/admin`, all requiring
-`Authorization: Bearer $HUB_ADMIN_TOKEN`. The rules they share — the
+`Authorization: Bearer <credential>`. The rules they share — the
 limits, the pagination, the error codes, the audit — are in §10.1 of the
 spec.
+
+**The credentials.** A deployment may name the credentials of its
+tenants in `HUB_ADMIN_TOKENS` (spec §4.6). A credential of a tenant may
+only act for that tenant: a call that names another one is a `403
+forbidden`, and the lists it reads are the lists of its tenant. The
+audit of a change names the operator of the credential.
+
+| Credential | What it may act for |
+| --- | --- |
+| `HUB_ADMIN_TOKEN` | Every tenant of the platform. |
+| A credential of a tenant of `HUB_ADMIN_TOKENS` | The tenant of the credential and nothing else. |
+| A credential of the platform of `HUB_ADMIN_TOKENS` | Every tenant of the platform. |
 
 ### `POST /v1/admin/tenants`
 

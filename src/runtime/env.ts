@@ -71,6 +71,13 @@ export interface AdminSettings {
    * simultaneous one.
    */
   previousToken?: string
+  /**
+   * The credentials of the tenants (spec §10.1).
+   *
+   * A credential of a tenant may only act for that tenant, and it may
+   * carry the name of its operator.
+   */
+  credentials?: string
 }
 
 /** The settings of the decision contract of the gateway. */
@@ -242,6 +249,7 @@ const EnvSchema = z.object({
 
   HUB_ADMIN_TOKEN: z.string().optional(),
   HUB_PREVIOUS_ADMIN_TOKEN: z.string().optional(),
+  HUB_ADMIN_TOKENS: z.string().optional(),
   HUB_ACCESS_TOKEN: z.string().optional(),
   HUB_PREVIOUS_ACCESS_TOKEN: z.string().optional(),
   HUB_ACCESS_CONTEXT_TOKENS: z.string().optional(),
@@ -571,6 +579,7 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
     admin: {
       token: parsed.HUB_ADMIN_TOKEN,
       previousToken: parsed.HUB_PREVIOUS_ADMIN_TOKEN,
+      credentials: parsed.HUB_ADMIN_TOKENS,
     },
     access: {
       token: parsed.HUB_ACCESS_TOKEN,

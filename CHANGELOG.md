@@ -16,6 +16,15 @@ The work that the release `1.0.0` carries, before the tag.
 
 ### The contract
 
+- **The administration has a credential per tenant.** A deployment may
+  name its credentials in `HUB_ADMIN_TOKENS`, a json object of bearer
+  tokens and of their scopes. A credential of a tenant may only act for
+  that tenant — a call that names another one is a `403 forbidden`, the
+  lists it reads are the lists of its tenant, and the filter of a query
+  cannot widen them — and it may carry the **name** of its operator, and
+  the audit of a change names the operator and not the fingerprint of a
+  shared secret. `HUB_ADMIN_TOKEN` keeps working and keeps the scope of
+  the platform. (spec §4.6, spec §10.1)
 - **A denial carries the code of its reason.** The answer of `POST
   /v1/decisions` carries `reasonCode` beside the free text of the reason:
   `missing_role` for a denial of a role, `access_denied` for every other

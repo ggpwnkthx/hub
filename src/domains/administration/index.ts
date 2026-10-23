@@ -8,6 +8,8 @@
  */
 
 export { AdministrationError, ERROR_CODES, type ErrorCode } from './errors'
+export type { AdminCredential, AdminScope } from './credentials'
+export { PLATFORM_SCOPE } from './credentials'
 export { FailedAuthenticationLimiter, MAX_FAILURES, WINDOW_MS } from './limiter'
 export type {
   AuthenticationFailures,

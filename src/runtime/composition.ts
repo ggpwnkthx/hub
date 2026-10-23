@@ -8,6 +8,7 @@
  */
 
 import { createHubApp, createHubHandler } from '../app/app'
+import type { AdminCredential } from '../domains/administration'
 import type { AccessContextCredential } from '../app/access-context'
 import { LoginService, ProviderClient, createStateCipher } from '../domains/identity'
 import type { TenantOfLogin } from '../domains/identity'
@@ -416,6 +417,7 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
       audit: new AuditRepository(traced),
       token: settings.admin.token,
       previousToken: settings.admin.previousToken,
+      credentials: readAdminCredentials(settings.admin.credentials),
       publicUrl: settings.public.publicUrl,
       // The registration of a tenant changed: its client of the provider
       // is dropped, so that the next login builds a new one (spec §6.6).
@@ -470,6 +472,63 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
     },
     close: closeResources,
   }
+}
+
+/**
+ * Reads the credentials of the administration (spec §10.1).
+ *
+ * The value is a json object: every key is a bearer token and every
+ * value holds the scope of that token. A value of `null` is the scope of
+ * the platform: the credential may act for every tenant. A value of an
+ * object holds the slug of the tenant the credential may act for and the
+ * name of its operator.
+ *
+ * A malformed value stops the service: a credential that is not
+ * understood is a credential that is not scoped.
+ */
+export function readAdminCredentials(raw: string | undefined): AdminCredential[] {
+  if (!raw || raw.trim().length === 0) return []
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new Error('HUB_ADMIN_TOKENS must be a json object')
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('HUB_ADMIN_TOKENS must be a json object')
+  }
+  const credentials: AdminCredential[] = []
+  for (const [token, scope] of Object.entries(parsed as Record<string, unknown>)) {
+    if (token.length < 16) {
+      throw new Error('a credential of the administration is at least 16 characters long')
+    }
+    if (scope === null) {
+      credentials.push({ token, tenant: null, operator: null })
+      continue
+    }
+    if (typeof scope !== 'object' || Array.isArray(scope)) {
+      throw new Error(
+        'the scope of a credential of the administration is an object with a tenant, or null'
+      )
+    }
+    const value = scope as { tenant?: unknown; operator?: unknown }
+    if (typeof value.tenant !== 'string' || value.tenant.trim().length === 0) {
+      throw new Error('the tenant of a credential of the administration is the slug of a tenant')
+    }
+    if (
+      value.operator !== undefined &&
+      value.operator !== null &&
+      typeof value.operator !== 'string'
+    ) {
+      throw new Error('the operator of a credential of the administration is a name')
+    }
+    const operator =
+      typeof value.operator === 'string' && value.operator.trim().length > 0
+        ? value.operator.trim()
+        : null
+    credentials.push({ token, tenant: value.tenant.trim(), operator })
+  }
+  return credentials
 }
 
 /**

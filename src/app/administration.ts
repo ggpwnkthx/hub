@@ -16,6 +16,7 @@ import {
   PrincipalBatchBody,
   PrincipalBody,
   TenantBody,
+  type AdminScope,
   type AuditContext,
   type AuditEntry,
 } from '../domains/administration'
@@ -131,18 +132,24 @@ export class BodyTooLargeError extends Error {
 }
 
 /**
- * Authenticates the call and answers the failure of the authentication.
+ * Authenticates the call and answers the scope of the credential.
  *
  * The address of the caller is the key of the limiter: it is the address
  * of the socket, not the one of a header the caller controls.
+ *
+ * The scope is what the credential allows: the tenant it may act for and
+ * the operator it is (spec §10.1).
  */
 async function authenticate(
   context: Context<HubEnv>,
   dependencies: HubDependencies
-): Promise<void> {
+): Promise<AdminScope> {
   const address = dependencies.peerAddress(context.req.raw)
   try {
-    await dependencies.administration.authenticate(context.req.header('authorization'), address)
+    return await dependencies.administration.authenticate(
+      context.req.header('authorization'),
+      address
+    )
   } catch (error) {
     if (error instanceof AdministrationError) {
       dependencies.logger.warn('the administrative call was refused', {
@@ -188,13 +195,18 @@ function failure(error: unknown): Response {
 /**
  * The facts of the call that the domain cannot know.
  *
- * The operator is the fingerprint of the credential that made the call:
- * two operators that hold two tokens are two operators in the audit,
- * and the token itself is never written.
+ * The operator is the name of the credential when it carries one, and
+ * the fingerprint of the credential when it does not: two operators that
+ * hold two credentials are two operators in the audit, and the
+ * credential itself is never written.
  */
-function auditContext(context: Context<HubEnv>, dependencies: HubDependencies): AuditContext {
+function auditContext(
+  context: Context<HubEnv>,
+  dependencies: HubDependencies,
+  scope: AdminScope
+): AuditContext {
   return {
-    operator: operatorOf(context),
+    operator: scope.operator ?? operatorOf(context),
     address: dependencies.peerAddress(context.req.raw),
     requestId: context.get('requestId'),
   }
@@ -210,6 +222,7 @@ function auditContext(context: Context<HubEnv>, dependencies: HubDependencies): 
 async function answer(
   context: Context<HubEnv>,
   dependencies: HubDependencies,
+  scope: AdminScope,
   endpoint: string,
   status: number,
   body: unknown,
@@ -220,6 +233,10 @@ async function answer(
     endpoint,
     status,
     address,
+    // The operator of the call: the name of the credential when it
+    // carries one, and the fingerprint of the credential when it does
+    // not.
+    operator: scope.operator ?? operatorOf(context),
     ...(audit?.action ? { action: audit.action } : {}),
     ...(audit?.id ? { id: audit.id } : {}),
     ...(audit?.tenant ? { tenant: audit.tenant } : {}),
@@ -331,7 +348,7 @@ export async function tenantHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/tenants'
   try {
-    await authenticate(context, dependencies)
+    const scope = await authenticate(context, dependencies)
     const body = await readBody(context, TenantBody)
     const registration = {
       slug: body.slug,
@@ -352,12 +369,14 @@ export async function tenantHandler(
       enabled: body.enabled ?? true,
     }
     const result = await dependencies.administration.upsertTenant(
+      scope,
       registration,
-      auditContext(context, dependencies)
+      auditContext(context, dependencies, scope)
     )
     return answer(
       context,
       dependencies,
+      scope,
       endpoint,
       result.created ? 201 : 200,
       tenantBody(result.tenant),
@@ -375,9 +394,9 @@ export async function tenantsHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/tenants'
   try {
-    await authenticate(context, dependencies)
-    const tenants = await dependencies.administration.listTenants()
-    return answer(context, dependencies, endpoint, 200, {
+    const scope = await authenticate(context, dependencies)
+    const tenants = await dependencies.administration.listTenants(scope)
+    return answer(context, dependencies, scope, endpoint, 200, {
       tenants: tenants.map((tenant) => ({
         ...tenantBody(tenant),
         userCount: tenant.userCount,
@@ -396,7 +415,7 @@ export async function principalHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/users'
   try {
-    await authenticate(context, dependencies)
+    const scope = await authenticate(context, dependencies)
     const body = await readBody(context, PrincipalBody, PrincipalBatchBody, {
       maxBytes: MAX_BATCH_BODY_BYTES,
     })
@@ -404,6 +423,7 @@ export async function principalHandler(
     // hundred principals instead of a hundred calls (spec §10.4).
     if ('principals' in body) {
       const outcomes = await dependencies.administration.upsertPrincipals(
+        scope,
         body.principals.map((principal) => ({
           tenant: principal.tenant,
           externalSubject: principal.externalSubject,
@@ -411,9 +431,9 @@ export async function principalHandler(
           displayName: principal.displayName,
           status: principal.status,
         })),
-        auditContext(context, dependencies)
+        auditContext(context, dependencies, scope)
       )
-      return answer(context, dependencies, endpoint, 200, {
+      return answer(context, dependencies, scope, endpoint, 200, {
         principals: outcomes.map((outcome) => ({
           tenant: outcome.tenant,
           externalSubject: outcome.externalSubject,
@@ -424,6 +444,7 @@ export async function principalHandler(
       })
     }
     const result = await dependencies.administration.upsertPrincipal(
+      scope,
       {
         tenant: body.tenant,
         externalSubject: body.externalSubject,
@@ -431,11 +452,12 @@ export async function principalHandler(
         displayName: body.displayName,
         status: body.status,
       },
-      auditContext(context, dependencies)
+      auditContext(context, dependencies, scope)
     )
     return answer(
       context,
       dependencies,
+      scope,
       endpoint,
       result.created ? 201 : 200,
       principalBody(result.principal),
@@ -472,15 +494,15 @@ export async function groupsHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/groups'
   try {
-    await authenticate(context, dependencies)
+    const scope = await authenticate(context, dependencies)
     const query = context.req.query()
-    const page = await dependencies.administration.listGroups({
+    const page = await dependencies.administration.listGroups(scope, {
       tenant: query.tenant ?? null,
       key: query.key ?? null,
       limit: query.limit ?? null,
       offset: query.offset ?? null,
     })
-    return answer(context, dependencies, endpoint, 200, {
+    return answer(context, dependencies, scope, endpoint, 200, {
       groups: page.groups.map(groupBody),
       total: page.total,
       limit: page.limit,
@@ -498,16 +520,16 @@ export async function principalsHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/users'
   try {
-    await authenticate(context, dependencies)
+    const scope = await authenticate(context, dependencies)
     const query = context.req.query()
-    const page = await dependencies.administration.listPrincipals({
+    const page = await dependencies.administration.listPrincipals(scope, {
       tenant: query.tenant ?? null,
       status: query.status ?? null,
       email: query.email ?? null,
       limit: query.limit ?? null,
       offset: query.offset ?? null,
     })
-    return answer(context, dependencies, endpoint, 200, {
+    return answer(context, dependencies, scope, endpoint, 200, {
       principals: page.principals.map(principalBody),
       total: page.total,
       limit: page.limit,
@@ -525,7 +547,7 @@ export async function grantHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/grants'
   try {
-    await authenticate(context, dependencies)
+    const scope = await authenticate(context, dependencies)
     const body = await readBody(context, GrantBody, GrantBatchBody, {
       maxBytes: MAX_BATCH_BODY_BYTES,
     })
@@ -533,6 +555,7 @@ export async function grantHandler(
     // (spec §10.6).
     if ('grants' in body) {
       const outcomes = await dependencies.administration.upsertGrants(
+        scope,
         body.grants.map((grant) => ({
           tenant: grant.tenant,
           userId: grant.userId ?? null,
@@ -543,9 +566,9 @@ export async function grantHandler(
           expiresAt: grant.expiresAt ? new Date(grant.expiresAt) : null,
           grantedBy: grant.grantedBy ?? null,
         })),
-        auditContext(context, dependencies)
+        auditContext(context, dependencies, scope)
       )
-      return answer(context, dependencies, endpoint, 200, {
+      return answer(context, dependencies, scope, endpoint, 200, {
         grants: outcomes.map((outcome) => ({
           tenant: outcome.tenant,
           id: outcome.id,
@@ -555,6 +578,7 @@ export async function grantHandler(
       })
     }
     const result = await dependencies.administration.upsertGrant(
+      scope,
       {
         tenant: body.tenant,
         userId: body.userId ?? null,
@@ -565,9 +589,17 @@ export async function grantHandler(
         expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
         grantedBy: body.grantedBy ?? null,
       },
-      auditContext(context, dependencies)
+      auditContext(context, dependencies, scope)
     )
-    return answer(context, dependencies, endpoint, 200, grantBody(result.grant), result.audit)
+    return answer(
+      context,
+      dependencies,
+      scope,
+      endpoint,
+      200,
+      grantBody(result.grant),
+      result.audit
+    )
   } catch (error) {
     return failure(error)
   }
@@ -580,20 +612,22 @@ export async function groupHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/groups'
   try {
-    await authenticate(context, dependencies)
+    const scope = await authenticate(context, dependencies)
     const body = await readBody(context, GroupBody)
     const result = await dependencies.administration.upsertGroup(
+      scope,
       {
         tenant: body.tenant,
         key: body.key,
         displayName: body.displayName,
         members: body.members ?? [],
       },
-      auditContext(context, dependencies)
+      auditContext(context, dependencies, scope)
     )
     return answer(
       context,
       dependencies,
+      scope,
       endpoint,
       result.created ? 201 : 200,
       groupBody(result.group),
@@ -611,16 +645,16 @@ export async function grantsHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/grants'
   try {
-    await authenticate(context, dependencies)
+    const scope = await authenticate(context, dependencies)
     const query = context.req.query()
-    const page = await dependencies.administration.listGrants({
+    const page = await dependencies.administration.listGrants(scope, {
       tenant: query.tenant ?? null,
       userId: query.userId ?? null,
       live: query.live ?? null,
       limit: query.limit ?? null,
       offset: query.offset ?? null,
     })
-    return answer(context, dependencies, endpoint, 200, {
+    return answer(context, dependencies, scope, endpoint, 200, {
       grants: page.grants.map(grantBody),
       total: page.total,
       limit: page.limit,
@@ -638,7 +672,7 @@ export async function revokeGrantHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/grants'
   try {
-    await authenticate(context, dependencies)
+    const scope = await authenticate(context, dependencies)
     const id = context.req.param('id')
     // An id that is not an id names no grant: the answer is the same as
     // the one of an id that does not exist.
@@ -646,8 +680,9 @@ export async function revokeGrantHandler(
       throw new AdministrationError('not_found', 'the grant does not exist')
     }
     const audit = await dependencies.administration.revokeGrant(
+      scope,
       id,
-      auditContext(context, dependencies)
+      auditContext(context, dependencies, scope)
     )
     dependencies.logger.info('the administrative call', {
       endpoint,
@@ -758,9 +793,9 @@ export async function auditHandler(
 ): Promise<Response> {
   const endpoint = '/v1/admin/audit'
   try {
-    await authenticate(context, dependencies)
+    const scope = await authenticate(context, dependencies)
     const query = context.req.query()
-    const page = await dependencies.administration.listAudit({
+    const page = await dependencies.administration.listAudit(scope, {
       tenant: query.tenant ?? null,
       action: query.action ?? null,
       limit: query.limit ?? null,
@@ -784,7 +819,7 @@ export async function auditHandler(
       })
     }
 
-    return answer(context, dependencies, endpoint, 200, {
+    return answer(context, dependencies, scope, endpoint, 200, {
       records: page.records.map(auditBody),
       total: page.total,
       limit: page.limit,

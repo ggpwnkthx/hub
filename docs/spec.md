@@ -926,6 +926,30 @@ minutes. It is accepted by the gateway in the `jwt` and `any` modes,
 because the gateway validates a bearer token against the same provider it
 discovers for the browser.
 
+| Claim | Value |
+| --- | --- |
+| `iss` | The issuer of Hub. |
+| `sub` | The id of the principal. |
+| `aud` | The client id of the gateway of the tenant. |
+| `exp`, `iat` | Five minutes of life. |
+| `scope` | The scopes of the login. |
+| `roles` | The keys of the permissions of the active grants of the principal (§7.3). |
+| `tid` | The slug of the tenant. |
+
+The token carries **no nonce** and **no e-mail**. A bearer token that
+carries a nonce is an id token, and the gateway refuses it
+(`SHUTTLE_OIDC_REJECT_NONCE_TOKEN`): an id token travels through the
+browser, and it lands in the history, in the logs and in the referrers.
+The e-mail of the principal is the claim of the id token: a caller that
+comes with a bearer token is a client of an API, and it is identified by
+its subject and by its roles.
+
+The gateway of the release `1.2.0` of the reference and later requires an
+**expiry** on a bearer token, and it bounds the lifetime of a token with
+the moment it was issued (`SHUTTLE_OIDC_MAX_TOKEN_AGE_MS`): the access
+token of Hub carries `exp` and `iat`, and its lifetime is five minutes,
+so the gateway accepts it whatever the bound of the deployment is.
+
 There is **no refresh token**. The gateway does not use one, and a refresh
 token is a credential that has to be revoked, stored and rotated. A
 client that needs one asks for it: it is a feature, it is deferred (§14).
@@ -1162,6 +1186,13 @@ the one the gateway already sends, and it keeps working. It is not
 scoped: every gateway of the deployment shares it, so the gateway that
 presents it may ask about any principal of the platform. The blast
 radius of that secret is the whole platform.
+
+The gateway of the reference presents that token and nothing else: it
+authenticates itself at the decisions with a bearer token, and it has no
+scheme for the credentials of a tenant. The shared token is therefore the
+scheme of a deployment whose gateway is the one of the reference, and the
+credentials of a tenant are the scheme of a deployment whose gateway
+presents them.
 
 The **credentials of a tenant** are the client id and the client secret
 that are registered for the gateway of a tenant (§3.1). The client id
@@ -1673,12 +1704,13 @@ things that are **not** touched.
 | In Shuttle | Status |
 | --- | --- |
 | The format of the route table (`config/routes.json`) | Unchanged. |
-| The environment of the gateway (`SHUTTLE_*`) | Unchanged. No new variable. |
+| The environment of the gateway (`SHUTTLE_*`) | Unchanged. Hub asks for no new variable: the variables that the releases `1.0.0`, `1.1.0` and `1.2.0` of the gateway added are the business of the deployment, and two of them are required by a production deployment of the gateway (`SHUTTLE_SESSION_SECRET` and `SHUTTLE_IDENTITY_SIGNING_KEY`). |
 | The single provider (`SHUTTLE_OIDC_ISSUER`, `SHUTTLE_OIDC_CLIENT_ID`, `SHUTTLE_OIDC_REDIRECT_URI`, `SHUTTLE_OIDC_CLIENT_SECRET`) | Unchanged. They name Hub. |
 | The single access service (`SHUTTLE_ACCESS_URL`, `SHUTTLE_ACCESS_TOKEN`) | Unchanged. They name Hub. |
-| The contract of the decision (`POST /v1/decisions`, `{subject, workspaceId, routeId, roles}` → `{allow, reason}`) | Unchanged. Hub implements it as it is. |
+| The contract of the decision (`POST /v1/decisions`, `{subject, workspaceId, routeId, roles}` → `{allow, reason}`) | Unchanged. Hub implements it as it is, and it sends the `reasonCode` of a denial (§8.7). |
 | The cache of the decisions of the gateway | Unchanged. Its TTL is the latency of a revocation. |
-| The headers of the identity, the signature, the sessions, the limits, the WebSockets | Unchanged. |
+| The headers of the identity, the sessions, the limits, the WebSockets | Unchanged. |
+| The signature of the identity | The one of the gateway: the release `1.0.0` removed the symmetric format, and the upstreams verify the signature with the public key of the deployment. The gateway signs it, not Hub. |
 | The routes, the upstreams, the workspaces | Unchanged. They belong to the deployment, not to the broker. |
 | The code of the gateway | **No commit.** |
 
@@ -1700,6 +1732,13 @@ The gateway discovers Hub, reads its JWKS, exchanges the code at its
 token endpoint and asks it for the decisions. It cannot tell that Hub is
 in front of several identity providers, and it does not have to.
 
+The gateway of the release `1.0.0` and later asks for two more variables
+in a production deployment: `SHUTTLE_SESSION_SECRET`, the secret of the
+sessions of the browsers, and `SHUTTLE_IDENTITY_SIGNING_KEY`, the
+private key that signs the identity of a request. They are the business
+of the deployment and not of Hub: the upstreams verify the identity with
+the public key of the deployment.
+
 ### 13.2 The two configurations that have to agree
 
 | On the side of Hub | On the side of Shuttle |
@@ -1714,6 +1753,9 @@ in front of several identity providers, and it does not have to.
 The gateway learns the identity of the caller: the subject, the e-mail and
 the roles. It does not learn the tenant, the grants or the permissions:
 they are not claims of the token and the gateway does not read them.
+
+The e-mail is the claim of the id token: a caller that comes with a
+bearer token is identified by its subject and by its roles (§7.2).
 
 The tenant is in the `tid` claim for the operator. The gateway ignores
 it, and that is fine: the decision of §8 does not need it, because the

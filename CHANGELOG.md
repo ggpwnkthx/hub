@@ -134,6 +134,16 @@ The work that the release `1.0.0` carries, before the tag.
   release starts the image by its digest and points the suite at it
   (`HUB_EXTERNAL_URL`); the suite never starts a Hub of its own when
   the environment names one.
+- **The pin of the reference is the release `1.2.0` of the gateway.**
+  The gateway of the reference was three releases behind: the release
+  `1.0.0` froze its contracts and removed the symmetric format of the
+  signature of the identity, the release `1.1.0` added the code of the
+  reason of a denial to the protocol of the access service, and the
+  release `1.2.0` requires an expiry on a bearer token and bounds its
+  lifetime with the moment it was issued. The pin of
+  `compatibility.json` moves to the commit of the release, the suite is
+  green against it, and the tree of the reference is not modified by the
+  run.
 - **The tag of the release is cut by the workflow.** When the version of
   the package goes up, the workflow `tag.yml` creates and pushes the tag
   `v<version>` — after the CI of the commit is green, and only when the
@@ -152,6 +162,17 @@ The work that the release `1.0.0` carries, before the tag.
 
 ### The documentation
 
+- **The contract with the gateway of the release `1.2.0` is written
+  down.** The claims of the access token of Hub are a table, and the two
+  rules that the gateway applies to a bearer token are named: the token
+  has to carry an expiry, and the gateway bounds its lifetime with the
+  moment it was issued. The table of §13 says what the releases `1.0.0`,
+  `1.1.0` and `1.2.0` of the gateway changed, and §8.8 says that the
+  gateway of the reference presents the shared token and nothing else: it
+  has no scheme for the credentials of a tenant. The guide of the
+  operations names the two variables that a production deployment of the
+  gateway asks for since the release `1.0.0`.
+  (spec §7.2, spec §8.8, spec §13, docs/operations.md)
 - **The guide of a contribution.** `CONTRIBUTING.md` holds the order of a
   change — the specification first, the code, the other documents, the
   tests — the commands, the tests of each layer and the style of the

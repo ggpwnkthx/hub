@@ -160,8 +160,16 @@ promoted. The delivery of the image is in [release.md](release.md) §5.
    SHUTTLE_OIDC_REDIRECT_URI=https://shuttle-acme.example.com/auth/callback
    SHUTTLE_ACCESS_URL=https://hub.example.com
    SHUTTLE_ACCESS_TOKEN=the-access-token-of-hub
+   SHUTTLE_SESSION_SECRET=the-secret-of-the-sessions
+   SHUTTLE_IDENTITY_SIGNING_KEY=the-private-key-of-the-deployment
    ```
    The two sides have to agree character for character (spec §13.2).
+   The last two are the business of the gateway and not of Hub: the
+   gateway of the release `1.0.0` and later refuses to start in a
+   production environment without them — the secret of the sessions of
+   the browsers, and the private key that signs the identity of a
+   request, which the upstreams verify with the public key of the
+   deployment.
 5. **The check** — the nine calls of the session:
    ```bash
    HUB_URL=https://hub.example.com HUB_ADMIN_TOKEN=… bun run scripts/admin-smoke.ts

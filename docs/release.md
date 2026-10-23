@@ -290,7 +290,7 @@ The tag can also be cut by hand, and the workflows of the release do not
 care who cut it:
 
 ```bash
-git tag -a v0.2.0 -m "Hub v0.2.0" && git push origin v0.2.0
+git tag -a v1.0.0 -m "Hub v1.0.0" && git push origin v1.0.0
 ```
 
 Two workflows run on the tag, and both of them check that the version of
@@ -303,7 +303,7 @@ status of the specification are the same (`bun run versions`):
 | `release-binaries.yml` | It compiles the service for every supported platform, proves that the binary of the runner starts, applies the schema of the release and serves, and publishes the archives on the release of the tag. |
 
 The image of the release is published with two tags, the tag of the
-release (`v0.2.0`) and the version itself (`0.2.0`), and it is promoted by
+release (`v1.0.0`) and the version itself (`1.0.0`), and it is promoted by
 its digest.
 
 **The image is built once.** The build is published, and every gate of
@@ -325,8 +325,8 @@ and the binary finds it there. An archive holds the two, and the archive
 of a platform is extracted in the directory of the deployment:
 
 ```bash
-tar -xzf hub-0.2.0-linux-x64.tar.gz -C /opt/hub
-/opt/hub/hub-0.2.0-linux-x64
+tar -xzf hub-1.0.0-linux-x64.tar.gz -C /opt/hub
+/opt/hub/hub-1.0.0-linux-x64
 ```
 
 The embedded PostgreSQL of a development machine is not part of a binary:

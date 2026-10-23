@@ -18,7 +18,7 @@ requests and of the answers are in [api.md](api.md); the code is in
 change of behavior is a change of this document first, in the same commit
 as the code.
 
-Status: 0.2.0. Runtime: Bun ≥ 1.4.3. Listener: HTTP on
+Status: 1.0.0. Runtime: Bun ≥ 1.4.3. Listener: HTTP on
 `HUB_HOST:HUB_PORT` (default `0.0.0.0:8081`).
 
 ---
@@ -1655,7 +1655,7 @@ section is the contract that the operations have to respect.
 
 ### 12.1 The probes
 
-`GET /healthz` answers `200 {"status":"ok","service":"hub","version":"0.2.0"}`
+`GET /healthz` answers `200 {"status":"ok","service":"hub","version":"1.0.0"}`
 as long as the process is alive.
 
 `GET /readyz` answers `200 {"status":"ready"}` when the database answers a

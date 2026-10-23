@@ -12,7 +12,26 @@ work that carries it.
 
 ## Unreleased
 
-The work that the release `1.0.0` carries, before the tag.
+The work that the next release carries.
+
+## 1.0.0
+
+The release that closes the milestones of Hub: the service brokers the
+login of a caller against the provider of a tenant, it issues its own
+tokens to the gateway, it answers the decisions of the gateway, and the
+administration of the whole thing is nine `curl` calls and an audit that
+is exported.
+
+The contract of the release is the specification
+([docs/spec.md](docs/spec.md)), and it changed since the release `0.2.0`:
+the administration has a credential per tenant, a denial carries the
+code of its reason, the secrets of a deployment may be in a file, the
+grants of a tenant are scoped to it, and the shared secret of the
+decisions is optional and deprecated.
+
+The compatibility suite runs the real gateway of Shuttle, unchanged,
+against the published image of the release, and the gateway it is run
+against is the release `1.2.0` of it.
 
 ### The contract
 

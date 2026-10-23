@@ -18,7 +18,7 @@ the request in the logs of the service; a client that sends a valid
 
 | Endpoint | Answer |
 | --- | --- |
-| `GET /healthz` | `200 {"status":"ok","service":"hub","version":"0.2.0"}` — as long as the process is alive. |
+| `GET /healthz` | `200 {"status":"ok","service":"hub","version":"1.0.0"}` — as long as the process is alive. |
 | `GET /readyz` | `200 {"status":"ready"}` when the database answers and the migrations are applied; `503 {"status":"draining"}` during a drain; `503 {"status":"not-ready"}` otherwise. |
 | `GET /metrics` | Prometheus text. `404` when `HUB_METRICS_TOKEN` is unset, `401` when the bearer token does not match. |
 

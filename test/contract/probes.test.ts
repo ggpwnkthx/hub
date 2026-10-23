@@ -29,7 +29,7 @@ describe('the probes of Hub', () => {
     expect(await response.json()).toEqual({
       status: 'ok',
       service: 'hub',
-      version: '0.2.0',
+      version: '1.0.0',
     })
   })
 

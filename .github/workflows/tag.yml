@@ -85,7 +85,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$CREATED" != "true" ]; then
-            echo "the tag $TAG was not cut by this run: the release is not dispatched"
+            echo "the release is not dispatched: the tag of this version was not cut by this run"
             exit 0
           fi
           # The tag was pushed with the token of the workflow: GitHub does

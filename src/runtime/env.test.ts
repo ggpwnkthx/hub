@@ -121,6 +121,21 @@ describe('the environment of Hub', () => {
     ).toThrow(/HUB_PREVIOUS_ACCESS_TOKEN/)
   })
 
+  test('a production deployment with only the credentials of its tenants starts', () => {
+    // The deployment names its credentials and does not name the token
+    // of the platform: the administration is guarded by the credentials
+    // of the tenants (spec §4.4, §4.6).
+    const settings = readEnv({
+      ...PRODUCTION,
+      HUB_ADMIN_TOKEN: undefined,
+      HUB_ADMIN_TOKENS:
+        '{"the-token-of-the-operator-of-acme":{"tenant":"acme","operator":"alice"}}',
+    })
+    expect(settings.production).toBe(true)
+    expect(settings.admin.token).toBeUndefined()
+    expect(settings.admin.credentials).toContain('the-token-of-the-operator-of-acme')
+  })
+
   test('a production deployment with every secret starts', () => {
     const settings = readEnv(PRODUCTION)
     expect(settings.production).toBe(true)

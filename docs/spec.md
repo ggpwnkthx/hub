@@ -555,7 +555,7 @@ down.
 | `HUB_DATABASE_URL` | The five tables live there. A production environment must name a server (§3.8). |
 | `HUB_ISSUER` | It is the `iss` of every token Hub issues and the issuer the gateway is configured with. |
 | `HUB_REDIS_URL` | The authorization codes have to be shared by the replicas, unless `HUB_ALLOW_MEMORY_STATE=true` names a deployment of a single node. |
-| `HUB_ADMIN_TOKEN` | It is the bearer token of the nine administrative endpoints. |
+| `HUB_ADMIN_TOKEN` | It is the bearer token of the nine administrative endpoints, unless the deployment names its credentials in `HUB_ADMIN_TOKENS` (§4.6). |
 | `HUB_STATE_SECRET` | It signs and encrypts the state of a login. At least 32 bytes. |
 | `HUB_SECRET_ENCRYPTION_KEY` | It encrypts the client secrets at rest. At least 32 bytes. |
 | `HUB_SIGNING_KEY` | It is the private key Hub signs its tokens with, in PEM. |

@@ -449,9 +449,9 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
   // deployment without them cannot sign a login, encrypt a secret at rest
   // or authenticate a call.
   if (production) {
-    if (!parsed.HUB_ADMIN_TOKEN) {
+    if (!parsed.HUB_ADMIN_TOKEN && !parsed.HUB_ADMIN_TOKENS) {
       problems.push(
-        'HUB_ADMIN_TOKEN must be set in a production environment: it is the bearer token of the nine administrative endpoints'
+        'HUB_ADMIN_TOKEN must be set in a production environment: it is the bearer token of the nine administrative endpoints, unless the deployment names its credentials in HUB_ADMIN_TOKENS'
       )
     }
     if (!parsed.HUB_STATE_SECRET) {

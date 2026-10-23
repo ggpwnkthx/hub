@@ -3,7 +3,7 @@
   "repositories": {
     "shuttle": {
       "url": "https://github.com/ggpwnkthx/shuttle.git",
-      "commit": "76b3ff8c34019f1cdb32d7e8c135e785ef3da725"
+      "commit": "0e09a420f8d5f7f3e2eea63512f808ce4ae215e0"
     }
   }
 }

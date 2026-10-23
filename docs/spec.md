@@ -1704,7 +1704,7 @@ things that are **not** touched.
 | In Shuttle | Status |
 | --- | --- |
 | The format of the route table (`config/routes.json`) | Unchanged. |
-| The environment of the gateway (`SHUTTLE_*`) | Unchanged. Hub asks for no new variable: the variables that the releases `1.0.0`, `1.1.0` and `1.2.0` of the gateway added are the business of the deployment, and two of them are required by a production deployment of the gateway (`SHUTTLE_SESSION_SECRET` and `SHUTTLE_IDENTITY_SIGNING_KEY`). |
+| The environment of the gateway (`SHUTTLE_*`) | Unchanged. Hub asks for no new variable: the variables that the releases `1.0.0`, `1.1.0`, `1.2.0` and `1.3.0` of the gateway added are the business of the deployment, and two of them are required by a production deployment of the gateway (`SHUTTLE_SESSION_SECRET` and `SHUTTLE_IDENTITY_SIGNING_KEY`). |
 | The single provider (`SHUTTLE_OIDC_ISSUER`, `SHUTTLE_OIDC_CLIENT_ID`, `SHUTTLE_OIDC_REDIRECT_URI`, `SHUTTLE_OIDC_CLIENT_SECRET`) | Unchanged. They name Hub. |
 | The single access service (`SHUTTLE_ACCESS_URL`, `SHUTTLE_ACCESS_TOKEN`) | Unchanged. They name Hub. |
 | The contract of the decision (`POST /v1/decisions`, `{subject, workspaceId, routeId, roles}` → `{allow, reason}`) | Unchanged. Hub implements it as it is, and it sends the `reasonCode` of a denial (§8.7). |

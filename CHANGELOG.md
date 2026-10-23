@@ -14,6 +14,19 @@ work that carries it.
 
 The work that the next release carries.
 
+### The release
+
+- **The pin of the reference is the release `1.3.0` of the gateway.** The
+  release `1.3.0` of the gateway gives the deployment a control plane of
+  its own — a separate process that acts on the shared state — and lets
+  the route table live in the shared state instead of in a file. The
+  contracts Hub speaks are extended and never changed: the protocol of
+  the decisions, the tokens of Hub and the headers of the identity are
+  the ones the gateway already speaks, and the file of the route table
+  is still the default. The pin of `compatibility.json` moves to the
+  commit of the release, the suite is green against it, and the tree of
+  the reference is not modified by the run.
+
 ## 1.0.0
 
 The release that closes the milestones of Hub: the service brokers the

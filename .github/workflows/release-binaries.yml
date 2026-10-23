@@ -7,7 +7,7 @@ name: release-binaries
 # proves that the binary of the runner starts and serves, and it publishes
 # the binaries on the release of the tag.
 #
-#   git tag v1.0.1 && git push origin v1.0.1
+#   git tag v2.0.0 && git push origin v2.0.0
 #
 # The binaries are the service and nothing else: the fixtures of the
 # development stack are not part of them. The container image of the same

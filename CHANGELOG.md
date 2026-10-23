@@ -14,6 +14,32 @@ work that carries it.
 
 The work that the next release carries.
 
+## 2.0.0
+
+A **MAJOR** release: the contract of the specification changed, and a
+deployment written against the release `1.0.1` has to read the migration
+below.
+
+The contract of the release is the specification
+([docs/spec.md](docs/spec.md)), and it changed since the release
+`1.0.1`: the credentials of a gateway are always scoped to their tenant,
+the flags of the platform belong to the operator of the platform, the
+budget of the limiter of the administration is spent by the calls that
+fail, the call to a provider is made to the address that was checked, and
+the answers carry the headers of a browser.
+
+**The migration.** A deployment whose gateway authenticates itself with
+the credentials of a tenant that has a shared client, and asks about the
+principals of the other tenants, moves its gateway to the bearer token
+of the deployment: the credentials of a tenant no longer reach the
+principals of the other tenants (spec §8.8). Every other deployment
+keeps working without a change.
+
+The compatibility suite runs the real gateway of Shuttle, unchanged,
+against the published image of the release, and the gateway it is run
+against is the release `2.0.0` of it: the release `1.0.1` was proven
+against the gateway of the release `1.3.0`.
+
 ### The contract
 
 - **The flags of a tenant that belong to the platform are the work of the

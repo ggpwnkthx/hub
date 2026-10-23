@@ -49,6 +49,36 @@ async function routesOfTheCode(): Promise<number> {
   return paths.filter((path) => path !== AUDIT_ROUTE).length
 }
 
+/**
+ * The numbers in words, for the counts the documents carry.
+ *
+ * The documents say "the nine administrative endpoints": the number is a
+ * word, and the word is what the test reads.
+ */
+const WORDS: Record<number, string> = {
+  5: 'five',
+  6: 'six',
+  7: 'seven',
+  8: 'eight',
+  9: 'nine',
+  10: 'ten',
+  11: 'eleven',
+  12: 'twelve',
+  13: 'thirteen',
+  14: 'fourteen',
+  15: 'fifteen',
+  16: 'sixteen',
+  17: 'seventeen',
+  18: 'eighteen',
+  19: 'nineteen',
+  20: 'twenty',
+}
+
+/** The word of a number, when the documents may carry it. */
+function wordOf(count: number): string {
+  return WORDS[count] ?? String(count)
+}
+
 /** The number a document says, with the name of the file and the line. */
 interface Claim {
   file: string
@@ -59,7 +89,11 @@ interface Claim {
 describe('the numbers of the documentation', () => {
   test('the documents and the code agree on the size of the administration', async () => {
     const routes = await routesOfTheCode()
-    expect(routes).toBe(9)
+    // The number is the one of the code: a change of the surface changes
+    // the code and the documents in the same commit, and this test names
+    // the documents that were not changed.
+    expect(routes).toBeGreaterThan(0)
+    const expected = wordOf(routes)
 
     const claims: Claim[] = []
     const files = [
@@ -79,7 +113,7 @@ describe('the numbers of the documentation', () => {
         // nine administrative endpoints", "the nine calls of the
         // session", "the nine calls of the administration".
         for (const match of line.matchAll(
-          /the (seven|eight|nine|ten) (administrative endpoints|calls of the (session|administration))/g
+          /the (five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty) (administrative endpoints|calls of the (session|administration))/g
         )) {
           claims.push({
             file: relative(root, file),
@@ -91,7 +125,7 @@ describe('the numbers of the documentation', () => {
     }
 
     const findings = claims
-      .filter((claim) => claim.word !== 'nine')
+      .filter((claim) => claim.word !== expected)
       .map(
         (claim) =>
           `${claim.file}:${claim.line} says "${claim.word}" and the code registers ${routes}`

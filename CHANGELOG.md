@@ -118,6 +118,17 @@ The work that the release `1.0.0` carries, before the tag.
 
 ### The documentation
 
+- **The routes and the documents agree.** A test reads the routes the
+  application registers and the routes the documents name, and the two
+  sets have to be the same one: a route that is added is documented in
+  the same commit, and a route that is removed is removed from the
+  documents in the same commit. (`test/architecture/routes.test.ts`)
+- **The number of the administration is the number of the code.** The
+  test that holds the documents and the code on the size of the
+  administration reads the number from the code instead of carrying it:
+  a surface that grows is a surface that the documents may describe with
+  its new number, and the test names the documents that were not
+  changed. (`test/architecture/counts.test.ts`)
 - The numbering of the sections of the specification is stable: the
   access context is §9, the administration is §10, and the test
   `test/architecture/spec-references.test.ts` refuses a reference that

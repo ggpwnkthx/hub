@@ -1437,7 +1437,10 @@ The bodies of the requests and of the answers are in [api.md](api.md).
   `{"error": "<code>", "message": "<text>"}`.
 - The calls are rate limited per address: a burst of failed authentications
   is refused with `429`, so the admin token cannot be guessed by hammering
-  the endpoint. The count of the failures is held by the **shared store**
+  the endpoint. **The budget of an address is spent by the calls that
+  fail**: a call that authenticates itself is answered, whatever the
+  address presented before, and it clears the count of the address. The
+  count of the failures is held by the **shared store**
   of the deployment, so the window of the limiter is the window of the
   deployment and not the window of a replica: a deployment of several
   replicas does not accept five times the budget. A deployment that keeps

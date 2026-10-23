@@ -13,7 +13,7 @@ review of those rules and of everything around them.
 | --- | --- |
 | The login of a browser | The state of the login is encrypted, authenticated and single use; the code is opaque, stored under a hash, single use and bound to the client, to the redirect uri and to the PKCE challenge; the token of the provider is validated before a single row is read. |
 | The decisions | The gateway authenticates itself with a bearer token or with the credentials of its tenant; the comparison is in constant time; the rules of the tenants are enforced by the database (row level security). The credentials of a tenant are always scoped to that tenant; the bearer token of the deployment is optional and deprecated: a deployment that does not set it accepts only the credentials of a tenant. |
-| The administration | One bearer token for the whole platform, or a credential per tenant, compared in constant time, with a rate limit per address; every call is audited in a table; the secrets are write-only. |
+| The administration | One bearer token for the whole platform, or a credential per tenant, compared in constant time, with a rate limit per address whose budget is spent by the calls that fail; every call is audited in a table; the secrets are write-only. |
 | The secrets at rest | The two client secrets of a tenant are encrypted with AES-256-GCM under a key that is derived with HKDF-SHA256 from the secret of the deployment. |
 | The image | A user that is not `root`, no shell, no tool of the build, a base image pinned by digest, a scan that fails the build above "high", an SBOM. |
 
@@ -49,6 +49,7 @@ review of those rules and of everything around them.
 | 26 | **The flags of a tenant that belong to the platform.** The `shared_client` of a tenant moves the logins of the platform and the `is_default` routes the logins of the shared clients. A credential of a tenant may not change them: a call that carries a value that is not the value of the row is a `403 forbidden`. | Fixed | `src/domains/administration/service.ts` |
 | 27 | **The scope of the decisions does not depend on the row of the tenant.** The credentials of a gateway are scoped to their tenant, shared client or not: the scope of a decision is the scope of the credential, and not a flag that a row carries. The bearer token of the deployment is the only scheme that is not scoped, and it is deprecated. | Fixed | `src/app/decisions.ts` |
 | 28 | **The address of the call is the address that was checked.** The guard of the addresses resolves the host of the provider and pins the address it resolved to; the call is made to that address, with the name of the host in the `Host` header and in the name the certificate is checked against. A host that answers a public address to the check and a private one to the connection is of no use. | Fixed | `src/platform/bun/address.ts`, `src/platform/bun/http.ts` |
+| 29 | **The budget of the limiter is spent by the calls that fail.** A call that authenticates itself is answered, whatever the address presented before: an address that used up its budget cannot lock out the operator that holds the token. The budget still stops a caller that hammers the endpoint. | Fixed | `src/domains/administration/service.ts`, `src/domains/administration/limiter.ts` |
 
 ## The findings that are open
 

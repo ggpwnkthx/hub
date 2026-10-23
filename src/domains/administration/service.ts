@@ -238,6 +238,11 @@ export class AdministrationService {
    * of them is refused with `429`, so the token cannot be guessed by
    * hammering the endpoint.
    *
+   * The budget of an address is spent by the calls that **fail**. A call
+   * that authenticates itself is answered, whatever the address presented
+   * before: an address that used up its budget cannot lock out the
+   * operator that holds the token.
+   *
    * Two tokens are accepted during a rotation: the one of the deployment
    * and the one it replaced.
    *
@@ -252,17 +257,6 @@ export class AdministrationService {
     const match = /^Bearer\s+(.+)$/i.exec((header ?? '').trim())
     const presented = match?.[1]?.trim() ?? ''
 
-    // An address that used up its budget is refused, whatever it
-    // presents.
-    const blocked = await this.limiter.blocked(address)
-    if (blocked.blocked) {
-      throw new AdministrationError(
-        'too_many_requests',
-        'too many failed authentications from this address',
-        blocked.retryAfterMs
-      )
-    }
-
     // Every candidate is compared, and the comparison does not stop at
     // the first one: the time of the answer may not tell which of the
     // credentials was presented.
@@ -275,6 +269,16 @@ export class AdministrationService {
     const accepted = presented !== '' && comparisons.some(Boolean)
 
     if (!accepted) {
+      // The address that used up its budget is refused, and it is refused
+      // here: the budget is the one of the calls that fail.
+      const blocked = await this.limiter.blocked(address)
+      if (blocked.blocked) {
+        throw new AdministrationError(
+          'too_many_requests',
+          'too many failed authentications from this address',
+          blocked.retryAfterMs
+        )
+      }
       const failure = await this.limiter.fail(address)
       if (!failure.allowed) {
         throw new AdministrationError(

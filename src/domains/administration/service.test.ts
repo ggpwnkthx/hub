@@ -519,11 +519,11 @@ describe('the authentication of the administration', () => {
       refused = error instanceof AdministrationError && error.code === 'too_many_requests'
     }
     expect(refused).toBe(true)
-    // The right token does not open the door of an address that is
-    // hammering the endpoint.
-    await expect(administration.authenticate('Bearer the-admin-token', '10.0.0.2')).rejects.toThrow(
-      /too many failed authentications/
-    )
+    // The budget of an address is spent by the calls that fail: the right
+    // token is answered, whatever the address presented before.
+    await expect(
+      administration.authenticate('Bearer the-admin-token', '10.0.0.2')
+    ).resolves.toEqual(PLATFORM_SCOPE)
     // Another address is not affected.
     await expect(
       administration.authenticate('Bearer the-admin-token', '10.0.0.3')

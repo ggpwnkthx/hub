@@ -6,6 +6,11 @@
  * limiter counts the failed authentications of an address: a burst of them
  * is refused with `429`, and a success clears the count of the address.
  *
+ * The budget of an address is spent by the calls that **fail**. A call
+ * that presents the right token is answered, whatever the address
+ * presented before: an address that used up its budget cannot lock out
+ * the operator that holds the token.
+ *
  * The count is held by the **shared store** of the deployment, so the
  * window of the limiter is the window of the deployment and not the
  * window of a replica: a deployment of several replicas does not accept
@@ -96,9 +101,10 @@ export class FailedAuthenticationLimiter {
   /**
    * Reports whether an address used up its budget.
    *
-   * An address that is blocked is refused whatever it presents: the
-   * limiter protects the token, and a caller that hammers the endpoint is
-   * not a caller that knows the token.
+   * The budget of an address is spent by the calls that fail to
+   * authenticate. A call that authenticates itself is never refused by
+   * the limiter: the limiter protects the token, and it does not lock out
+   * the operator that holds it.
    */
   async blocked(address: string): Promise<{ blocked: boolean; retryAfterMs: number }> {
     const count = await this.failures.count(address, this.windowMs)

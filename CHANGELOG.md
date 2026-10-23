@@ -33,6 +33,10 @@ The work that the next release carries.
   principals of the other tenants moves its gateway to the bearer token
   of the deployment**: the credentials of a tenant no longer reach the
   principals of the other tenants.
+- **The budget of the limiter of the administration is spent by the calls
+  that fail.** A call that authenticates itself is answered, whatever the
+  address presented before: an address that used up its budget cannot
+  lock out the operator that holds the token (spec §10.1).
 - **The call to a provider is made to the address that was checked.** The
   guard of the addresses resolves the host of the provider and pins the
   address it resolved to, and the call is made to that address, with the

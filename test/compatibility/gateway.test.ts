@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
+import { createHash } from 'node:crypto'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -166,6 +167,16 @@ beforeAll(async () => {
             upstream: upstreamUrl,
             auth: { mode: 'any', workspace: { param: 'workspaceId', requireUuid: true } },
           },
+          {
+            // The route of the bearer token: the gateway validates the
+            // token of Hub against the provider it discovers for the
+            // browser, and the rules of that validation are the ones of
+            // the release 1.2.0 of the gateway and later.
+            id: 'api-jwt',
+            match: { host: 'api.shuttle.test', path: '/jwt/' },
+            upstream: upstreamUrl,
+            auth: { mode: 'jwt' },
+          },
         ],
       },
       null,
@@ -271,6 +282,67 @@ async function request(path: string, cookie: string, host: string): Promise<Resp
   })
 }
 
+/**
+ * The tokens of Hub for the gateway.
+ *
+ * The suite plays the client that the gateway is: it logs a browser in at
+ * the provider of the tenant, it comes back to Hub with the code, and it
+ * exchanges the code at the token endpoint of Hub. The access token it
+ * keeps is the credential that the gateway validates against the provider
+ * it discovers for the browser.
+ */
+async function tokensOfHub(): Promise<{ accessToken: string; idToken: string }> {
+  const verifier = 'the-verifier-of-the-compatibility-suite'
+  const challenge = createHash('sha256').update(verifier, 'ascii').digest('base64url')
+  const redirectUri = `${gatewayUrl}/auth/callback`
+  const query = new URLSearchParams({
+    client_id: 'shuttle-acme',
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid profile email',
+    state: 'the-state-of-the-suite',
+    nonce: 'the-nonce-of-the-suite',
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
+  })
+
+  const authorize = await fetch(`${hubUrl}/oauth/authorize?${query.toString()}`, {
+    redirect: 'manual',
+  })
+  const cookie = (authorize.headers.get('set-cookie') ?? '').split(';')[0] ?? ''
+  const atProvider = await fetch(authorize.headers.get('location') ?? '', { redirect: 'manual' })
+  const callback = await fetch(atProvider.headers.get('location') ?? '', {
+    redirect: 'manual',
+    headers: { cookie },
+  })
+  const code = new URL(callback.headers.get('location') ?? '').searchParams.get('code') ?? ''
+  if (!code) {
+    throw new Error(`the login of the suite did not come back with a code: ${callback.status}`)
+  }
+
+  const token = await fetch(`${hubUrl}/oauth/token`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      authorization: `Basic ${Buffer.from('shuttle-acme:the-secret-of-the-gateway').toString('base64')}`,
+    },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri,
+      code_verifier: verifier,
+    }).toString(),
+  })
+  if (!token.ok) {
+    throw new Error(`the token endpoint of Hub answered ${token.status}: ${await token.text()}`)
+  }
+  const body = (await token.json()) as { access_token?: string; id_token?: string }
+  if (!body.access_token || !body.id_token) {
+    throw new Error('the token endpoint of Hub answered no token')
+  }
+  return { accessToken: body.access_token, idToken: body.id_token }
+}
+
 describe('the compatibility of Hub with the gateway', () => {
   test('a browser logs in at the provider of the tenant and comes back with a session', async () => {
     const cookie = await login()
@@ -314,5 +386,35 @@ describe('the compatibility of Hub with the gateway', () => {
     const document = (await discovery.json()) as Record<string, unknown>
     expect(document.issuer).toBe(hubUrl)
     expect(document.jwks_uri).toBe(`${hubUrl}/oauth/jwks`)
+  })
+
+  test('the gateway accepts the bearer token of Hub', async () => {
+    // The gateway of the release 1.0.0 and later refuses a bearer token
+    // that carries no expiry, and it bounds the lifetime of a token with
+    // the moment it was issued: the token of Hub carries the two, and its
+    // lifetime is five minutes.
+    provider.authenticateAs(provider.subject)
+    const { accessToken } = await tokensOfHub()
+    const response = await fetch(`${gatewayUrl}/jwt/`, {
+      headers: { authorization: `Bearer ${accessToken}`, host: 'api.shuttle.test' },
+      redirect: 'manual',
+    })
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { headers: Record<string, string> }
+    expect(body.headers['x-shuttle-user']).toBeTruthy()
+    expect(body.headers['x-shuttle-roles']).toContain('workspace.read')
+  })
+
+  test('the gateway refuses the id token of Hub as a bearer credential', async () => {
+    // The id token travels through the browser: it lands in the history,
+    // in the logs and in the referrers. The gateway refuses a bearer
+    // token that carries a nonce, and the id token of Hub carries one.
+    provider.authenticateAs(provider.subject)
+    const { idToken } = await tokensOfHub()
+    const response = await fetch(`${gatewayUrl}/jwt/`, {
+      headers: { authorization: `Bearer ${idToken}`, host: 'api.shuttle.test' },
+      redirect: 'manual',
+    })
+    expect(response.status).toBe(401)
   })
 })

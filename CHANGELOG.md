@@ -144,6 +144,17 @@ The work that the release `1.0.0` carries, before the tag.
   `compatibility.json` moves to the commit of the release, the suite is
   green against it, and the tree of the reference is not modified by the
   run.
+- **The suite proves the contract of the bearer token.** The
+  compatibility suite now holds a route that accepts a bearer token, and
+  it plays the client that the gateway is: it logs a browser in at the
+  provider of the tenant, it exchanges the code at the token endpoint of
+  Hub, and it presents the access token to the gateway. The gateway of
+  the release `1.2.0` refuses a bearer token that carries no expiry, and
+  it bounds the lifetime of a token with the moment it was issued: the
+  token of Hub carries the two, and its lifetime is five minutes. The
+  suite proves that the gateway refuses the id token of Hub as a bearer
+  credential too: it travels through the browser, and it carries a
+  nonce. (spec §7.2)
 - **The tag of the release is cut by the workflow.** When the version of
   the package goes up, the workflow `tag.yml` creates and pushes the tag
   `v<version>` — after the CI of the commit is green, and only when the

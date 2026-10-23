@@ -51,6 +51,19 @@ The work that the next release carries.
 
 ### The rest
 
+- **The pin of the reference is the release `2.0.0` of the gateway.** The
+  release `2.0.0` of the gateway is a **MAJOR** one: it changes the
+  contracts of the gateway — the precedence of the routes, the address of
+  the caller, the subject of the caller, the ranges of the trusted
+  proxies and the users of the shared state — and not the ones of Hub.
+  The protocol of the decisions, the tokens of Hub and the headers of
+  the identity are the ones the gateway already speaks: the suite is
+  green against the release without a change of the service. The pin of
+  `compatibility.json` moves to the commit of the release, the suite is
+  green against it, and the tree of the reference is not modified by the
+  run. The subject of the tokens of Hub is a uuid, and the gateway of
+  the release `2.0.0` writes it into the headers of the identity **as it
+  is**: it is never rewritten, and it is always writable (spec §7.1).
 - The answer of a provider is read up to one MiB: a provider that answers
   more than that is not reachable.
 - A cookie of the state of a login that is not a valid escape refuses the

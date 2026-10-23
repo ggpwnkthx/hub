@@ -33,6 +33,8 @@ let gateway: Bun.Subprocess<'ignore', 'pipe', 'pipe'>
 let gatewayUrl: string
 let directory: string
 let upstreamUrl: string
+/** The id of the principal that has a grant: the subject of the tokens. */
+let principalId: string
 
 /** The upstream of the tests: it answers with the headers it received. */
 const upstream = Bun.serve({
@@ -117,6 +119,7 @@ beforeAll(async () => {
     }),
   })
   const principal = (await withGrant.json()) as { id: string }
+  principalId = principal.id
   await fetch(`${hubUrl}/v1/admin/users`, {
     method: 'POST',
     headers: {
@@ -357,6 +360,21 @@ describe('the compatibility of Hub with the gateway', () => {
     expect(body.headers['x-shuttle-user']).toBeTruthy()
     expect(body.headers['x-shuttle-email']).toBe('alice@shuttle.test')
     expect(body.headers['x-shuttle-roles']).toContain('workspace.read')
+  })
+
+  test('the gateway writes the subject of the principal as it is', async () => {
+    // The gateway of the release 2.0.0 and later writes the subject of
+    // the identity **as it is**: a subject that is rewritten would speak
+    // of two different callers to the access service, which decides with
+    // the subject it was given, and to the upstream, which reads the
+    // subject of the header. The subject of Hub is the id of a
+    // principal, and the header carries it character for character.
+    provider.authenticateAs(provider.subject)
+    const cookie = await login()
+    const response = await request(`/ws/${WORKSPACE_ID}/`, cookie, 'api.shuttle.test')
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { headers: Record<string, string> }
+    expect(body.headers['x-shuttle-user']).toBe(principalId)
   })
 
   test('a principal without a grant is refused by the gateway', async () => {

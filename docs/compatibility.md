@@ -19,7 +19,7 @@ It is the only place where the reference is named:
   "repositories": {
     "shuttle": {
       "url": "https://github.com/ggpwnkthx/shuttle.git",
-      "commit": "0e09a420f8d5f7f3e2eea63512f808ce4ae215e0"
+      "commit": "89701713e50812f000f77c5ac9313527f0be3bfe"
     }
   }
 }
@@ -45,7 +45,14 @@ that is not the head of the default branch is a deliberate choice, not
 an accident.
 
 The revision that Hub is tested against is the head of the default
-branch of the gateway, and the commit of the release `v1.3.0` of it.
+branch of the gateway, and the commit of the release `v2.0.0` of it.
+
+The release `v2.0.0` of the gateway is a **MAJOR** one: it changes the
+contracts of the gateway itself, and not the ones of Hub. The protocol
+of the decisions, the tokens of Hub and the headers of the identity are
+the ones the gateway already speaks, and the suite is green against it
+without a change of Hub. The changes of the release are the ones of the
+[changelog of the gateway](https://github.com/ggpwnkthx/shuttle/blob/main/CHANGELOG.md).
 
 ## Running the suite
 
@@ -78,14 +85,14 @@ The command does everything:
 The runner prints the revision it tested:
 
 ```
-the reference is cloned from the manifest (https://github.com/ggpwnkthx/shuttle.git) at 0e09a420f8d5f7f3e2eea63512f808ce4ae215e0
-the reference is at 0e09a420f8d5f7f3e2eea63512f808ce4ae215e0 and its tracked files are the ones of the commit
-the reference is unchanged: it is still 0e09a420f8d5f7f3e2eea63512f808ce4ae215e0
-the compatibility suite passed against the gateway at 0e09a420f8d5f7f3e2eea63512f808ce4ae215e0 (the manifest (https://github.com/ggpwnkthx/shuttle.git))
+the reference is cloned from the manifest (https://github.com/ggpwnkthx/shuttle.git) at 89701713e50812f000f77c5ac9313527f0be3bfe
+the reference is at 89701713e50812f000f77c5ac9313527f0be3bfe and its tracked files are the ones of the commit
+the reference is unchanged: it is still 89701713e50812f000f77c5ac9313527f0be3bfe
+the compatibility suite passed against the gateway at 89701713e50812f000f77c5ac9313527f0be3bfe (the manifest (https://github.com/ggpwnkthx/shuttle.git))
 ```
 
 The revision is a commit, not a branch: the
-[baseline of the integration](https://github.com/ggpwnkthx/shuttle/tree/0e09a420f8d5f7f3e2eea63512f808ce4ae215e0)
+[baseline of the integration](https://github.com/ggpwnkthx/shuttle/tree/89701713e50812f000f77c5ac9313527f0be3bfe)
 is the exact code that Hub is tested against, and the
 [repository of the gateway](https://github.com/ggpwnkthx/shuttle) is
 where it lives.
@@ -160,7 +167,7 @@ release and runs the suite against it, by its digest.
 
 ```bash
 git clone https://github.com/ggpwnkthx/shuttle.git /tmp/shuttle
-git -C /tmp/shuttle checkout --detach 0e09a420f8d5f7f3e2eea63512f808ce4ae215e0
+git -C /tmp/shuttle checkout --detach 89701713e50812f000f77c5ac9313527f0be3bfe
 HUB_SHUTTLE_PATH=/tmp/shuttle bun run test:compat
 ```
 

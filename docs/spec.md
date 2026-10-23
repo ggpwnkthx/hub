@@ -947,6 +947,14 @@ OpenID Connect tokens.
 The gateway reads `sub`, `email` and `roles` and nothing else, so the
 claims above are the whole contract with the gateway.
 
+The `sub` is the id of a principal: a **uuid** (§8.1). The gateway of
+the release `2.0.0` of the reference and later writes the subject of
+the identity **as it is**, and refuses with a `500` a subject that
+cannot be written into a header — one that carries a control character,
+one that is empty, one that is longer than 512 characters. A uuid
+carries no control character and is thirty-six characters long: the
+subject of Hub is always written, and it is never rewritten.
+
 ### 7.2 The access token
 
 An access token is a JWT signed with `RS256`, with the issuer, the
@@ -1747,12 +1755,12 @@ things that are **not** touched.
 | In Shuttle | Status |
 | --- | --- |
 | The format of the route table (`config/routes.json`) | Unchanged. |
-| The environment of the gateway (`SHUTTLE_*`) | Unchanged. Hub asks for no new variable: the variables that the releases `1.0.0`, `1.1.0`, `1.2.0` and `1.3.0` of the gateway added are the business of the deployment, and two of them are required by a production deployment of the gateway (`SHUTTLE_SESSION_SECRET` and `SHUTTLE_IDENTITY_SIGNING_KEY`). |
+| The environment of the gateway (`SHUTTLE_*`) | Unchanged. Hub asks for no new variable: the variables that the releases `1.0.0`, `1.1.0`, `1.2.0`, `1.3.0` and `2.0.0` of the gateway added are the business of the deployment, and two of them are required by a production deployment of the gateway (`SHUTTLE_SESSION_SECRET` and `SHUTTLE_IDENTITY_SIGNING_KEY`). The release `2.0.0` added `SHUTTLE_TRUSTED_PROXY_HOPS` (one by default), the number of the proxies that are in front of the gateway, and it changed the ranges of `SHUTTLE_TRUSTED_PROXIES`: they replace the ranges of the route table when the environment names them, and they do not add to them. |
 | The single provider (`SHUTTLE_OIDC_ISSUER`, `SHUTTLE_OIDC_CLIENT_ID`, `SHUTTLE_OIDC_REDIRECT_URI`, `SHUTTLE_OIDC_CLIENT_SECRET`) | Unchanged. They name Hub. |
 | The single access service (`SHUTTLE_ACCESS_URL`, `SHUTTLE_ACCESS_TOKEN`) | Unchanged. They name Hub. |
 | The contract of the decision (`POST /v1/decisions`, `{subject, workspaceId, routeId, roles}` → `{allow, reason}`) | Unchanged. Hub implements it as it is, and it sends the `reasonCode` of a denial (§8.7). |
 | The cache of the decisions of the gateway | Unchanged. Its TTL is the latency of a revocation. |
-| The headers of the identity, the sessions, the limits, the WebSockets | Unchanged. |
+| The headers of the identity, the sessions, the limits, the WebSockets | Unchanged. The gateway of the release `2.0.0` writes the **subject** of the identity as it is and refuses a subject that cannot be written into a header: the subject of the tokens of Hub is a uuid (§7.1), so it is always written. |
 | The signature of the identity | The one of the gateway: the release `1.0.0` removed the symmetric format, and the upstreams verify the signature with the public key of the deployment. The gateway signs it, not Hub. |
 | The routes, the upstreams, the workspaces | Unchanged. They belong to the deployment, not to the broker. |
 | The code of the gateway | **No commit.** |

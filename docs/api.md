@@ -12,8 +12,10 @@ Every answer carries the header `x-request-id`. It is the identifier of
 the request in the logs of the service; a client that sends a valid
 `x-request-id` gets its own back.
 
-The answer of the token endpoint carries `cache-control: no-store` and
-`pragma: no-cache`.
+Every answer carries `x-content-type-options: nosniff`, `x-frame-options:
+DENY` and `referrer-policy: no-referrer`. A page of a refusal carries
+`content-security-policy: default-src 'none'`. The answer of the token
+endpoint carries `cache-control: no-store` and `pragma: no-cache`.
 
 ---
 

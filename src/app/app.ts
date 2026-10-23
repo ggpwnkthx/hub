@@ -92,6 +92,19 @@ export function createHubApp(dependencies: HubDependencies): Hono<HubEnv> {
     await next()
     try {
       context.res.headers.set('x-request-id', state.requestId)
+      // The headers of a browser: the answer of Hub is never framed, it
+      // is never sniffed, and it never carries the url of another site.
+      context.res.headers.set('x-content-type-options', 'nosniff')
+      context.res.headers.set('x-frame-options', 'DENY')
+      context.res.headers.set('referrer-policy', 'no-referrer')
+      if (context.res.headers.get('content-type')?.startsWith('text/html')) {
+        // The pages of the refusals carry nothing but their text.
+        context.res.headers.set('content-security-policy', "default-src 'none'")
+      }
+      if (context.req.url.startsWith('https://')) {
+        // The transport of a deployment that is served in https.
+        context.res.headers.set('strict-transport-security', 'max-age=31536000')
+      }
     } catch {
       // The headers of the answer are immutable, there is nothing to do.
     }

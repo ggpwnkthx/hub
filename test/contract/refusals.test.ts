@@ -34,7 +34,7 @@ async function login(options: {
   disabled?: boolean
   /** Whether the identity of the caller is known to the platform. */
   known?: boolean
-}): Promise<{ status: number; body: string }> {
+}): Promise<{ status: number; body: string; headers: Headers }> {
   const provider = await startProviderFixture(options.provider)
   const runtime: HubRuntime = await createRuntime(
     readEnv({
@@ -92,7 +92,7 @@ async function login(options: {
     // The refusal can happen at the authorization: the provider of the
     // tenant is refused before the browser leaves Hub.
     if (authorize.status !== 302) {
-      return { status: authorize.status, body: await authorize.text() }
+      return { status: authorize.status, body: await authorize.text(), headers: authorize.headers }
     }
     const cookie = (authorize.headers.get('set-cookie') ?? '').split(';')[0] ?? ''
     const atProvider = await fetch(authorize.headers.get('location') ?? '', {
@@ -102,7 +102,7 @@ async function login(options: {
       redirect: 'manual',
       headers: { cookie },
     })
-    return { status: callback.status, body: await callback.text() }
+    return { status: callback.status, body: await callback.text(), headers: callback.headers }
   } finally {
     await provider.stop()
     await runtime.listener.stop(true)
@@ -111,6 +111,14 @@ async function login(options: {
 }
 
 describe('the refusals of the login', () => {
+  test('a page of a refusal carries the headers of a browser', async () => {
+    const answer = await login({ provider: { signWith: 'another-key' } })
+    expect(answer.headers.get('x-content-type-options')).toBe('nosniff')
+    expect(answer.headers.get('x-frame-options')).toBe('DENY')
+    expect(answer.headers.get('referrer-policy')).toBe('no-referrer')
+    expect(answer.headers.get('content-security-policy')).toBe("default-src 'none'")
+  })
+
   test('a token that is signed with another key is refused', async () => {
     const answer = await login({ provider: { signWith: 'another-key' } })
     expect(answer.status).toBe(403)

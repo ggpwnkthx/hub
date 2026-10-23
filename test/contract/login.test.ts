@@ -187,6 +187,27 @@ describe('the login of Hub', () => {
     expect(body.expires_in).toBe(300)
   })
 
+  test('the tokens are never stored by a cache', async () => {
+    const { response } = await startLogin()
+    const location = new URL(response.headers.get('location') ?? '')
+    const token = await fetch(`${base}/oauth/token`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        authorization: `Basic ${Buffer.from('shuttle-acme:the-secret-of-the-gateway').toString('base64')}`,
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: location.searchParams.get('code') ?? '',
+        redirect_uri: GATEWAY_REDIRECT,
+        code_verifier: VERIFIER,
+      }).toString(),
+    })
+    expect(token.status).toBe(200)
+    expect(token.headers.get('cache-control')).toBe('no-store')
+    expect(token.headers.get('pragma')).toBe('no-cache')
+  })
+
   test('the same code exchanged twice is refused', async () => {
     const { response } = await startLogin()
     const location = new URL(response.headers.get('location') ?? '')

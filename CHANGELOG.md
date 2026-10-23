@@ -43,6 +43,10 @@ The work that the next release carries.
   name of the host in the `Host` header and in the name the certificate
   is checked against. The name of the host is never resolved a second
   time (spec §6.1).
+- **The answer of the token endpoint is never stored by a cache.** It
+  carries `cache-control: no-store` and `pragma: no-cache`, so that an
+  intermediary or a browser never keeps a copy of a token (RFC 6749
+  §5.1, spec §5.6).
 
 ### The rest
 

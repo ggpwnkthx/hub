@@ -12,6 +12,9 @@ Every answer carries the header `x-request-id`. It is the identifier of
 the request in the logs of the service; a client that sends a valid
 `x-request-id` gets its own back.
 
+The answer of the token endpoint carries `cache-control: no-store` and
+`pragma: no-cache`.
+
 ---
 
 ## The probes
@@ -97,7 +100,7 @@ There is no refresh token (spec §7.2). The refusals: `401 invalid_client`
 (missing, unreadable or wrong credentials), `400 invalid_request` (grant
 type, missing code or redirect uri), `400 invalid_grant` (the code is
 unknown, expired, already used, or bound to another client, redirect uri
-or challenge).
+or challenge). The answer is never stored by a cache.
 
 ### `GET /.well-known/openid-configuration`
 

@@ -12,11 +12,19 @@ import { sameSecret } from '../observability'
 import type { HubDependencies } from './dependencies'
 import type { HubEnv } from './state'
 
+/**
+ * The headers that keep a token out of a cache.
+ *
+ * The answer of the token endpoint carries a token: it is never stored by
+ * an intermediary or by a browser (RFC 6749 §5.1).
+ */
+const NO_STORE = { 'cache-control': 'no-store', pragma: 'no-cache' } as const
+
 /** The answer of a refusal of the token endpoint. */
 function refusal(code: string, message: string, status = 400): Response {
   return new Response(JSON.stringify({ error: code, error_description: message }), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...NO_STORE },
   })
 }
 
@@ -90,12 +98,16 @@ export async function tokenHandler(
       redirectUri,
       codeVerifier: typeof codeVerifier === 'string' ? codeVerifier : undefined,
     })
-    return context.json({
-      access_token: pair.accessToken,
-      token_type: pair.tokenType,
-      expires_in: pair.expiresIn,
-      id_token: pair.idToken,
-    })
+    return context.json(
+      {
+        access_token: pair.accessToken,
+        token_type: pair.tokenType,
+        expires_in: pair.expiresIn,
+        id_token: pair.idToken,
+      },
+      200,
+      NO_STORE
+    )
   } catch (error) {
     if (error instanceof ExchangeError) {
       return refusal(error.code, error.message)

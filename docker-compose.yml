@@ -1,0 +1,40 @@
+# The dependencies of a development machine.
+#
+# The tests of the repository run on the embedded PostgreSQL of the
+# process by default. These two services are the ones a deployment has:
+# the tests that need a real PostgreSQL or a real Redis run against them.
+#
+#   docker compose up -d
+#   HUB_TEST_DATABASE_URL=postgres://hub:hub@localhost:5432/hub \
+#   HUB_TEST_REDIS_URL=redis://localhost:6379/0 bun run test
+#
+# The service itself runs against them too:
+#
+#   HUB_DATABASE_URL=postgres://hub:hub@localhost:5432/hub \
+#   HUB_REDIS_URL=redis://localhost:6379/0 \
+#   HUB_ENVIRONMENT=development bun run src/main.ts
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    ports:
+      - '5432:5432'
+    environment:
+      POSTGRES_USER: hub
+      POSTGRES_PASSWORD: hub
+      POSTGRES_DB: hub
+    options: >-
+      --health-cmd "pg_isready -U hub"
+      --health-interval 5s
+      --health-timeout 5s
+      --health-retries 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    options: >-
+      --health-cmd "redis-cli ping"
+      --health-interval 5s
+      --health-timeout 5s
+      --health-retries 10

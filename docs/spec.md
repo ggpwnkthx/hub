@@ -73,20 +73,29 @@ providers, and it must not have to: that is the whole point of the design.
 A gateway is configured with **one** client id and **one** redirect uri.
 The tenant of a login is therefore resolved from the client id of the
 authorization request (§5.2), and a client id belongs to exactly one
-tenant.
+tenant: the `client_id` of the tenants is unique (§3.1).
 
 The supported topology is therefore:
 
 - **one Shuttle deployment per tenant**, each registered at Hub as the
   client of that tenant; or
-- **one Shuttle deployment for several tenants**, only when every one of
-  those tenants is registered under the same client id, which the schema
-  does not allow.
+- **one Shuttle deployment for several tenants**, when the tenants are
+  registered under the client id of that one gateway. The schema does
+  not allow it: the `client_id` of a tenant is unique, and two tenants
+  cannot hold the same one.
 
 Hub is multi-tenant; Shuttle is not. That is not a gap in the design, it
 is the price of "Shuttle gains zero new features", and it is paid on the
-side of Hub, which is where the tenancy belongs. §5.2 describes the one
-escape hatch (a shared client) and what it costs.
+side of Hub, which is where the tenancy belongs.
+
+**The escape hatch (§5.2).** A tenant registered with `shared_client =
+true` lets the gateway of that tenant log in the principals of the
+**other** tenants: the request names the tenant, or the hint of the
+e-mail names it. The client id is still the one of the gateway, and it
+is still unique: the gateway presents its own client id, and the tenant
+of the login is another one. It is a deliberate weakening — a hint that
+the caller controls may move a login to another tenant — and it is
+refused by default.
 
 ---
 

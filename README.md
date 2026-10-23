@@ -16,6 +16,7 @@ gateway, and answers the decision contract that gateway already speaks.
 | [docs/security.md](docs/security.md) | The security model and the review, with the open findings. |
 | [docs/release.md](docs/release.md) | Readiness, the cutover of a tenant, the delivery, the known limits. |
 | [docs/compatibility.md](docs/compatibility.md) | The pinned gateway of the reference and the runner of the compatibility suite. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | The order of a change, the commands and the style of the repository. |
 | [CHANGELOG.md](CHANGELOG.md) | The releases, and the changes of the contract of each one. |
 
 ## The projects it is part of

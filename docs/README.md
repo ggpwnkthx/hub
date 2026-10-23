@@ -24,6 +24,11 @@ is nine `curl` endpoints, plus one that reads the audit of the changes.
 A reference to `§N` in the code, in the tests or in these documents is a
 reference to a section of [spec.md](spec.md).
 
+A change of behaviour is a change of [spec.md](spec.md) first, in the
+same commit as the code. The guide of a contribution is in
+[../CONTRIBUTING.md](../CONTRIBUTING.md), and it holds the order of a
+change, the commands and the style of the repository.
+
 ## Running it
 
 ```bash

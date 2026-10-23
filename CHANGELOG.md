@@ -135,6 +135,19 @@ The work that the release `1.0.0` carries, before the tag.
 
 ### The documentation
 
+- **The guide of a contribution.** `CONTRIBUTING.md` holds the order of a
+  change — the specification first, the code, the other documents, the
+  tests — the commands, the tests of each layer and the style of the
+  repository. The template of a pull request asks the two questions that
+  matter: what the change does, and the contract it changes.
+- **The dependencies of a development machine.** A compose file brings
+  the PostgreSQL and the Redis of a deployment up, so that the tests
+  that need them run on a machine and not only in the CI.
+- **The topology of a shared client is written in one place.** §1.4 said
+  that the schema does not allow one gateway for several tenants, and
+  §5.2 described the escape hatch that does: the client id is unique,
+  and a shared client is a tenant whose gateway may log in the
+  principals of the other tenants. The two now say the same thing.
 - **The routes and the documents agree.** A test reads the routes the
   application registers and the routes the documents name, and the two
   sets have to be the same one: a route that is added is documented in

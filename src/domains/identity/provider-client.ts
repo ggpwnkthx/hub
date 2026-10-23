@@ -14,12 +14,43 @@ export interface TransportResponse {
   body: string
 }
 
+/**
+ * The target of an outbound call.
+ *
+ * The target carries the address the call is made to and the name of the
+ * host it is made for: the `Host` header and the name the certificate is
+ * checked against. The address is the one the guard of the addresses
+ * checked, so that the call and the check speak of the same address.
+ */
+export interface CallTarget {
+  /** The url the call is made to. */
+  url: string
+  /** The value of the `Host` header of the call. */
+  host: string
+  /**
+   * The name the certificate of the call is checked against.
+   *
+   * It is empty when the host of the url is an address: the certificate
+   * is then checked against that address.
+   */
+  servername: string
+  /** True when the call is over https. */
+  secure: boolean
+}
+
 /** The transport of the outbound calls. */
 export interface HttpTransport {
   /** Calls a url. */
   call: (
     url: string,
-    init: { method: string; headers: Record<string, string>; body?: string; timeoutMs: number }
+    init: {
+      method: string
+      headers: Record<string, string>
+      body?: string
+      timeoutMs: number
+      /** The address of the call; the url is used when there is none. */
+      target?: CallTarget
+    }
   ) => Promise<TransportResponse>
 }
 
@@ -28,11 +59,13 @@ export interface HttpTransport {
  *
  * A tenant registers the issuer of its provider: the address is checked
  * before the call, so a tenant cannot make Hub call a service of the
- * deployment.
+ * deployment. The guard returns the address of the call: the call is made
+ * to the address that was checked, and not to the address the name
+ * resolves to a second time.
  */
 export interface AddressGuard {
-  /** Refuses the addresses that the deployment may not call. */
-  assert: (url: string) => Promise<void>
+  /** Checks the address of a url and pins the address of the call. */
+  resolve: (url: string) => Promise<CallTarget>
 }
 
 /** The failure of a call to the provider of a tenant. */
@@ -108,10 +141,14 @@ export class ProviderClient {
     init: { method: string; headers: Record<string, string>; body?: string }
   ): Promise<TransportResponse> {
     try {
-      await this.options.guard?.assert(url)
+      // The guard checks the address and pins it: the call is made to the
+      // address that was checked, and the name of the host does not
+      // resolve it a second time.
+      const target = await this.options.guard?.resolve(url)
       return await this.options.transport.call(url, {
         ...init,
         timeoutMs: this.options.timeoutMs ?? 5_000,
+        ...(target ? { target } : {}),
       })
     } catch (error) {
       if (error instanceof ProviderError) throw error

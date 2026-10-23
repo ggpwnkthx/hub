@@ -13,7 +13,7 @@ import type { AccessContextCredential } from '../app/access-context'
 import { LoginService, ProviderClient, createStateCipher } from '../domains/identity'
 import type { TenantOfLogin } from '../domains/identity'
 import { CodeService, ProviderService } from '../domains/provider'
-import { assertCallableAddress } from '../platform/bun/address'
+import { resolveCallableAddress } from '../platform/bun/address'
 import { createFetchTransport } from '../platform/bun/http'
 import {
   createStoreClient,
@@ -320,8 +320,11 @@ export async function createRuntime(settings: RuntimeSettings): Promise<HubRunti
         algorithms: tenant.algorithms,
         transport,
         guard: {
-          assert: async (url: string) =>
-            await assertCallableAddress(url, { allowPrivate: !settings.production }),
+          // The guard checks the address of the provider and pins it: the
+          // call is made to the address that was checked, so that the name
+          // of the host cannot answer another one to the call.
+          resolve: async (url: string) =>
+            await resolveCallableAddress(url, { allowPrivate: !settings.production }),
         },
         cacheTtlMs: 600_000,
       })

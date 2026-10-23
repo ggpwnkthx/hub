@@ -8,6 +8,7 @@
 
 export type { Principal } from './mapping'
 export type {
+  CallTarget,
   HttpTransport,
   TransportResponse,
 } from './provider-client'

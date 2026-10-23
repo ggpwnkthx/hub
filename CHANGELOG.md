@@ -33,6 +33,17 @@ The work that the next release carries.
   principals of the other tenants moves its gateway to the bearer token
   of the deployment**: the credentials of a tenant no longer reach the
   principals of the other tenants.
+- **The call to a provider is made to the address that was checked.** The
+  guard of the addresses resolves the host of the provider and pins the
+  address it resolved to, and the call is made to that address, with the
+  name of the host in the `Host` header and in the name the certificate
+  is checked against. The name of the host is never resolved a second
+  time (spec §6.1).
+
+### The rest
+
+- The answer of a provider is read up to one MiB: a provider that answers
+  more than that is not reachable.
 
 ## 1.0.1
 

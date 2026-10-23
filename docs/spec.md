@@ -831,6 +831,22 @@ The discovery document of the provider is fetched from
 `{idp_issuer}/.well-known/openid-configuration`. A provider whose issuer
 in the document is not the `idp_issuer` of the tenant is refused.
 
+**The addresses of the providers.** A tenant registers the issuer of its
+provider, and Hub calls that address: the discovery document and the
+keys are the only calls. The address is checked before the call: the
+host is resolved and every address it resolves to has to be a public one.
+A production deployment refuses the private addresses; a development
+machine accepts them (the fixtures of the tests are on the loopback).
+
+**The call is made to the address that was checked.** The guard resolves
+the host and pins the address it resolved to, and the call is made to
+that address, with the name of the host in the `Host` header and in the
+name the certificate of a secure call is checked against. The name of the
+host is therefore never resolved a second time: a host that answers a
+public address to the check and a private one to the connection is of no
+use. The answer of a provider is read up to one MiB: a provider that
+answers more than that is not reachable.
+
 ### 6.2 The key of the mapping
 
 The mapping key is `**(tenant, subject)**`:

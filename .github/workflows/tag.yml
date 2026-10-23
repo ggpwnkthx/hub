@@ -11,6 +11,12 @@ name: tag
 # CI proved, and not the head of the branch: two commits that land in
 # the meantime do not change what is released.
 #
+# The tag is pushed **with the token of the workflow**, and GitHub does
+# not start a workflow on a push that carries it. The release is
+# therefore **dispatched** instead of being triggered by the push: the
+# dispatch is the exception to that rule, and it is the only path that
+# starts a release on its own.
+#
 # The tagger refuses what the release would refuse: a tag is only cut
 # when the version of the package, the version of the image, the version
 # of the service and the status of the specification are the same, and
@@ -26,6 +32,10 @@ on:
 
 permissions:
   contents: write
+  # The release is dispatched by this workflow: the dispatch is what
+  # starts the workflows of the release, because the push of the tag
+  # carries the token of the workflow.
+  actions: write
 
 # One tag at a time: two runs that push the same tag race each other,
 # and the loser fails for a reason that has nothing to do with the
@@ -63,4 +73,46 @@ jobs:
           git config user.email "hub@ggpwnkthx.com"
 
       - name: the tag of the release
+        id: tag
         run: bun run scripts/tag.ts
+
+      - name: the release starts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          CREATED: ${{ steps.tag.outputs.created }}
+        run: |
+          set -euo pipefail
+          if [ "$CREATED" != "true" ]; then
+            echo "the tag $TAG was not cut by this run: the release is not dispatched"
+            exit 0
+          fi
+          # The tag was pushed with the token of the workflow: GitHub does
+          # not start a workflow on a push that carries it. The release is
+          # dispatched instead, and the dispatch is the exception to that
+          # rule.
+          #
+          # The workflows are dispatched at the tag: the release is the
+          # tag, and the tag is the commit that the CI proved.
+          for workflow in release.yml release-binaries.yml; do
+            gh workflow run "$workflow" --repo "$REPOSITORY" --ref "$TAG" -f "tag=$TAG"
+          done
+          # The dispatch is asynchronous: the run is created a moment
+          # later. The workflow waits for it and fails when it is not
+          # there: a release that was never dispatched is a release that
+          # never starts, and it has to be visible rather than silent.
+          for workflow in release.yml release-binaries.yml; do
+            started=""
+            for _ in $(seq 1 12); do
+              started=$(gh run list --repo "$REPOSITORY" --workflow "$workflow" \
+                --event workflow_dispatch --limit 1 --json headBranch --jq '.[0].headBranch // ""')
+              if [ "$started" = "$TAG" ]; then break; fi
+              sleep 5
+            done
+            if [ "$started" != "$TAG" ]; then
+              echo "the run of $workflow was not created: the release of $TAG did not start"
+              exit 1
+            fi
+            echo "the release of $TAG is dispatched: $workflow"
+          done

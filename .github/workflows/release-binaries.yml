@@ -17,6 +17,11 @@ name: release-binaries
 # schema of the release next to it: the migrations of the schema are the
 # directory `migrations/`, and a binary finds them next to itself. The
 # archive of a platform holds the two.
+#
+# The workflow runs on the tag, and it can be **dispatched** with the tag
+# it releases: the push of the tag by the workflow of the tag carries the
+# token of the workflow, and GitHub does not start a workflow on a push
+# that carries it. The dispatch is the exception to that rule.
 on:
   push:
     tags: ['v*']
@@ -31,6 +36,12 @@ permissions:
   # The release is created by the job that publishes it: the jobs that
   # only build the binaries need nothing but the source.
   contents: read
+
+# One release at a time for a tag: two runs of the same release publish
+# the same binaries twice, and the second one replaces the first.
+concurrency:
+  group: the-release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   # The version of the runtime the binaries are built and released with.

@@ -14,6 +14,18 @@ work that carries it.
 
 The work that the next release carries.
 
+### The delivery
+
+- **The release is dispatched, and not triggered by the push of the tag.**
+  The tag is pushed with the token of the workflow that cuts it, and
+  GitHub does not start a workflow on a push that carries it: the
+  release of the tag was waiting for a human to push the tag a second
+  time. The workflow of the tag dispatches the workflows of the release
+  with the tag it cut, and the dispatch is the exception to that rule.
+  Both workflows of the release can be dispatched by hand as well, and
+  they ask for the tag they release. A tag that a human pushes still
+  starts the release by itself.
+
 ## 2.0.0
 
 A **MAJOR** release: the contract of the specification changed, and a

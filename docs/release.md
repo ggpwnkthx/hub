@@ -259,6 +259,19 @@ It is the tag of the commit that the CI proved, and not the head of the
 branch: two commits that land in the meantime do not change what is
 released.
 
+**The release is dispatched, and not triggered by the push.** The tag is
+pushed with the token of the workflow, and GitHub does not start a
+workflow on a push that carries it: a release that waits for the push
+never starts. The workflow of the tag therefore **dispatches** the
+workflows of the release with the tag it cut, and the dispatch is the
+exception to that rule. Both workflows of the release can be dispatched
+by hand as well, and they ask for the tag they release:
+
+```bash
+gh workflow run release.yml --ref v2.0.0 -f tag=v2.0.0
+gh workflow run release-binaries.yml --ref v2.0.0 -f tag=v2.0.0
+```
+
 The tagger refuses what the release would refuse:
 
 | Situation | What the tagger does |
@@ -292,6 +305,13 @@ care who cut it:
 ```bash
 git tag -a v2.0.0 -m "Hub v2.0.0" && git push origin v2.0.0
 ```
+
+A tag that a human pushes starts the release by itself: the push is not
+the push of a workflow, and the workflows of the release run on it. A
+tag that the workflow of the tag cut does not — the workflow dispatches
+the release instead, and it dispatches it only when it cut the tag
+itself: a tag that was already there means that the release was already
+started.
 
 Two workflows run on the tag, and both of them check that the version of
 the package, the version of the image, the version of the service and the
@@ -391,9 +411,11 @@ The `compatibility` job is the one that may never be skipped: a red
 compatibility job is a red build, whatever the rest says.
 
 **The workflow `tag.yml` runs after the CI.** It cuts the tag of the
-release when the version of the package went up, and the workflows of the
-release run on that tag. It never cuts a tag before the CI of the commit
-is green, and it never cuts a tag that the release would refuse (§5).
+release when the version of the package went up, and it dispatches the
+workflows of the release with that tag: the push of the tag carries the
+token of the workflow, and GitHub does not start a workflow on a push
+that carries it. It never cuts a tag before the CI of the commit is
+green, and it never cuts a tag that the release would refuse (§5).
 
 ---
 

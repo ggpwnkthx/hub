@@ -20,15 +20,32 @@ name: release
 # build, never against a tag and never against a second build. The image
 # that was tested is the image that runs: the digest that the gates
 # proved is the digest that the deployment pins.
+#
+# The workflow runs on the tag, and it can be **dispatched** with the tag
+# it releases: the push of the tag by the workflow of the tag carries the
+# token of the workflow, and GitHub does not start a workflow on a push
+# that carries it. The dispatch is the exception to that rule.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag of the release'
+        required: true
+        type: string
 
 permissions:
   contents: read
   # The image is published to the registry of the repository, and it is
   # withdrawn from it when a gate of the release fails.
   packages: write
+
+# One release at a time for a tag: two runs of the same release publish
+# the same bytes twice, and the second one replaces the first.
+concurrency:
+  group: the-release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   # The version of the runtime the service is built and released with.
@@ -46,6 +63,11 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The tag of the release: the ref of a push, the input of a
+          # dispatch. The release is the tag, and the tag is the commit
+          # that the CI proved.
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -60,13 +82,14 @@ jobs:
         id: version
         run: |
           expected=$(node -p "require('./package.json').version")
-          tag="${GITHUB_REF_NAME#v}"
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          tag="${tag#v}"
           if [ "$tag" != "$expected" ]; then
-            echo "the tag $GITHUB_REF_NAME does not name the version $expected of the package"
+            echo "the tag $tag does not name the version $expected of the package"
             exit 1
           fi
-          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           echo "version=$expected" >> "$GITHUB_OUTPUT"
+          echo "tag=v$expected" >> "$GITHUB_OUTPUT"
 
       - name: the version of the release is known
         run: |
@@ -412,6 +435,10 @@ jobs:
       IMAGE: ghcr.io/ggpwnkthx/hub@${{ needs.build.outputs.digest }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The tag of the release: the suite that runs against the image
+          # is the one of the commit that the release names.
+          ref: ${{ github.event.inputs.tag || github.ref }}
 
       - uses: oven-sh/setup-bun@v2
         with:

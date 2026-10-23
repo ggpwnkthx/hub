@@ -32,6 +32,7 @@
  */
 
 import { spawnSync } from 'bun'
+import { appendFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { RELEASE_VERSION } from './version'
 import { checkVersions, readPackageVersion } from './version'
@@ -55,6 +56,21 @@ export interface TagDecision {
   tag: string | null
   /** The reason of the decision, for the log. */
   reason: string
+}
+
+/**
+ * The outputs of the tagger, for the workflow that runs it.
+ *
+ * The workflow reads them to know whether it has to start the release.
+ * The tag is pushed with the token of the workflow, and GitHub does not
+ * start a workflow on a push that carries it: the release is dispatched
+ * instead, and the dispatch is the exception to that rule.
+ */
+export interface TagOutputs {
+  /** The tag of the release, empty when the tagger cut no tag. */
+  tag: string
+  /** True when the tagger cut the tag and pushed it. */
+  created: boolean
 }
 
 /** The pattern of the tag of a release: "v" and the version. */
@@ -181,6 +197,34 @@ export function readTags(directory: string): TaggedVersion[] {
 }
 
 /**
+ * The outputs of a decision.
+ *
+ * The tag is empty when the tagger cut none: the tagger does nothing
+ * when the version did not go up, and the release of that version is
+ * already cut — by a human, whose push started the release by itself.
+ */
+export function outputsOf(decision: TagDecision): TagOutputs {
+  return {
+    tag: decision.tag ?? '',
+    created: decision.action === 'create',
+  }
+}
+
+/**
+ * Writes the outputs of the tagger, when it runs in a workflow.
+ *
+ * The file of the outputs is named by the environment of the workflow.
+ * The tagger that runs by hand has none, and it prints its decision.
+ */
+export function writeOutputs(
+  outputs: TagOutputs,
+  path: string | undefined = process.env.GITHUB_OUTPUT
+): void {
+  if (!path) return
+  appendFileSync(path, `tag=${outputs.tag}\ncreated=${outputs.created}\n`)
+}
+
+/**
  * Creates a tag and pushes it.
  *
  * The tag is annotated: it names the release and it says which release it
@@ -233,6 +277,9 @@ export async function main(): Promise<number> {
 
   const tagged = readTags(root)
   const decision = decideTag({ version, tagged })
+  // The outputs are written whatever the decision is: the workflow reads
+  // them to know that it has nothing to dispatch.
+  writeOutputs(outputsOf(decision))
 
   if (decision.action === 'refuse') {
     console.error(decision.reason)

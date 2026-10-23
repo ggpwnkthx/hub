@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { compareVersions, decideTag, readTags } from '../../scripts/tag'
+import { compareVersions, decideTag, outputsOf, readTags } from '../../scripts/tag'
 
 /**
  * The tests of the tagger.
@@ -135,5 +135,30 @@ describe('the tags of a repository', () => {
   test('a repository without a tag holds none', async () => {
     const path = await repository([])
     expect(readTags(path)).toEqual([])
+  })
+})
+
+describe('the outputs of the tagger', () => {
+  test('the outputs name the tag and say that it was cut', () => {
+    // The workflow of the tag reads them: the release is dispatched only
+    // when the tagger cut the tag, because a tag that a human pushed
+    // already started the release.
+    const outputs = outputsOf({
+      action: 'create',
+      tag: 'v2.0.0',
+      reason: 'the version went up',
+    })
+    expect(outputs).toEqual({ tag: 'v2.0.0', created: true })
+  })
+
+  test('the outputs of a tag that was not cut are empty', () => {
+    expect(outputsOf({ action: 'keep', tag: null, reason: 'the tag exists' })).toEqual({
+      tag: '',
+      created: false,
+    })
+    expect(outputsOf({ action: 'refuse', tag: null, reason: 'the version went down' })).toEqual({
+      tag: '',
+      created: false,
+    })
   })
 })

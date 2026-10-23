@@ -436,6 +436,24 @@ readable list with the values of a development machine is in `.env.example`.
 The two tokens of the service are compared in constant time. They are read
 from the environment and never written to a log.
 
+**A bearer token is at least 16 bytes long.** Every token of the
+environment — `HUB_ADMIN_TOKEN`, `HUB_PREVIOUS_ADMIN_TOKEN`,
+`HUB_ACCESS_TOKEN`, `HUB_PREVIOUS_ACCESS_TOKEN` and `HUB_METRICS_TOKEN` —
+is measured in the bytes it is compared in: a token of one character
+protects the administration of the platform as well as a token of thirty
+two characters protects it, because the length of a secret is the first
+thing that is tried. A production deployment refuses to start when one of
+its tokens is shorter (§4.4). The length of the two secrets of the
+signing and of the encryption is 32 bytes (§4.4).
+
+**The values of the example are not secrets.** A production deployment
+refuses to start when one of its secrets is a value of `.env.example` or
+a secret that is one repeated character (`000…0`, `111…1`, `aaaa…`),
+whatever its length. A deployment that copies the example of a
+development machine into a production one must not start with the
+secrets of the example: the example is published, and so is every
+deployment that kept it.
+
 ### 4.2 The signing key
 
 The tokens Hub issues are signed with `RS256` and published at
@@ -535,6 +553,12 @@ down.
 A secret is at least 32 bytes long. A secret that is handed over as a hex
 string or as a base64 string is counted the way it is read: 32 bytes are 64
 hexadecimal characters and 44 base64 characters.
+
+A **bearer token** of the environment is at least **16 bytes** long, and
+it is measured in the bytes it is compared in (§4.1). A production
+deployment also refuses the values of `.env.example` and the secrets that
+are one repeated character (§4.1). Every problem is reported at once, and
+the message names the variable.
 
 The level of the log is the only value of the environment that does not
 stop the service: a typo in the level of a log must not keep a deployment

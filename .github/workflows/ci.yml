@@ -256,8 +256,8 @@ jobs:
             -e HUB_DATABASE_URL=postgres://hub_app:hub_app@host.docker.internal:5432/hub \
             -e HUB_REDIS_URL=redis://host.docker.internal:6379/0 \
             -e HUB_ISSUER=https://hub.example.com \
-            -e HUB_ADMIN_TOKEN=ci-admin-token \
-            -e HUB_ACCESS_TOKEN=ci-access-token \
+            -e HUB_ADMIN_TOKEN=ci-admin-token-of-the-build \
+            -e HUB_ACCESS_TOKEN=ci-access-token-of-the-build \
             -e HUB_STATE_SECRET="$(printf 'a%.0s' {1..64})" \
             -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b%.0s' {1..64})" \
             -e HUB_SIGNING_KEY="$(cat /tmp/hub-key.pem)" \
@@ -296,8 +296,8 @@ jobs:
             -e HUB_DATABASE_URL=postgres://hub:hub@host.docker.internal:5432/hub \
             -e HUB_REDIS_URL=redis://host.docker.internal:6379/0 \
             -e HUB_ISSUER=https://hub.example.com \
-            -e HUB_ADMIN_TOKEN=ci-admin-token \
-            -e HUB_ACCESS_TOKEN=ci-access-token \
+            -e HUB_ADMIN_TOKEN=ci-admin-token-of-the-build \
+            -e HUB_ACCESS_TOKEN=ci-access-token-of-the-build \
             -e HUB_STATE_SECRET="$(printf 'a%.0s' {1..64})" \
             -e HUB_SECRET_ENCRYPTION_KEY="$(printf 'b%.0s' {1..64})" \
             -e HUB_SIGNING_KEY="$(cat /tmp/hub-key.pem)" \

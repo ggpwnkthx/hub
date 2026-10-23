@@ -7,10 +7,10 @@ const PRODUCTION: Record<string, string> = {
   HUB_DATABASE_URL: 'postgres://hub:hub@localhost:5432/hub',
   HUB_REDIS_URL: 'redis://localhost:6379/0',
   HUB_ISSUER: 'https://hub.example.com',
-  HUB_ADMIN_TOKEN: 'the-admin-token',
-  HUB_ACCESS_TOKEN: 'the-access-token',
-  HUB_STATE_SECRET: 'a'.repeat(64),
-  HUB_SECRET_ENCRYPTION_KEY: 'b'.repeat(64),
+  HUB_ADMIN_TOKEN: 'the-admin-token-of-the-production',
+  HUB_ACCESS_TOKEN: 'the-access-token-of-the-production',
+  HUB_STATE_SECRET: '4f9a2c8e'.repeat(8),
+  HUB_SECRET_ENCRYPTION_KEY: 'b31e7d09'.repeat(8),
   HUB_SIGNING_KEY: '-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----',
   HUB_SIGNING_KID: 'hub-1',
 }
@@ -122,8 +122,8 @@ describe('the environment of Hub', () => {
     const settings = readEnv(PRODUCTION)
     expect(settings.production).toBe(true)
     expect(settings.public.issuer).toBe('https://hub.example.com')
-    expect(settings.admin.token).toBe('the-admin-token')
-    expect(settings.access.token).toBe('the-access-token')
+    expect(settings.admin.token).toBe('the-admin-token-of-the-production')
+    expect(settings.access.token).toBe('the-access-token-of-the-production')
     expect(settings.store.url).toBe('redis://localhost:6379/0')
     expect(settings.signing.kid).toBe('hub-1')
   })
@@ -157,6 +157,53 @@ describe('the environment of Hub', () => {
 
   test('a signing key that is not a private key is refused', () => {
     expect(() => readEnv({ ...PRODUCTION, HUB_SIGNING_KEY: 'the-key' })).toThrow(/HUB_SIGNING_KEY/)
+  })
+
+  test('a token that is too short is refused in a production deployment', () => {
+    // The length of a secret is the first thing that is tried: a token
+    // of one character protects the administration as well as a token of
+    // thirty two characters (spec §4.1).
+    expect(() => readEnv({ ...PRODUCTION, HUB_ADMIN_TOKEN: 'short' })).toThrow(
+      /HUB_ADMIN_TOKEN must be at least 16 bytes/
+    )
+    expect(() => readEnv({ ...PRODUCTION, HUB_METRICS_TOKEN: 'short' })).toThrow(
+      /HUB_METRICS_TOKEN must be at least 16 bytes/
+    )
+    expect(() =>
+      readEnv({ ...PRODUCTION, HUB_ACCESS_TOKEN: 'short', HUB_PREVIOUS_ACCESS_TOKEN: undefined })
+    ).toThrow(/HUB_ACCESS_TOKEN must be at least 16 bytes/)
+  })
+
+  test('a token that is not set is not a short token', () => {
+    // The shared token of the decisions is optional: its absence is not
+    // a length (spec §4.4, §8.8).
+    const settings = readEnv({ ...PRODUCTION, HUB_METRICS_TOKEN: undefined })
+    expect(settings.metrics.token).toBeUndefined()
+  })
+
+  test('the values of the example are refused in a production deployment', () => {
+    // The example file is published, and so is every deployment that
+    // kept one of its values (spec §4.1).
+    expect(() =>
+      readEnv({ ...PRODUCTION, HUB_ADMIN_TOKEN: 'the-admin-token-of-the-development' })
+    ).toThrow(/HUB_ADMIN_TOKEN is the value of the example/)
+  })
+
+  test('a secret that is one repeated character is refused in a production deployment', () => {
+    expect(() => readEnv({ ...PRODUCTION, HUB_STATE_SECRET: '0'.repeat(64) })).toThrow(
+      /HUB_STATE_SECRET is the value of the example/
+    )
+    expect(() => readEnv({ ...PRODUCTION, HUB_SECRET_ENCRYPTION_KEY: '1'.repeat(64) })).toThrow(
+      /HUB_SECRET_ENCRYPTION_KEY is the value of the example/
+    )
+  })
+
+  test('a development machine may use the values of the example', () => {
+    const settings = readEnv({
+      HUB_ADMIN_TOKEN: 'the-admin-token-of-the-development',
+      HUB_STATE_SECRET: '0'.repeat(64),
+    })
+    expect(settings.admin.token).toBe('the-admin-token-of-the-development')
   })
 
   test('the size of a secret is counted the way it is read', () => {

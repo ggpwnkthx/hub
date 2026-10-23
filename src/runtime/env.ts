@@ -164,6 +164,30 @@ export function developmentIssuer(port: number): string {
 export const MINIMUM_SECRET_BYTES = 32
 
 /**
+ * The smallest size of a bearer token of the environment, in bytes.
+ *
+ * A token is compared in the bytes it is written in, so it is measured
+ * the same way: a token of one character is a token of one byte
+ * (spec §4.1).
+ */
+export const MINIMUM_TOKEN_BYTES = 16
+
+/**
+ * The values of the file of examples.
+ *
+ * A deployment that copies the example of a development machine into a
+ * production one keeps a published secret. A production deployment
+ * refuses to start with one of these values (spec §4.1).
+ */
+export const EXAMPLE_SECRETS: readonly string[] = [
+  'the-admin-token-of-the-development',
+  'the-previous-admin-token-of-the-development',
+  'the-access-token-of-the-development',
+  'the-previous-access-token-of-the-development',
+  'the-metrics-token-of-the-development',
+]
+
+/**
  * The directory of the embedded database of a development machine.
  *
  * The database of the development stack lives in the working directory, so
@@ -269,6 +293,31 @@ function isHttpUrl(value: string): boolean {
 /** Reports whether a value looks like a PEM private key. */
 function isPrivateKeyPem(value: string): boolean {
   return /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(value)
+}
+
+/**
+ * Reports whether a secret is one of the values of the example.
+ *
+ * The example file is published, and so is every deployment that kept
+ * one of its values: a production deployment refuses to start with one
+ * of them (spec §4.1).
+ */
+export function isExampleSecret(value: string): boolean {
+  const trimmed = value.trim()
+  return EXAMPLE_SECRETS.includes(trimmed)
+}
+
+/**
+ * Reports whether a secret is one repeated character.
+ *
+ * A secret of `000…0` or of `111…1` is the secret of the example file,
+ * and a secret of one repeated character is not a secret whatever its
+ * length (spec §4.1).
+ */
+export function isRepeatedCharacterSecret(value: string): boolean {
+  const trimmed = value.trim()
+  if (trimmed.length < 8) return false
+  return [...trimmed].every((character) => character === trimmed[0])
 }
 
 /**
@@ -393,6 +442,47 @@ export function readEnv(env: Env = process.env): RuntimeSettings {
   }
   if (parsed.HUB_SIGNING_KEY && !isPrivateKeyPem(parsed.HUB_SIGNING_KEY)) {
     problems.push('HUB_SIGNING_KEY must be a PEM private key')
+  }
+
+  // The tokens of the environment are not short, and they are not the
+  // values of the example (spec §4.1, §4.4). A deployment that is a
+  // development one may use the values of the example: the example is
+  // published, and a development machine is not a deployment.
+  const tokens: [string, string | undefined][] = [
+    ['HUB_ADMIN_TOKEN', parsed.HUB_ADMIN_TOKEN],
+    ['HUB_PREVIOUS_ADMIN_TOKEN', parsed.HUB_PREVIOUS_ADMIN_TOKEN],
+    ['HUB_ACCESS_TOKEN', parsed.HUB_ACCESS_TOKEN],
+    ['HUB_PREVIOUS_ACCESS_TOKEN', parsed.HUB_PREVIOUS_ACCESS_TOKEN],
+    ['HUB_METRICS_TOKEN', parsed.HUB_METRICS_TOKEN],
+  ]
+  for (const [name, value] of tokens) {
+    if (!value || value.trim().length === 0) continue
+    const bytes = Buffer.byteLength(value.trim(), 'utf8')
+    if (production && bytes < MINIMUM_TOKEN_BYTES) {
+      problems.push(
+        `${name} must be at least ${MINIMUM_TOKEN_BYTES} bytes long: it is a bearer token of the service`
+      )
+    }
+    if (production && (isExampleSecret(value) || isRepeatedCharacterSecret(value))) {
+      problems.push(
+        `${name} is the value of the example of a development machine: it is published, and a deployment does not start with it`
+      )
+    }
+  }
+
+  // The two secrets of the signing and of the encryption are not the
+  // values of the example either (spec §4.1).
+  const secrets: [string, string | undefined][] = [
+    ['HUB_STATE_SECRET', parsed.HUB_STATE_SECRET],
+    ['HUB_SECRET_ENCRYPTION_KEY', parsed.HUB_SECRET_ENCRYPTION_KEY],
+  ]
+  for (const [name, value] of secrets) {
+    if (!production || !value) continue
+    if (isExampleSecret(value) || isRepeatedCharacterSecret(value)) {
+      problems.push(
+        `${name} is the value of the example of a development machine: it is published, and a deployment does not start with it`
+      )
+    }
   }
 
   // The previous token of the decisions without the token it replaced is

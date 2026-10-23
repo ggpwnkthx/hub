@@ -16,6 +16,14 @@ The work that the release `1.0.0` carries, before the tag.
 
 ### The contract
 
+- **The secrets of a deployment are not short and not the values of the
+  example.** Every bearer token of the environment is at least 16 bytes
+  long, and a production deployment refuses to start when one of them is
+  shorter, or when one of its secrets is a value of `.env.example` or a
+  secret that is one repeated character (`000…0`, `111…1`). The length of
+  a secret is the first thing that is tried, and the example file is
+  published: a deployment that copied it into a production one kept a
+  published secret. (spec §4.1, spec §4.4)
 - **A key of a permission is a name inside a tenant.** Two tenants hold
   their own permission of the same key, and the grant of a tenant never
   names the permission of another tenant. Before, the second tenant of a

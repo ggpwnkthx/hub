@@ -55,6 +55,8 @@ The work that the next release carries.
   more than that is not reachable.
 - A cookie of the state of a login that is not a valid escape refuses the
   login with `400 login_state_invalid` instead of `500`.
+- The export of the audit in CSV quotes a cell that begins with the
+  character of a formula: a spreadsheet reads a value, not a formula.
 
 ## 1.0.1
 

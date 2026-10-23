@@ -739,8 +739,13 @@ const AUDIT_COLUMNS = [
  * A value that carries a comma, a quote or a line break is quoted, and
  * the quotes of the value are doubled: the file is read by a
  * spreadsheet, and a value that breaks it is a value that is lost.
+ *
+ * A value that begins with the character of a formula is quoted as well:
+ * a spreadsheet reads `=A1` as a formula, and the export must carry a
+ * value, not a formula.
  */
 function csvCell(value: string): string {
+  if (/^[=+\-@]/.test(value)) return `"${value.replace(/"/g, '""')}"`
   if (!/[",\r\n]/.test(value)) return value
   return `"${value.replace(/"/g, '""')}"`
 }

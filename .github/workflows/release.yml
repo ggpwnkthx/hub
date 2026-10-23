@@ -183,12 +183,18 @@ jobs:
           grant usage, create on schema public to hub_app;
           SQL
 
-      - name: the key of the identity signature
+      - name: the key that signs the tokens of Hub
         run: |
           # The private key that signs the tokens of Hub. It comes from
           # the secret manager of the deployment and never from the
           # image: a key that is generated at the start of a process
           # invalidates every token that is alive.
+          #
+          # It is **not** the key of the signature of the identity of the
+          # gateway: that one belongs to the deployment of the gateway,
+          # it signs the headers of the identity that the gateway writes
+          # for its upstreams, and the upstreams verify it with the
+          # public key of that deployment (spec §13).
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
             -out "$RUNNER_TEMP/hub-key.pem" 2>/dev/null
           {
@@ -425,7 +431,7 @@ jobs:
           grant usage, create on schema public to hub_app;
           SQL
 
-      - name: the key of the identity signature
+      - name: the key that signs the tokens of Hub
         run: |
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
             -out "$RUNNER_TEMP/hub-key.pem" 2>/dev/null

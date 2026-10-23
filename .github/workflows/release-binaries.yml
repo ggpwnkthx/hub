@@ -216,7 +216,7 @@ jobs:
           grant usage, create on schema public to hub_app;
           SQL
 
-      - name: the key of the identity signature
+      - name: the key that signs the tokens of Hub
         run: |
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 \
             -out "$RUNNER_TEMP/hub-key.pem" 2>/dev/null

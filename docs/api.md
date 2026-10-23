@@ -146,8 +146,14 @@ Content-Type: application/json
 
 ```json
 {"allow": true, "reason": "allowed"}
-{"allow": false, "reason": "the principal does not have the role of the workspace"}
+{"allow": false, "reason": "the principal does not have the role of the workspace", "reasonCode": "missing_role"}
 ```
+
+A **denial** carries the code of its reason and an allowance carries
+none: the vocabulary is the one of the gateway (`missing_role`,
+`access_denied`). The gateway counts the code when it is sent and falls
+back on the text of the reason when it is not; the code and the text
+always agree (spec §8.2, spec §8.7).
 
 The status is `200` for a decision, allow or deny. The refusals: `401
 unauthorized` (missing or wrong credential), `400 bad_request` (the body

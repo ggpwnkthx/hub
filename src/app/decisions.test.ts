@@ -91,6 +91,7 @@ describe('the decision endpoint', () => {
     expect(await response.json()).toEqual({
       allow: false,
       reason: 'the principal does not have the role of the workspace',
+      reasonCode: 'missing_role',
     })
   })
 })

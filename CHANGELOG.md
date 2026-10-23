@@ -16,6 +16,15 @@ The work that the release `1.0.0` carries, before the tag.
 
 ### The contract
 
+- **A denial carries the code of its reason.** The answer of `POST
+  /v1/decisions` carries `reasonCode` beside the free text of the reason:
+  `missing_role` for a denial of a role, `access_denied` for every other
+  denial. The gateway counts the code when the service sends one and
+  counts the text of the reason when it does not, so the code and the text
+  always agree: the metric of the gateway is the same with the gateway of
+  the reference and with the next one, and a reason that is reworded does
+  not change it. The gateway of the reference ignores the field; the next
+  one reads it. (spec §8.2, spec §8.7)
 - **The secrets of a deployment are not short and not the values of the
   example.** Every bearer token of the environment is at least 16 bytes
   long, and a production deployment refuses to start when one of them is

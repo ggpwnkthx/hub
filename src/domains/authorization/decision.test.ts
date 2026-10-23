@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { decide, isMissingRole, REASONS } from './index'
+import { decide, isMissingRole, reasonCodeOf, REASON_CODES, REASONS } from './index'
 
 /** The facts of a decision that is allowed. */
 const ALLOWED = {
@@ -74,5 +74,37 @@ describe('the reasons of the decisions', () => {
     expect(isMissingRole(REASONS.principalDisabled)).toBe(false)
     expect(isMissingRole(REASONS.tenantDisabled)).toBe(false)
     expect(isMissingRole(REASONS.allowed)).toBe(false)
+  })
+
+  test('the code of a reason is the vocabulary of the gateway', () => {
+    expect(reasonCodeOf(REASONS.missingRole)).toBe('missing_role')
+    expect(reasonCodeOf(REASONS.expiredRole)).toBe('missing_role')
+    expect(reasonCodeOf(REASONS.principalMissing)).toBe('access_denied')
+    expect(reasonCodeOf(REASONS.principalDisabled)).toBe('access_denied')
+    expect(reasonCodeOf(REASONS.tenantDisabled)).toBe('access_denied')
+  })
+
+  test('a reason that is not one of the vocabulary is a denial the service does not name', () => {
+    expect(reasonCodeOf('a reason that does not exist')).toBe('access_denied')
+  })
+
+  test('the code of a reason and the text of the reason agree', () => {
+    // The gateway counts the code when the service sends one, and it
+    // falls back on the text of the reason when it does not. The two
+    // must count the same denials, or the metric of the gateway changes
+    // with the version of the gateway (spec §8.2, spec §8.7).
+    for (const reason of Object.values(REASONS)) {
+      const code = reasonCodeOf(reason)
+      // The text of the reason decides the legacy count of the gateway.
+      expect(reason.includes('role')).toBe(code === 'missing_role')
+    }
+  })
+
+  test('every reason of the vocabulary has a code', () => {
+    const reasons = Object.values(REASONS).filter((reason) => reason !== REASONS.allowed)
+    expect(reasons.length).toBe(Object.keys(REASON_CODES).length)
+    for (const reason of reasons) {
+      expect(Object.keys(REASON_CODES)).toContain(reason)
+    }
   })
 })

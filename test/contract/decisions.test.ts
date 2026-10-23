@@ -141,6 +141,39 @@ describe('the decisions of the gateway', () => {
     expect(answer.body.reason).toBe('the principal does not have the role of the workspace')
   })
 
+  test('a denial carries the code of its reason', async () => {
+    // The gateway counts the code when the service sends one, and it
+    // falls back on the text of the reason when it does not (spec §8.2).
+    const answer = await decide({
+      subject,
+      workspaceId: OTHER_WORKSPACE,
+      routeId: 'workspace-api',
+      roles: ['workspace.read'],
+    })
+    expect(answer.body.reasonCode).toBe('missing_role')
+  })
+
+  test('a denial that is not a missing role carries the code of a denial', async () => {
+    const answer = await decide({
+      subject: '33333333-3333-4333-8333-333333333333',
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(answer.body.allow).toBe(false)
+    expect(answer.body.reasonCode).toBe('access_denied')
+  })
+
+  test('an allowance carries no code', async () => {
+    const answer = await decide({
+      subject,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: ['workspace.read'],
+    })
+    expect(answer.body).toEqual({ allow: true, reason: 'allowed' })
+  })
+
   test('a grant of another route does not grant this one', async () => {
     const answer = await decide({
       subject,

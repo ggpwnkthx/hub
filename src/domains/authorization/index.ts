@@ -13,8 +13,9 @@ export type {
   DecisionFacts,
   DecisionRequest,
   DecisionStore,
+  ReasonCode,
 } from './decision'
-export { decide, isMissingRole, REASONS } from './decision'
+export { decide, isMissingRole, reasonCodeOf, REASON_CODES, REASONS } from './decision'
 export { isUuid } from './identifier'
 export type {
   AccessContextAnswer,

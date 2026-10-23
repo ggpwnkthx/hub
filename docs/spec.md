@@ -951,12 +951,26 @@ gateway fails closed on anything that is not a successful answer.
 
 ```
 200 {"allow": true,  "reason": "allowed"}
-200 {"allow": false, "reason": "the principal does not have the role of the workspace"}
+200 {"allow": false, "reason": "the principal does not have the role of the workspace", "reasonCode": "missing_role"}
 ```
 
 The status is `200` for a decision, allow or deny. The reason is free
 text and is **never** given to the caller: the gateway hides it. It
 exists for the operator, and it is in the log of the service.
+
+A **denial** carries the **code** of its reason, and an allowance
+carries none. The code is the vocabulary of the gateway (§6.1 of the
+specification of the gateway): `missing_role` is a denial because the
+caller does not have the role the policy asks for, and `access_denied` is
+a denial for a reason the service does not name.
+
+The gateway counts the code when the service sends one, and it counts the
+text of the reason when the service sends none (§6.5 of the specification
+of the gateway). The code and the text always agree: the code of a
+reason is `missing_role` if and only if the text of the reason mentions
+a role (§8.7). A gateway that reads the code and a gateway that reads
+the text therefore count the same denials, and a reason that is reworded
+does not change the metric of the gateway.
 
 ### 8.3 The rule
 
@@ -1043,17 +1057,28 @@ the gateway.
 
 ### 8.7 The reasons
 
-| Situation | Reason |
-| --- | --- |
-| Allowed | `allowed` |
-| The subject is not a principal | `the principal does not exist` |
-| The principal is disabled | `the principal is disabled` |
-| The tenant is disabled | `the tenant is disabled` |
-| No grant satisfies the rule | `the principal does not have the role of the workspace` |
-| A grant exists but it expired | `the role of the workspace has expired` |
+| Situation | Reason | Code |
+| --- | --- | --- |
+| Allowed | `allowed` | — |
+| The subject is not a principal | `the principal does not exist` | `access_denied` |
+| The principal is disabled | `the principal is disabled` | `access_denied` |
+| The tenant is disabled | `the tenant is disabled` | `access_denied` |
+| No grant satisfies the rule | `the principal does not have the role of the workspace` | `missing_role` |
+| A grant exists but it expired | `the role of the workspace has expired` | `missing_role` |
 
 The last two contain the word *role*, so the gateway counts them as
 `missing_role`.
+
+**The code and the text agree.** The code of a reason is `missing_role`
+if and only if the text of the reason mentions a role. The gateway
+counts the code when it is sent, and it falls back on the text when it
+is not (§8.2): a gateway that reads the code and a gateway that reads
+the text count the same denials.
+
+The two are one contract: a reason that is added, reworded or removed is
+a change of this table first, and a test holds the agreement of the two.
+A reason that mentions a role and is not a denial of a role would change
+the metric of the gateway of the reference, which counts the text.
 
 ### 8.8 The credentials of the gateway
 

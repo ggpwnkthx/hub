@@ -71,6 +71,44 @@ export const REASONS = {
   expiredRole: 'the role of the workspace has expired',
 } as const
 
+/**
+ * The machine readable reasons of the decisions (spec §8.7).
+ *
+ * The code is the vocabulary of the gateway (§6.1 of the specification of
+ * the gateway): `missing_role` is a denial because the caller does not
+ * have the role the policy asks for, and `access_denied` is a denial for
+ * a reason the service does not name.
+ *
+ * The gateway counts the code when the service sends one, and it falls
+ * back on the text of the reason when the service sends none. The code
+ * and the text always agree: the code of a reason is `missing_role` if
+ * and only if the text of the reason mentions a role. A test holds that
+ * agreement, so a reason that is reworded does not change the metric of
+ * the gateway.
+ */
+export const REASON_CODES = {
+  [REASONS.principalMissing]: 'access_denied',
+  [REASONS.principalDisabled]: 'access_denied',
+  [REASONS.tenantDisabled]: 'access_denied',
+  [REASONS.missingRole]: 'missing_role',
+  [REASONS.expiredRole]: 'missing_role',
+} as const
+
+/** A machine readable reason of a decision. */
+export type ReasonCode = (typeof REASON_CODES)[keyof typeof REASON_CODES]
+
+/**
+ * The code of a reason.
+ *
+ * A reason that is not one of the vocabulary is a denial the service
+ * does not name: it is `access_denied`. An allowance has no code: the
+ * code is the vocabulary of a denial.
+ */
+export function reasonCodeOf(reason: string): ReasonCode {
+  const code = (REASON_CODES as Record<string, ReasonCode>)[reason]
+  return code ?? 'access_denied'
+}
+
 /** The storage of the decision. */
 export interface DecisionStore {
   /**
@@ -116,5 +154,5 @@ export function decide(facts: DecisionFacts): Decision {
  * is what makes the metric of the gateway right.
  */
 export function isMissingRole(reason: string): boolean {
-  return reason.includes('role')
+  return reasonCodeOf(reason) === 'missing_role'
 }

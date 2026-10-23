@@ -12,6 +12,7 @@ import {
   decide,
   isMissingRole,
   isUuid,
+  reasonCodeOf,
   REASONS,
   type DecisionFacts,
 } from '../domains/authorization'
@@ -244,7 +245,19 @@ export async function decisionHandler(
     durationMs,
   })
 
-  return context.json({ allow: answer.allow, reason: answer.reason })
+  // The answer carries the code of the reason: the gateway counts the
+  // code when the service sends one, and it counts the text of the
+  // reason when the service sends none. The two agree, so the metric of
+  // the gateway is the same with the pinned gateway and with the next
+  // one (spec §8.7).
+  if (answer.allow) {
+    return context.json({ allow: true, reason: answer.reason })
+  }
+  return context.json({
+    allow: false,
+    reason: answer.reason,
+    reasonCode: reasonCodeOf(answer.reason),
+  })
 }
 
 /** The reason of an allowance, for the tests of the contract. */

@@ -23,6 +23,16 @@ The work that the next release carries.
   forbidden` (spec §10.1). The shared client moves the logins of the
   platform, and the default tenant routes the logins of the shared
   clients: they are not the decision of a tenant operator.
+- **The credentials of a gateway are always scoped to their tenant.** A
+  tenant whose `shared_client` is true may log in the principals of the
+  other tenants, and its decisions are still scoped to its own tenant:
+  the scope of a decision is the scope of the credential, and not a flag
+  that a row carries. The bearer token of the deployment is the only
+  scheme that is not scoped, and it is deprecated (spec §8.8). **A
+  deployment whose gateway uses a shared client and asks about the
+  principals of the other tenants moves its gateway to the bearer token
+  of the deployment**: the credentials of a tenant no longer reach the
+  principals of the other tenants.
 
 ## 1.0.1
 

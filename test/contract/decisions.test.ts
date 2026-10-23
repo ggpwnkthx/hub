@@ -552,7 +552,7 @@ describe('the credentials of the decisions', () => {
     expect(scoped.body.reason).toBe('the principal does not exist')
   })
 
-  test('a tenant with a shared client is not scoped', async () => {
+  test('the credentials of a tenant with a shared client are scoped to its tenant', async () => {
     await admin('/v1/admin/tenants', 'POST', {
       slug: 'shared',
       displayName: 'Shared',
@@ -574,14 +574,27 @@ describe('the credentials of the decisions', () => {
       workspaceId: WORKSPACE,
       routeId: 'workspace-api',
     })
-    const answer = await decideWith(basic('shuttle-shared', 'secret'), {
+    // The gateway of the shared client asks about a principal of another
+    // tenant: the credentials of a tenant are scoped to it, and the
+    // answer is the one of a principal that does not exist.
+    const scoped = await decideWith(basic('shuttle-shared', 'secret'), {
       subject,
       workspaceId: WORKSPACE,
       routeId: 'workspace-api',
       roles: [],
     })
-    expect(answer.status).toBe(200)
-    expect(answer.body.allow).toBe(true)
+    expect(scoped.status).toBe(200)
+    expect(scoped.body.allow).toBe(false)
+    expect(scoped.body.reason).toBe('the principal does not exist')
+    // The bearer token of the deployment is the way to ask about every
+    // tenant of the platform.
+    const unscoped = await decide({
+      subject,
+      workspaceId: WORKSPACE,
+      routeId: 'workspace-api',
+      roles: [],
+    })
+    expect(unscoped.body.allow).toBe(true)
   })
 
   test('a credential that is not understood is refused', async () => {

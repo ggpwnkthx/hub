@@ -1204,9 +1204,12 @@ not a principal of the tenant is refused with the reason of a principal
 that does not exist. The answer does not tell the gateway that the
 subject exists in another tenant.
 
-A tenant whose `shared_client` is true is the exception: its gateway may
-log in the principals of the other tenants (§5.2), so its decisions are
-not scoped either.
+The scope of the credentials of a tenant does not depend on the row of
+the tenant. A tenant whose `shared_client` is true may log in the
+principals of the other tenants (§5.2), and its decisions are still
+scoped to its own tenant: a gateway that asks about the principals of
+every tenant presents the bearer token of the deployment, which is the
+scheme that is not scoped.
 
 A credential that is neither of the two schemes, or one that is refused →
 `401 unauthorized`. The comparison is in constant time in both cases, and

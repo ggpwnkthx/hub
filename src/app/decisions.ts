@@ -141,10 +141,11 @@ async function readCredentials(
       sameSecret(clientSecret, secrets.current) ||
       (previousAccepted && secrets.previous !== null && sameSecret(clientSecret, secrets.previous))
     if (!accepted) return null
-    // A tenant with a shared client may ask about the principals of the
-    // other tenants (spec §5.2): its decisions are not scoped.
+    // The decisions of a gateway are scoped to its tenant: a gateway that
+    // asks about the principals of the other tenants presents the bearer
+    // token of the deployment, which is not scoped (spec §8.8).
     return {
-      tenantId: tenant.sharedClient ? null : tenant.id,
+      tenantId: tenant.id,
       tenantSlug: tenant.slug,
       sharedToken: false,
     }

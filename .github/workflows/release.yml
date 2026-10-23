@@ -93,7 +93,7 @@ jobs:
       # digest of what it carries is the digest of the release.
       - name: build and publish the image
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile

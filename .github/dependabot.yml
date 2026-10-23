@@ -1,0 +1,29 @@
+# The dependencies of the project.
+#
+# Every dependency is pinned to an exact version: a version that moves is
+# a version that was not tested. Dependabot opens the pull request that
+# moves them, and the pull request is the review of the change: the
+# version is pinned, the tests run against it, and the image is built
+# with it.
+#
+# The workflows are dependencies too: the actions of the CI are pinned to
+# a version that moves, and a new version of an action is a change of the
+# build.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dependencies:
+        patterns:
+          - '*'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

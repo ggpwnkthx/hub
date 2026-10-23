@@ -32,6 +32,26 @@ const timeoutMs = Number(readOption('timeout') ?? '2000')
 /** True when the measurement is the one of the decision of a tenant. */
 const scoped = process.argv.includes('--scoped')
 
+/**
+ * The thresholds of the measurement.
+ *
+ * A threshold that is not given is not a threshold: a run without any
+ * measures and reports, and a run with them **fails** when the
+ * measurement is outside of them. The gate of the CI is the thing that
+ * turns a number of a log into a regression of the build.
+ */
+const thresholds = {
+  /** The `p50` of the decision may not be above this, in milliseconds. */
+  maxP50Ms: readOption('max-p50-ms') === undefined ? null : Number(readOption('max-p50-ms')),
+  /** The `p95` of the decision may not be above this, in milliseconds. */
+  maxP95Ms: readOption('max-p95-ms') === undefined ? null : Number(readOption('max-p95-ms')),
+  /** The `p99` of the decision may not be above this, in milliseconds. */
+  maxP99Ms: readOption('max-p99-ms') === undefined ? null : Number(readOption('max-p99-ms')),
+  /** The decisions per second may not be below this. */
+  minPerSecond:
+    readOption('min-per-second') === undefined ? null : Number(readOption('min-per-second')),
+}
+
 /** Reads an option of the command line: `--name=value` or `--name value`. */
 function readOption(name: string): string | undefined {
   const flag = `--${name}=`
@@ -132,27 +152,66 @@ async function main(): Promise<void> {
     await Promise.all(Array.from({ length: Math.min(concurrency, requests) }, () => worker()))
     const elapsed = (Date.now() - started) / 1000
 
+    const measurement = {
+      environment: url.startsWith('pglite://') ? 'pglite' : 'postgres',
+      scope: scoped ? 'tenant' : 'platform',
+      requests,
+      concurrency,
+      grants,
+      seconds: Number(elapsed.toFixed(2)),
+      perSecond: Math.round(completed / elapsed),
+      p50Ms: Number(percentile(durations, 0.5).toFixed(3)),
+      p95Ms: Number(percentile(durations, 0.95).toFixed(3)),
+      p99Ms: Number(percentile(durations, 0.99).toFixed(3)),
+      maxMs: Number(Math.max(...durations).toFixed(3)),
+    }
+
     console.log(
       JSON.stringify(
-        {
-          level: 'info',
-          msg: 'the capacity of the decision',
-          environment: url.startsWith('pglite://') ? 'pglite' : 'postgres',
-          scope: scoped ? 'tenant' : 'platform',
-          requests,
-          concurrency,
-          grants,
-          seconds: Number(elapsed.toFixed(2)),
-          perSecond: Math.round(completed / elapsed),
-          p50Ms: Number(percentile(durations, 0.5).toFixed(3)),
-          p95Ms: Number(percentile(durations, 0.95).toFixed(3)),
-          p99Ms: Number(percentile(durations, 0.99).toFixed(3)),
-          maxMs: Number(Math.max(...durations).toFixed(3)),
-        },
+        { level: 'info', msg: 'the capacity of the decision', ...measurement },
         null,
         2
       )
     )
+
+    // The thresholds of the run: a measurement that is outside of them
+    // is a failure of the run, and the run fails with a non zero status.
+    const failures: string[] = []
+    if (thresholds.maxP50Ms !== null && measurement.p50Ms > thresholds.maxP50Ms) {
+      failures.push(
+        `the p50 is ${measurement.p50Ms} ms and it must not be above ${thresholds.maxP50Ms} ms`
+      )
+    }
+    if (thresholds.maxP95Ms !== null && measurement.p95Ms > thresholds.maxP95Ms) {
+      failures.push(
+        `the p95 is ${measurement.p95Ms} ms and it must not be above ${thresholds.maxP95Ms} ms`
+      )
+    }
+    if (thresholds.maxP99Ms !== null && measurement.p99Ms > thresholds.maxP99Ms) {
+      failures.push(
+        `the p99 is ${measurement.p99Ms} ms and it must not be above ${thresholds.maxP99Ms} ms`
+      )
+    }
+    if (thresholds.minPerSecond !== null && measurement.perSecond < thresholds.minPerSecond) {
+      failures.push(
+        `the throughput is ${measurement.perSecond} decisions per second and it must not be below ${thresholds.minPerSecond}`
+      )
+    }
+    if (failures.length > 0) {
+      console.error(
+        JSON.stringify(
+          {
+            level: 'error',
+            msg: 'the capacity of the decision is outside of its thresholds',
+            failures,
+            measurement,
+          },
+          null,
+          2
+        )
+      )
+      process.exitCode = 1
+    }
   } finally {
     await database.close()
   }

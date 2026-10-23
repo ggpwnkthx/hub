@@ -87,6 +87,17 @@ The work that the release `1.0.0` carries, before the tag.
 
 ### The release
 
+- **The capacity of the decision is a gate.** The measurement of the CI
+  fails the build when the decision is outside of its thresholds: a
+  decision that got slower — a plan that changed, an index that was
+  dropped — is a failure of the build and not a number in a log. The
+  thresholds of the CI are far above the targets of the operations, so
+  the gate catches a regression and not a busy runner.
+  (docs/operations.md)
+- **The dependencies are scanned and they are kept.** `bun audit` runs on
+  every build, and Dependabot opens the pull request that moves a pinned
+  version: the versions are pinned, and the scan of the tree is what
+  says that a pinned version is not a known one.
 - **The image is built once.** The release publishes the build, and
   every gate of the release — the probes, the decisions, the refusals,
   the drain, the scan and the compatibility suite — runs against the

@@ -56,6 +56,12 @@ jobs:
       - name: install
         run: bun install --frozen-lockfile
 
+      - name: the dependencies have no known vulnerability
+        # The dependencies are pinned to an exact version, and a pinned
+        # version does not move by itself: the scan of the tree is what
+        # says that the version that is pinned is not a known one.
+        run: bun audit --audit-level=high
+
       - name: types
         run: bun run typecheck
 
@@ -90,9 +96,19 @@ jobs:
         # The numbers of the capacity are the ones of the statement of the
         # production, measured against a PostgreSQL server and not against
         # the embedded one of a development machine.
+        #
+        # The thresholds are the gate of the build: a measurement outside
+        # of them fails the step. They are far above the targets of
+        # docs/operations.md, because the runner of the CI is a shared
+        # machine and a target of a development machine is not a target of
+        # a CI: the gate catches a decision that got slower (a plan that
+        # changed, an index that was dropped), and it does not fail on a
+        # busy runner.
         run: |
-          bun run scripts/load.ts --requests 5000 --concurrency 20
-          bun run scripts/load.ts --requests 5000 --concurrency 20 --scoped
+          bun run scripts/load.ts --requests 5000 --concurrency 20 \
+            --max-p50-ms=25 --max-p95-ms=50 --max-p99-ms=100 --min-per-second=100
+          bun run scripts/load.ts --requests 5000 --concurrency 20 --scoped \
+            --max-p50-ms=25 --max-p95-ms=50 --max-p99-ms=100 --min-per-second=100
         env:
           HUB_DATABASE_URL: postgres://hub:hub@localhost:5432/hub
 

@@ -466,6 +466,29 @@ repository of the decisions of the service, with the deadline of the
 deployment. The measurement runs on every build of the CI, against the
 PostgreSQL of the job, and its numbers are in the log of the build.
 
+**The measurement is a gate.** The script takes thresholds, and a
+measurement that is outside of them fails the run:
+
+```
+HUB_DATABASE_URL=postgres://… bun run scripts/load.ts --requests 20000 --concurrency 100 \
+  --max-p50-ms=25 --max-p95-ms=50 --max-p99-ms=100 --min-per-second=100
+```
+
+| Option | What it refuses |
+| --- | --- |
+| `--max-p50-ms` | A `p50` above the value. |
+| `--max-p95-ms` | A `p95` above the value. |
+| `--max-p99-ms` | A `p99` above the value. |
+| `--min-per-second` | A throughput below the value. |
+
+The thresholds of the CI are far above the targets of the table below:
+the runner of the CI is a shared machine, and a target of a development
+machine is not a target of a CI. The gate catches a decision that got
+slower — a plan that changed, an index that was dropped, a statement
+that scans the table of the policy — and it does not fail on a busy
+runner. A run without a threshold measures and reports, and it always
+exits with the status of the measurement.
+
 ### The targets
 
 | Measurement | Target | Shape |

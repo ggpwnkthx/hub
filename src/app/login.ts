@@ -41,7 +41,15 @@ function readCookie(request: Request, name: string): string | undefined {
   if (!header) return undefined
   for (const part of header.split(';')) {
     const [key, ...rest] = part.trim().split('=')
-    if (key === name) return decodeURIComponent(rest.join('='))
+    if (key !== name) continue
+    const value = rest.join('=')
+    // A value that is not a valid escape is not a cookie: the state of the
+    // login is unreadable, and the callback refuses the login.
+    try {
+      return decodeURIComponent(value)
+    } catch {
+      return undefined
+    }
   }
   return undefined
 }

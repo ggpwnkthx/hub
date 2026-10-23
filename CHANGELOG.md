@@ -53,6 +53,8 @@ The work that the next release carries.
 
 - The answer of a provider is read up to one MiB: a provider that answers
   more than that is not reachable.
+- A cookie of the state of a login that is not a valid escape refuses the
+  login with `400 login_state_invalid` instead of `500`.
 
 ## 1.0.1
 

@@ -809,6 +809,8 @@ reached is an error: the login fails, it never falls back to "no state".
 | The principal is disabled | `403 principal_disabled`. |
 | The state does not match, or the cookie is missing | `400 login_state_invalid`. The login is refused and a new one has to start. |
 
+| The cookie of the state is not readable | `400 login_state_invalid`. A cookie that is not a valid escape is not a cookie. |
+
 **The headers of the answers.** Every answer of Hub carries
 `x-content-type-options: nosniff`, `x-frame-options: DENY` and
 `referrer-policy: no-referrer`. A page of a refusal carries

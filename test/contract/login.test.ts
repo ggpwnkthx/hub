@@ -208,6 +208,15 @@ describe('the login of Hub', () => {
     expect(token.headers.get('pragma')).toBe('no-cache')
   })
 
+  test('a cookie that is not readable refuses the login', async () => {
+    const response = await fetch(`${base}/oauth/tenant/callback?code=whatever`, {
+      redirect: 'manual',
+      headers: { cookie: 'hub_login_state=%' },
+    })
+    expect(response.status).toBe(400)
+    expect(await response.text()).toContain('login_state_invalid')
+  })
+
   test('the same code exchanged twice is refused', async () => {
     const { response } = await startLogin()
     const location = new URL(response.headers.get('location') ?? '')

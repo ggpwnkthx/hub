@@ -430,6 +430,7 @@ readable list with the values of a development machine is in `.env.example`.
 | `HUB_METRICS_TOKEN` | The bearer token of the metrics endpoint. Without it the endpoint is not served. |
 | `HUB_LOG_LEVEL` | `debug`, `info`, `warn` or `error`. Default `info`. |
 | `HUB_ENVIRONMENT` | `development` or `production`. The fixtures refuse to run in production. |
+| `HUB_<NAME>_FILE` | The file that holds the value of `HUB_<NAME>`, for every secret of the environment (§4.5). |
 
 ### 4.1 The secrets
 
@@ -583,6 +584,26 @@ A production deployment also refuses to start when the role of the
 database is a superuser or a role with `BYPASSRLS`: the isolation of the
 tenants is enforced by the database, and it is not enforced for such a
 role (§3.9). The message names the role and what to do about it.
+
+### 4.5 The values that are in a file
+
+A value of the environment may be in a **file** instead of in the
+variable: `HUB_SIGNING_KEY_FILE` holds the private key,
+`HUB_ACCESS_CONTEXT_TOKENS_FILE` holds the credentials of the access
+context, `HUB_ADMIN_TOKEN_FILE` holds the token of the administration,
+and so on. Every secret of the environment may be given that way.
+
+The value of the file is the value of the variable, with the trailing
+newline removed. A file that cannot be read is a configuration error, and
+the service says so instead of starting without the secret.
+
+A variable and its file are **not** set at the same time: a deployment
+that sets both is a deployment that does not know which one it meant, and
+the service refuses to start rather than choose.
+
+The files are how a secret is given to a container: a secret of a
+deployment is a file that a secret manager writes, and a private key in
+a variable of the environment is a private key that a shell mangles.
 
 ---
 

@@ -78,6 +78,21 @@ HUB_SIGNING_KID=hub-1
 HUB_LOG_LEVEL=info
 ```
 
+**A secret may be in a file.** Every secret of the environment may be
+given as `HUB_<NAME>_FILE` instead of `HUB_<NAME>`: the file holds the
+value, and the trailing newline of the file is removed. A variable and
+its file are not set at the same time, and a file that cannot be read
+stops the service (spec §4.5).
+
+```
+HUB_SIGNING_KEY_FILE=/run/secrets/hub-signing-key.pem
+HUB_ADMIN_TOKEN_FILE=/run/secrets/hub-admin-token
+```
+
+It is how a secret reaches a container: a secret of a deployment is a
+file that a secret manager writes, and a private key in a variable of the
+environment is a private key that a shell mangles.
+
 ### The image
 
 The image runs as a user that is not `root` and it writes nothing: the

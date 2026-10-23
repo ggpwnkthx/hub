@@ -11,6 +11,7 @@
  * receives the settings it needs, not the environment.
  */
 
+import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import type { LogLevel } from '../observability'
 import { parseLogLevel } from '../observability'
@@ -321,6 +322,55 @@ export function isRepeatedCharacterSecret(value: string): boolean {
 }
 
 /**
+ * The secrets of the environment that may be given in a file.
+ *
+ * A secret of a deployment is a file that a secret manager writes, and a
+ * private key in a variable of the environment is a private key that a
+ * shell mangles (spec §4.5).
+ */
+export const FILE_VARIABLES: readonly string[] = [
+  'HUB_ADMIN_TOKEN',
+  'HUB_PREVIOUS_ADMIN_TOKEN',
+  'HUB_ACCESS_TOKEN',
+  'HUB_PREVIOUS_ACCESS_TOKEN',
+  'HUB_ACCESS_CONTEXT_TOKENS',
+  'HUB_METRICS_TOKEN',
+  'HUB_STATE_SECRET',
+  'HUB_SECRET_ENCRYPTION_KEY',
+  'HUB_SIGNING_KEY',
+  'HUB_PREVIOUS_SIGNING_KEY',
+]
+
+/**
+ * Reads the values of the environment that are in a file.
+ *
+ * The value of `X_FILE` is the value of `X`. A variable and its file are
+ * not set at the same time: a deployment that sets both does not know
+ * which one it meant, and the service says so instead of choosing.
+ */
+export function readSecretFiles(env: Env): Env {
+  const resolved: Env = { ...env }
+  for (const name of FILE_VARIABLES) {
+    const file = env[`${name}_FILE`]
+    if (!file || file.trim().length === 0) continue
+    const value = env[name]
+    if (value !== undefined && value.trim().length > 0) {
+      throw new Error(
+        `${name} and ${name}_FILE are both set: a value is either in the environment or in a file`
+      )
+    }
+    let content: string
+    try {
+      content = readFileSync(file.trim(), 'utf8')
+    } catch {
+      throw new Error(`${name}_FILE names a file that cannot be read: ${file.trim()}`)
+    }
+    resolved[name] = content.trim()
+  }
+  return resolved
+}
+
+/**
  * Reads the environment.
  *
  * A value that cannot be understood stops the service: the message names
@@ -329,7 +379,7 @@ export function isRepeatedCharacterSecret(value: string): boolean {
  * and restarts to learn about the next one is a deployment that stays down.
  */
 export function readEnv(env: Env = process.env): RuntimeSettings {
-  const result = EnvSchema.safeParse(env)
+  const result = EnvSchema.safeParse(readSecretFiles(env))
   if (!result.success) {
     const problems = result.error.issues
       .map((issue) => `${issue.path.join('.') || 'the environment'}: ${issue.message}`)

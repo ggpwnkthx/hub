@@ -25,6 +25,14 @@ The work that the release `1.0.0` carries, before the tag.
   the reference and with the next one, and a reason that is reworded does
   not change it. The gateway of the reference ignores the field; the next
   one reads it. (spec §8.2, spec §8.7)
+- **A secret of the deployment may be in a file.** Every secret of the
+  environment may be given as `HUB_<NAME>_FILE` instead of `HUB_<NAME>`:
+  the file holds the value and the trailing newline is removed. A
+  variable and its file are not set at the same time, and a file that
+  cannot be read stops the service. It is how a secret reaches a
+  container: a secret of a deployment is a file that a secret manager
+  writes, and a private key in a variable of the environment is a
+  private key that a shell mangles. (spec §4.5)
 - **The secrets of a deployment are not short and not the values of the
   example.** Every bearer token of the environment is at least 16 bytes
   long, and a production deployment refuses to start when one of them is

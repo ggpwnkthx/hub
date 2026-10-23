@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { readEnv, secretBytes } from './env'
 
 /** The environment of a production deployment, with every secret. */
@@ -211,5 +214,36 @@ describe('the environment of Hub', () => {
     expect(secretBytes('a'.repeat(43) + '=')).toBe(32)
     expect(secretBytes('secret-passphrase-32-bytes-long!')).toBe(32)
     expect(secretBytes('secret-passphrase-31-bytes-long')).toBe(31)
+  })
+})
+
+describe('the values of the environment that are in a file', () => {
+  test('a secret in a file is the value of the variable', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'hub-env-'))
+    const file = join(directory, 'signing-key.pem')
+    writeFileSync(file, '-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----\n')
+    const settings = readEnv({
+      ...PRODUCTION,
+      HUB_SIGNING_KEY: undefined,
+      HUB_SIGNING_KEY_FILE: file,
+    })
+    expect(settings.signing.key).toBe(
+      '-----BEGIN PRIVATE KEY-----\nMIIB\n-----END PRIVATE KEY-----'
+    )
+  })
+
+  test('a variable and its file at the same time is a configuration error', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'hub-env-'))
+    const file = join(directory, 'admin-token')
+    writeFileSync(file, 'the-admin-token-of-the-production\n')
+    expect(() => readEnv({ ...PRODUCTION, HUB_ADMIN_TOKEN_FILE: file })).toThrow(
+      /HUB_ADMIN_TOKEN and HUB_ADMIN_TOKEN_FILE are both set/
+    )
+  })
+
+  test('a file that cannot be read is a configuration error', () => {
+    expect(() =>
+      readEnv({ ...PRODUCTION, HUB_ADMIN_TOKEN: undefined, HUB_ADMIN_TOKEN_FILE: '/nope/not-here' })
+    ).toThrow(/HUB_ADMIN_TOKEN_FILE names a file that cannot be read/)
   })
 })
